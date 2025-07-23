@@ -1,0 +1,11 @@
+[package]
+name = "rsynapse-daemon"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+zbus = "4"
+anyhow = "1"
+libloading = "0.8"
+rsynapse-plugin = { path = "../rsynapse-plugin" }
