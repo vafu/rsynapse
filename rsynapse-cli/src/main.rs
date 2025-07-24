@@ -3,9 +3,9 @@ use clap::Parser;
 use zbus::{Connection, proxy};
 
 #[proxy(
-    interface = "org.rsynapse.Launcher1",
-    default_service = "com.rsynapse.Launcher",
-    default_path = "/org/rsynapse/Launcher1"
+    interface = "org.rsynapse.Engine1",
+    default_service = "com.rsynapse.Engine",
+    default_path = "/org/rsynapse/Engine1"
 )]
 trait Launcher {
     async fn search(&self, query: &str) -> zbus::Result<Vec<String>>;

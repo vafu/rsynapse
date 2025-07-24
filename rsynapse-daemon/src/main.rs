@@ -1,9 +1,10 @@
-// ./rsynapse-daemon/src/main.rs
 use anyhow::Result;
 use libloading::{Library, Symbol};
+use rsynapse_plugin::ResultItem as PluginResultItem;
 use rsynapse_plugin::{Plugin, ResultItem};
-use std::sync::{Arc, Mutex};
-use zbus::{dbus_interface, interface, ConnectionBuilder};
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+use zbus::{ConnectionBuilder, interface, zvariant::Type}; // Rename for clarity
 
 struct PluginManager {
     plugins: Vec<Box<dyn Plugin>>,
@@ -18,20 +19,14 @@ impl PluginManager {
         }
     }
 
-    /// Loads plugins from a given directory.
-    ///
-    /// # Safety
-    /// This function is unsafe because it loads and executes foreign code
-    /// from dynamic libraries. The libraries must be trusted and adhere
-    /// to the `_rsynapse_init` function signature and Rust's ABI.
     unsafe fn load_from(&mut self, path: &str) -> Result<()> {
         for entry in std::fs::read_dir(path)? {
             let path = entry?.path();
             if path.is_file() && path.extension().map_or(false, |e| e == "so") {
-                let lib = Library::new(&path)?;
+                let lib = unsafe { Library::new(&path) }?;
                 let constructor: Symbol<unsafe extern "C" fn() -> *mut dyn Plugin> =
-                    lib.get(b"_rsynapse_init")?;
-                let plugin = Box::from_raw(constructor());
+                    unsafe { lib.get(b"_rsynapse_init")? };
+                let plugin = unsafe { Box::from_raw(constructor()) };
                 println!("[Daemon] Loaded plugin: {}", plugin.name());
                 self.plugins.push(plugin);
                 self._libraries.push(lib);
@@ -42,21 +37,43 @@ impl PluginManager {
 }
 
 struct Launcher {
-    manager: Arc<Mutex<PluginManager>>,
+    manager: Arc<PluginManager>,
 }
 
-#[interface(name = "org.rsynapse.Launcher1")]
-impl Launcher {
-    async fn search(&self, query: &str) -> Vec<String> {
-        let manager = self.manager.lock().unwrap();
-        let mut results: Vec<ResultItem> = Vec::new();
+#[derive(Debug, Clone, Type, Serialize, Deserialize)]
+struct DbusResultItem {
+    id: String,
+    title: String,
+    description: String,
+    icon: String,
+    command: String,
+}
 
-        for plugin in &manager.plugins {
-            results.extend(plugin.query(query));
+// Implement a conversion from the plugin's struct to our D-Bus struct.
+// This keeps the conversion logic clean and reusable.
+impl From<PluginResultItem> for DbusResultItem {
+    fn from(item: PluginResultItem) -> Self {
+        Self {
+            id: item.id,
+            title: item.title,
+            description: item.description.unwrap_or_default(),
+            icon: item.icon.unwrap_or_default(),
+            command: item.command.unwrap_or_default(),
+        }
+    }
+}
+
+#[interface(name = "org.rsynapse.Engine1")]
+impl Launcher {
+    async fn search(&self, query: &str) -> Vec<DbusResultItem> {
+        let mut all_results: Vec<ResultItem> = Vec::new();
+
+        for plugin in &self.manager.plugins {
+            all_results.extend(plugin.query(query));
         }
 
         // Convert rich `ResultItem` to a simple string for the CLI.
-        results.into_iter().map(|item| item.title).collect()
+        all_results.into_iter().map(DbusResultItem::from).collect()
     }
 }
 
@@ -75,12 +92,12 @@ async fn main() -> Result<()> {
     }
 
     let launcher = Launcher {
-        manager: Arc::new(Mutex::new(manager)),
+        manager: Arc::new(manager),
     };
 
     let _conn = ConnectionBuilder::session()?
-        .name("com.rsynapse.Launcher")?
-        .serve_at("/org/rsynapse/Launcher1", launcher)?
+        .name("com.rsynapse.Engine")?
+        .serve_at("/org/rsynapse/Engine1", launcher)?
         .build()
         .await?;
 

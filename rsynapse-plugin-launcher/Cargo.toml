@@ -8,3 +8,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 rsynapse-plugin = { path = "../rsynapse-plugin" }
+xdg = "2.5"
+freedesktop-desktop-entry = "0.4"
+fuzzy-matcher = "0.3.7"
+walkdir = "2"
