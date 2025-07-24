@@ -79,7 +79,7 @@ impl Launcher {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let mut manager = PluginManager::new();
+    let mut manager = PluginManager::new(); 
 
     // In a real application, this should be a dedicated, secure plugin directory.
     // For now, we load from the build output directory.

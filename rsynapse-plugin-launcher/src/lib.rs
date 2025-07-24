@@ -119,6 +119,7 @@ impl Plugin for LauncherPlugin {
                 icon: app.icon.clone(),
                 command: app.exec.clone(),
             })
+            .rev()
             .collect()
     }
 }
