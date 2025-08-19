@@ -1,6 +1,9 @@
 [workspace]
 members = [
     "rsynapse-daemon",
-    "rsynapse-cli", "rsynapse-plugin", "rsynapse-plugin-launcher",
+    "rsynapse-cli", 
+    "rsynapse-plugin", 
+    "rsynapse-plugin-launcher",
+    "rsynapse-plugin-shell",
 ]
 resolver = "3"

@@ -1079,6 +1079,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "rsynapse-plugin-shell"
+version = "0.1.0"
+dependencies = [
+ "rsynapse-plugin",
+]
+
+[[package]]
 name = "rustc-demangle"
 version = "0.1.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
