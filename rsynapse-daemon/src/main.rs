@@ -1,8 +1,9 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use libloading::{Library, Symbol};
 use rsynapse_plugin::ResultItem as PluginResultItem;
 use rsynapse_plugin::{Plugin, ResultItem};
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 use std::sync::Arc;
 use zbus::{ConnectionBuilder, interface, zvariant::Type}; // Rename for clarity
 
@@ -19,13 +20,20 @@ impl PluginManager {
         }
     }
 
-    unsafe fn load_from(&mut self, path: &str) -> Result<()> {
-        for entry in std::fs::read_dir(path)? {
-            let path = entry?.path();
+    unsafe fn load_plugins_from(&mut self, path: &PathBuf) -> Result<()> {
+        println!("[Daemon] Loading plugins from: {:?}", path);
+
+        for entry in std::fs::read_dir(path)
+            .with_context(|| format!("Failed to read plugin directory at: {:?}", path))?
+        {
+            let entry = entry?;
+            let path = entry.path();
             if path.is_file() && path.extension().map_or(false, |e| e == "so") {
+                println!("[Daemon] Attempting to load library: {:?}", path);
+
                 let lib = unsafe { Library::new(&path) }?;
                 let constructor: Symbol<unsafe extern "C" fn() -> *mut dyn Plugin> =
-                    unsafe { lib.get(b"_rsynapse_init")? };
+                    unsafe { lib.get(b"_rsynapse_init") }?;
                 let plugin = unsafe { Box::from_raw(constructor()) };
                 println!("[Daemon] Loaded plugin: {}", plugin.name());
                 self.plugins.push(plugin);
@@ -77,14 +85,39 @@ impl Launcher {
     }
 }
 
+fn get_plugin_path() -> Option<PathBuf> {
+    if cfg!(debug_assertions) {
+        // In debug builds, use the local target directory.
+        println!("[Daemon] Using DEBUG plugin path.");
+        Some(PathBuf::from("./target/debug/"))
+    } else {
+        // In release builds, use the installed location in the home directory.
+        println!("[Daemon] Using RELEASE plugin path.");
+        dirs::home_dir().map(|mut path| {
+            path.push(".local/lib/rsynapse/plugins/");
+            path
+        })
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
-    let mut manager = PluginManager::new(); 
+    let mut manager = PluginManager::new();
 
-    // In a real application, this should be a dedicated, secure plugin directory.
-    // For now, we load from the build output directory.
-    unsafe {
-        manager.load_from("./target/debug/")?;
+    eprintln!("[Daemon] [INFO] Daemon starting up. Determining plugin path...");
+    if let Some(plugin_path) = get_plugin_path() {
+        if plugin_path.exists() {
+            unsafe {
+                manager.load_plugins_from(&plugin_path)?;
+            }
+        } else {
+            eprintln!(
+                "[Daemon] Warning: Plugin directory does not exist at {:?}",
+                plugin_path
+            );
+        }
+    } else {
+        eprintln!("[Daemon] Error: Could not determine plugin path.");
     }
 
     if manager.plugins.is_empty() {
