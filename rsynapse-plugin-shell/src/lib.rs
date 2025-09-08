@@ -28,6 +28,7 @@ impl Plugin for ShellPlugin {
             description: Some("Execute as shell command".to_string()),
             icon: Some("utilities-terminal".to_string()),
             command: Some(full_command),
+            score: std::f64::MIN,
         }]
     }
 }

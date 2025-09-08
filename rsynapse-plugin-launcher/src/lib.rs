@@ -103,29 +103,21 @@ impl Plugin for LauncherPlugin {
         if query.is_empty() {
             return Vec::new();
         }
-        let mut scored_results: Vec<(i64, &App)> = self
-            .apps
+        self.apps
             .iter()
             .filter_map(|app| {
-                // fuzzy_match returns an Option<(score, indices)>
                 self.matcher
                     .fuzzy_match(&app.name, query)
                     .map(|score| (score, app))
             })
-            .collect();
-
-        // 2. Sort the results by score in descending order (higher is better)
-        scored_results.sort_by(|a, b| b.0.cmp(&a.0));
-
-        // 3. Map the sorted results to the final ResultItem struct
-        scored_results
-            .into_iter()
-            .map(|(_score, app)| ResultItem {
+            .map(|(score, app)| ResultItem {
                 id: app.desktop_file_id.clone(),
                 title: app.name.clone(),
                 description: app.comment.clone(),
                 icon: app.icon.clone(),
                 command: app.exec.clone(),
+                // Pass the score from the fuzzy matcher.
+                score: score as f64,
             })
             .collect()
     }

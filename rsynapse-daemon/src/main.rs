@@ -80,6 +80,8 @@ impl Launcher {
             all_results.extend(plugin.query(query));
         }
 
+        all_results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+
         // Convert rich `ResultItem` to a simple string for the CLI.
         all_results.into_iter().map(DbusResultItem::from).collect()
     }

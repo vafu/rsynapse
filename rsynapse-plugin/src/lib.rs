@@ -11,6 +11,7 @@ pub struct ResultItem {
     pub description: Option<String>,
     pub icon: Option<String>,
     pub command: Option<String>,
+    pub score: f64,
 }
 
 pub trait Plugin: Send + Sync {
