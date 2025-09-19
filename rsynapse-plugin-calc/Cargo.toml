@@ -1,5 +1,5 @@
 [package]
-name = "rsynapse-plugin-launcher"
+name = "rsynapse-plugin-calc"
 version = "0.1.0"
 edition = "2024"
 
@@ -8,8 +8,4 @@ crate-type = ["cdylib"]
 
 [dependencies]
 rsynapse-plugin = { path = "../rsynapse-plugin" }
-xdg = "2.5"
-freedesktop-desktop-entry = "0.4"
-fuzzy-matcher = "0.3.7"
-walkdir = "2"
-notify = "6.1"
+meval = "0.2"

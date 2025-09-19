@@ -1,8 +1,27 @@
+use std::process::{Command, Stdio};
+
 use rsynapse_plugin::{Plugin, ResultItem};
 
-const PREFIX: &str = "> ";
-
 struct ShellPlugin;
+
+fn is_valid_shell_syntax(query: &str) -> bool {
+    if query.trim().is_empty() {
+        return false;
+    }
+
+    let status = Command::new("sh")
+        .arg("-n") // The "no-exec" flag for syntax checking.
+        .arg("-c")
+        .arg(query)
+        .stdout(Stdio::null()) // Suppress any successful output.
+        .stderr(Stdio::null()) // Suppress any syntax error messages.
+        .status();
+
+    match status {
+        Ok(exit_status) => exit_status.success(),
+        Err(_) => false,
+    }
+}
 
 impl Plugin for ShellPlugin {
     fn name(&self) -> &'static str {
@@ -10,16 +29,14 @@ impl Plugin for ShellPlugin {
     }
 
     fn query(&self, query: &str) -> Vec<ResultItem> {
-        // Check if the query starts with our designated prefix.
         let command = query;
-        // Don't return a result for an empty or whitespace-only command.
         if command.trim().is_empty() {
             return Vec::new();
         }
 
-        // If it matches, return exactly one result item.
-        // Wrapping the command in `sh -c '...'` allows the shell to correctly
-        // interpret pipes, redirects, and other complex syntax.
+        if !is_valid_shell_syntax(query) {
+            return Vec::new();
+        }
         let full_command = format!("sh -c '{}'", command);
 
         vec![ResultItem {
