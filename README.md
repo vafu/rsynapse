@@ -13,6 +13,7 @@ This software is currently under active development and should be considered a *
 * **Modular Architecture**: The system is extensible with dynamically loaded plugins that are compiled as shared libraries (`.so`).
 * **D-Bus API**: A language-agnostic interface is provided for UI clients.
 * **Centralized Execution**: The daemon is responsible for handling command execution, which enables stateful features such as command history (WIP).
+* **rsynapse-cli**: A simple CLI to test things. More here [rsynapse-cli](./rsynapse-cli/)
 
 ### Current Plugins
 
