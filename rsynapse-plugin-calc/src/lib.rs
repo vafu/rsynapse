@@ -19,7 +19,7 @@ impl Plugin for CalcPlugin {
                     title: result.to_string(),
                     description: Some("Result".to_string()),
                     icon: Some("accessories-calculator".to_string()),
-                    command: None,
+                    data: Some(result.to_string()),
                     score: 100.0,
                 }]
             }

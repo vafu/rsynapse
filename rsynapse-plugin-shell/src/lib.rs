@@ -28,6 +28,10 @@ impl Plugin for ShellPlugin {
         "Shell Executor"
     }
 
+    fn default_execute(&self) -> Option<&'static str> {
+        Some("{data}")
+    }
+
     fn query(&self, query: &str) -> Vec<ResultItem> {
         let command = query;
         if command.trim().is_empty() {
@@ -44,7 +48,7 @@ impl Plugin for ShellPlugin {
             title: command.to_string(),
             description: Some("Execute as shell command".to_string()),
             icon: Some("utilities-terminal".to_string()),
-            command: Some(full_command),
+            data: Some(full_command),
             score: std::f64::MIN,
         }]
     }

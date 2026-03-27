@@ -158,6 +158,10 @@ impl Plugin for LauncherPlugin {
         "Application Launcher"
     }
 
+    fn default_execute(&self) -> Option<&'static str> {
+        Some("{data}")
+    }
+
     fn query(&self, query: &str) -> Vec<ResultItem> {
         if query.is_empty() {
             return Vec::new();
@@ -179,8 +183,7 @@ impl Plugin for LauncherPlugin {
                 title: app.name.clone(),
                 description: app.comment.clone(),
                 icon: app.icon.clone(),
-                command: app.exec.clone(),
-                // Pass the score from the fuzzy matcher.
+                data: app.exec.clone(),
                 score: score as f64,
             })
             .collect()

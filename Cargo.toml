@@ -6,5 +6,6 @@ members = [
     "rsynapse-plugin-launcher",
     "rsynapse-plugin-shell",
     "rsynapse-plugin-calc",
+    "rsynapse-plugin-commands",
 ]
 resolver = "3"

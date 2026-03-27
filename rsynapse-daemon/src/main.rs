@@ -1,11 +1,50 @@
 use anyhow::{Context, Result};
 use libloading::{Library, Symbol};
-use rsynapse_plugin::ResultItem as PluginResultItem;
 use rsynapse_plugin::{Plugin, ResultItem};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Arc;
-use zbus::{ConnectionBuilder, interface, zvariant::Type}; // Rename for clarity
+use std::process::Command;
+use std::sync::{Arc, Mutex};
+use zbus::{ConnectionBuilder, interface, zvariant::Type};
+
+// --- Config ---
+
+#[derive(Deserialize, Default)]
+struct DaemonConfig {
+    #[serde(default)]
+    plugins: HashMap<String, PluginConfig>,
+}
+
+#[derive(Deserialize, Default)]
+struct PluginConfig {
+    execute: Option<String>,
+}
+
+fn load_config() -> DaemonConfig {
+    let path = match dirs::config_dir() {
+        Some(dir) => dir.join("rsynapse/config.toml"),
+        None => return DaemonConfig::default(),
+    };
+
+    let content = match std::fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("[Daemon] No config at {:?}: {}", path, e);
+            return DaemonConfig::default();
+        }
+    };
+
+    match toml::from_str(&content) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("[Daemon] Failed to parse config: {}", e);
+            DaemonConfig::default()
+        }
+    }
+}
+
+// --- Plugin Manager ---
 
 struct PluginManager {
     plugins: Vec<Box<dyn Plugin>>,
@@ -44,9 +83,7 @@ impl PluginManager {
     }
 }
 
-struct Launcher {
-    manager: Arc<PluginManager>,
-}
+// --- D-Bus types ---
 
 #[derive(Debug, Clone, Type, Serialize, Deserialize)]
 struct DbusResultItem {
@@ -54,46 +91,123 @@ struct DbusResultItem {
     title: String,
     description: String,
     icon: String,
-    command: String,
+    data: String,
 }
 
-// Implement a conversion from the plugin's struct to our D-Bus struct.
-// This keeps the conversion logic clean and reusable.
-impl From<PluginResultItem> for DbusResultItem {
-    fn from(item: PluginResultItem) -> Self {
+// --- Cached result for Execute ---
+
+struct CachedResult {
+    plugin_name: String,
+    item: DbusResultItem,
+}
+
+// --- D-Bus interface ---
+
+struct Engine {
+    manager: Arc<PluginManager>,
+    config: Arc<DaemonConfig>,
+    execute_defaults: Arc<HashMap<String, String>>,
+    last_results: Arc<Mutex<Vec<CachedResult>>>,
+}
+
+#[interface(name = "org.rsynapse.Engine1")]
+impl Engine {
+    async fn search(&self, query: &str) -> Vec<DbusResultItem> {
+        let mut tagged: Vec<(f64, String, DbusResultItem)> = Vec::new();
+
+        for plugin in &self.manager.plugins {
+            let name = plugin.name().to_string();
+            for item in plugin.query(query) {
+                let score = item.score;
+                tagged.push((score, name.clone(), DbusResultItem::from(item)));
+            }
+        }
+
+        tagged.sort_by(|a, b| {
+            b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal)
+        });
+
+        let mut cache = self.last_results.lock().unwrap();
+        cache.clear();
+
+        let results: Vec<DbusResultItem> = tagged
+            .into_iter()
+            .map(|(_, plugin_name, item)| {
+                cache.push(CachedResult {
+                    plugin_name,
+                    item: item.clone(),
+                });
+                item
+            })
+            .collect();
+
+        results
+    }
+
+    async fn execute(&self, id: &str) -> String {
+        let cache = self.last_results.lock().unwrap();
+
+        let cached = match cache.iter().find(|r| r.item.id == id) {
+            Some(r) => r,
+            None => {
+                let msg = format!("No result with id '{}'", id);
+                eprintln!("[Daemon] {}", msg);
+                return format!("Error: {}", msg);
+            }
+        };
+
+        let config_execute = self.config.plugins.get(&cached.plugin_name)
+            .and_then(|cfg| cfg.execute.as_deref());
+
+        let template = if let Some(tmpl) = config_execute {
+            tmpl
+        } else if let Some(default) = self.execute_defaults.get(&cached.plugin_name) {
+            default.as_str()
+        } else {
+            let msg = format!("No execute config for plugin '{}'", cached.plugin_name);
+            eprintln!("[Daemon] {}", msg);
+            return format!("Error: {}", msg);
+        };
+
+        let command = template
+            .replace("{id}", &cached.item.id)
+            .replace("{title}", &cached.item.title)
+            .replace("{description}", &cached.item.description)
+            .replace("{icon}", &cached.item.icon)
+            .replace("{data}", &cached.item.data);
+
+        eprintln!("[Daemon] Executing: {}", command);
+
+        match Command::new("sh").arg("-c").arg(&command).spawn() {
+            Ok(_) => String::new(),
+            Err(e) => {
+                let msg = format!("Failed to execute: {}", e);
+                eprintln!("[Daemon] {}", msg);
+                format!("Error: {}", msg)
+            }
+        }
+    }
+}
+
+impl From<ResultItem> for DbusResultItem {
+    fn from(item: ResultItem) -> Self {
         Self {
             id: item.id,
             title: item.title,
             description: item.description.unwrap_or_default(),
             icon: item.icon.unwrap_or_default(),
-            command: item.command.unwrap_or_default(),
+            data: item.data.unwrap_or_default(),
         }
     }
 }
 
-#[interface(name = "org.rsynapse.Engine1")]
-impl Launcher {
-    async fn search(&self, query: &str) -> Vec<DbusResultItem> {
-        let mut all_results: Vec<ResultItem> = Vec::new();
-
-        for plugin in &self.manager.plugins {
-            all_results.extend(plugin.query(query));
-        }
-
-        all_results.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
-
-        // Convert rich `ResultItem` to a simple string for the CLI.
-        all_results.into_iter().map(DbusResultItem::from).collect()
-    }
-}
+// --- Main ---
 
 fn get_plugin_path() -> Option<PathBuf> {
     if cfg!(debug_assertions) {
-        // In debug builds, use the local target directory.
         println!("[Daemon] Using DEBUG plugin path.");
         Some(PathBuf::from("./target/debug/"))
     } else {
-        // In release builds, use the installed location in the home directory.
         println!("[Daemon] Using RELEASE plugin path.");
         dirs::home_dir().map(|mut path| {
             path.push(".local/lib/rsynapse/plugins/");
@@ -105,6 +219,7 @@ fn get_plugin_path() -> Option<PathBuf> {
 #[tokio::main]
 async fn main() -> Result<()> {
     let mut manager = PluginManager::new();
+    let config = load_config();
 
     eprintln!("[Daemon] [INFO] Daemon starting up. Determining plugin path...");
     if let Some(plugin_path) = get_plugin_path() {
@@ -126,13 +241,23 @@ async fn main() -> Result<()> {
         eprintln!("[Daemon] Warning: No plugins loaded. The daemon will not return any results.");
     }
 
-    let launcher = Launcher {
+    let mut execute_defaults = HashMap::new();
+    for plugin in &manager.plugins {
+        if let Some(default) = plugin.default_execute() {
+            execute_defaults.insert(plugin.name().to_string(), default.to_string());
+        }
+    }
+
+    let engine = Engine {
         manager: Arc::new(manager),
+        config: Arc::new(config),
+        execute_defaults: Arc::new(execute_defaults),
+        last_results: Arc::new(Mutex::new(Vec::new())),
     };
 
     let _conn = ConnectionBuilder::session()?
         .name("com.rsynapse.Engine")?
-        .serve_at("/org/rsynapse/Engine1", launcher)?
+        .serve_at("/org/rsynapse/Engine1", engine)?
         .build()
         .await?;
 

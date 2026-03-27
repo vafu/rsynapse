@@ -13,6 +13,8 @@ trait Engine {
         &self,
         query: &str,
     ) -> zbus::Result<Vec<(String, String, String, String, String)>>;
+
+    async fn execute(&self, id: &str) -> zbus::Result<String>;
 }
 
 #[derive(Tabled)]
@@ -23,8 +25,8 @@ struct ResultRow {
     title: String,
     #[tabled(rename = "Description")]
     description: String,
-    #[tabled(rename = "Command")]
-    command: String,
+    #[tabled(rename = "Data")]
+    data: String,
 }
 
 #[derive(Parser, Debug)]
@@ -62,19 +64,21 @@ async fn main() -> Result<()> {
             } else {
                 let table_data: Vec<ResultRow> = results
                     .into_iter()
-                    .map(|(id, title, description, _icon, command)| ResultRow {
+                    .map(|(id, title, description, _icon, data)| ResultRow {
                         id,
                         title,
                         description,
-                        command,
+                        data,
                     })
                     .collect();
                 println!("{}", Table::new(table_data));
             }
         }
         Commands::Exec { id } => {
-            // TODO: add execute
-            println!("Execution request sent for ID: {}", id);
+            let result = proxy.execute(&id).await?;
+            if !result.is_empty() {
+                eprintln!("{}", result);
+            }
         }
     }
 
