@@ -25,6 +25,10 @@ pub trait Plugin: Send + Sync {
         None
     }
 
+    /// Called when the config file changes. Plugins can override this
+    /// to reload their configuration.
+    fn reload(&self) {}
+
     /// Called by the daemon to get results for a given query.
     fn query(&self, query: &str) -> Vec<ResultItem>;
 }

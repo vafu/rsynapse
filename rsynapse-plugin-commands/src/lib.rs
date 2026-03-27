@@ -1,5 +1,6 @@
 use std::fs;
 use std::process::{Command, Stdio};
+use std::sync::RwLock;
 
 use regex::Regex;
 use rsynapse_plugin::{Plugin, ResultItem};
@@ -50,18 +51,23 @@ struct JsonResultItem {
 }
 
 pub struct CommandsPlugin {
-    commands: Vec<CompiledCommand>,
+    commands: RwLock<Vec<CompiledCommand>>,
 }
 
 impl CommandsPlugin {
     fn load() -> Self {
+        let commands = Self::compile_commands();
+        Self { commands: RwLock::new(commands) }
+    }
+
+    fn compile_commands() -> Vec<CompiledCommand> {
         let config = Self::load_config().unwrap_or_default();
         let entries = config.plugins
             .get("Commands")
             .map(|s| &s.commands[..])
             .unwrap_or_default();
 
-        let commands = entries
+        entries
             .iter()
             .filter_map(|entry| {
                 Regex::new(&entry.pattern)
@@ -72,9 +78,7 @@ impl CommandsPlugin {
                         modifiers: entry.modifiers.clone(),
                     })
             })
-            .collect();
-
-        Self { commands }
+            .collect()
     }
 
     fn load_config() -> Option<Config> {
@@ -185,10 +189,17 @@ impl Plugin for CommandsPlugin {
         "Commands"
     }
 
+    fn reload(&self) {
+        eprintln!("[Commands Plugin] Reloading configuration...");
+        let new_commands = Self::compile_commands();
+        *self.commands.write().unwrap() = new_commands;
+    }
+
     fn query(&self, query: &str) -> Vec<ResultItem> {
+        let commands = self.commands.read().unwrap();
         let mut results = Vec::new();
 
-        for cmd in &self.commands {
+        for cmd in commands.iter() {
             if let Some(captures) = cmd.pattern.captures(query) {
                 results.extend(Self::execute_command(&cmd.command, &captures, &cmd.modifiers));
             }

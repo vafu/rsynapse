@@ -1,11 +1,12 @@
 use anyhow::{Context, Result};
 use libloading::{Library, Symbol};
+use notify::{RecursiveMode, Watcher};
 use rsynapse_plugin::{Plugin, ResultItem};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::process::Command;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 use zbus::{ConnectionBuilder, interface, zvariant::Type};
 
 // --- Config ---
@@ -105,7 +106,7 @@ struct CachedResult {
 
 struct Engine {
     manager: Arc<PluginManager>,
-    config: Arc<DaemonConfig>,
+    config: Arc<RwLock<DaemonConfig>>,
     execute_defaults: Arc<HashMap<String, String>>,
     last_results: Arc<Mutex<Vec<CachedResult>>>,
 }
@@ -156,7 +157,8 @@ impl Engine {
             }
         };
 
-        let config_execute = self.config.plugins.get(&cached.plugin_name)
+        let config = self.config.read().unwrap();
+        let config_execute = config.plugins.get(&cached.plugin_name)
             .and_then(|cfg| cfg.execute.as_deref());
 
         let template = if let Some(tmpl) = config_execute {
@@ -248,12 +250,42 @@ async fn main() -> Result<()> {
         }
     }
 
+    let manager = Arc::new(manager);
+    let config = Arc::new(RwLock::new(config));
+
     let engine = Engine {
-        manager: Arc::new(manager),
-        config: Arc::new(config),
+        manager: Arc::clone(&manager),
+        config: Arc::clone(&config),
         execute_defaults: Arc::new(execute_defaults),
         last_results: Arc::new(Mutex::new(Vec::new())),
     };
+
+    // Watch config file for changes.
+    if let Some(config_dir) = dirs::config_dir() {
+        let config_path = config_dir.join("rsynapse");
+        let manager_ref = Arc::clone(&manager);
+        let config_ref = Arc::clone(&config);
+
+        std::thread::spawn(move || {
+            let (tx, rx) = std::sync::mpsc::channel();
+            let mut watcher = notify::recommended_watcher(tx).unwrap();
+
+            if config_path.exists() {
+                watcher.watch(&config_path, RecursiveMode::NonRecursive).unwrap();
+                eprintln!("[Daemon] Watching config at {:?}", config_path);
+            }
+
+            for res in rx {
+                if let Ok(_event) = res {
+                    eprintln!("[Daemon] Config changed, reloading...");
+                    *config_ref.write().unwrap() = load_config();
+                    for plugin in &manager_ref.plugins {
+                        plugin.reload();
+                    }
+                }
+            }
+        });
+    }
 
     let _conn = ConnectionBuilder::session()?
         .name("com.rsynapse.Engine")?

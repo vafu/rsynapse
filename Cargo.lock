@@ -1307,6 +1307,7 @@ dependencies = [
  "anyhow",
  "dirs 5.0.1",
  "libloading",
+ "notify",
  "rsynapse-plugin",
  "serde",
  "tokio",
