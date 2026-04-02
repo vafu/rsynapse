@@ -1,0 +1,15 @@
+[package]
+name = "rsynapse-ui"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "rsynapse-ui"
+path = "src/main.rs"
+
+[dependencies]
+relm4 = { version = "0.10", features = ["libadwaita"] }
+gtk4-layer-shell = "0.7"
+zbus = { version = "4", default-features = false, features = ["tokio"] }
+tokio = { version = "1", features = ["rt-multi-thread"] }
+anyhow = "1"
