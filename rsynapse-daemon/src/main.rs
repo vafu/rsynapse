@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use libloading::{Library, Symbol};
-use notify::{RecursiveMode, Watcher};
+use notify::{RecursiveMode, Watcher, EventKind, event::{AccessKind, AccessMode, CreateKind}};
 use rsynapse_plugin::{Plugin, ResultItem};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -267,6 +267,8 @@ async fn main() -> Result<()> {
         let config_ref = Arc::clone(&config);
 
         std::thread::spawn(move || {
+            use std::time::Instant;
+
             let (tx, rx) = std::sync::mpsc::channel();
             let mut watcher = notify::recommended_watcher(tx).unwrap();
 
@@ -275,13 +277,27 @@ async fn main() -> Result<()> {
                 eprintln!("[Daemon] Watching config at {:?}", config_path);
             }
 
+            let mut last_reload = Instant::now();
             for res in rx {
-                if let Ok(_event) = res {
-                    eprintln!("[Daemon] Config changed, reloading...");
-                    *config_ref.write().unwrap() = load_config();
-                    for plugin in &manager_ref.plugins {
-                        plugin.reload();
+                match res {
+                    Ok(event) => {
+                        let is_toml = event.paths.iter().any(|p| {
+                            p.extension().is_some_and(|ext| ext == "toml")
+                        });
+                        let is_reload_event = matches!(event.kind,
+                            EventKind::Access(AccessKind::Close(AccessMode::Write))
+                            | EventKind::Create(CreateKind::File)
+                        );
+                        if is_toml && is_reload_event && last_reload.elapsed().as_millis() > 100 {
+                            last_reload = Instant::now();
+                            eprintln!("[Daemon] Config changed, reloading...");
+                            *config_ref.write().unwrap() = load_config();
+                            for plugin in &manager_ref.plugins {
+                                plugin.reload();
+                            }
+                        }
                     }
+                    Err(e) => eprintln!("[Daemon] fsnotify error: {:?}", e),
                 }
             }
         });
