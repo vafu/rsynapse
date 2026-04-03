@@ -104,19 +104,43 @@ impl SimpleComponent for App {
             });
         });
 
-        // Key controller on the search entry
+        // Activate on Enter
         let s = sender.clone();
-        let key_ctrl = gtk::EventControllerKey::new();
-        key_ctrl.connect_key_pressed(move |_, keyval, _, _| {
-            match keyval {
-                gdk::Key::Down => { s.input(Msg::SelectNext); glib::Propagation::Stop }
-                gdk::Key::Up => { s.input(Msg::SelectPrev); glib::Propagation::Stop }
-                gdk::Key::Return => { s.input(Msg::Activate); glib::Propagation::Stop }
-                gdk::Key::Escape => { s.input(Msg::Hide); glib::Propagation::Stop }
-                _ => glib::Propagation::Proceed
-            }
+        search_entry.connect_activate(move |_| {
+            s.input(Msg::Activate);
         });
-        search_entry.add_controller(key_ctrl);
+
+        // Stop search on Escape
+        let s = sender.clone();
+        search_entry.connect_stop_search(move |_| {
+            s.input(Msg::Hide);
+        });
+
+        // Arrow keys for selection
+        let s = sender.clone();
+        search_entry.connect_next_match(move |_| {
+            s.input(Msg::SelectNext);
+        });
+        let s = sender.clone();
+        search_entry.connect_previous_match(move |_| {
+            s.input(Msg::SelectPrev);
+        });
+
+        // Wire Up/Down to next-match/previous-match
+        let shortcuts = gtk::ShortcutController::new();
+        shortcuts.add_shortcut(
+            gtk::Shortcut::new(
+                Some(gtk::KeyvalTrigger::new(gdk::Key::Down, gdk::ModifierType::empty())),
+                Some(gtk::SignalAction::new("next-match")),
+            ),
+        );
+        shortcuts.add_shortcut(
+            gtk::Shortcut::new(
+                Some(gtk::KeyvalTrigger::new(gdk::Key::Up, gdk::ModifierType::empty())),
+                Some(gtk::SignalAction::new("previous-match")),
+            ),
+        );
+        search_entry.add_controller(shortcuts);
 
         // D-Bus toggle interface
         let (dbus_tx, dbus_rx) = std::sync::mpsc::channel::<()>();
@@ -190,7 +214,11 @@ impl SimpleComponent for App {
             }
             Msg::Activate => {
                 if let Some(result) = self.results.get(self.selected as usize) {
-                    dbus::execute(&result.id).ok();
+                    eprintln!("[rsynapse-ui] Executing: {} ({})", result.title, result.id);
+                    match dbus::execute(&result.id) {
+                        Ok(r) => eprintln!("[rsynapse-ui] Execute result: {:?}", r),
+                        Err(e) => eprintln!("[rsynapse-ui] Execute error: {}", e),
+                    }
                     self.search_entry.set_text("");
                     self.window.set_visible(false);
                 }
