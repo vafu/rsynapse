@@ -14,6 +14,7 @@ const RSYNAPSE_PANEL_BLUR_CLASS: &str = "rsynapse-blur";
 const RSYNAPSE_PANEL_BLUR_CLASSES: &[&str] = &[RSYNAPSE_PANEL_BLUR_CLASS];
 const RSYNAPSE_PANEL_BLUR_RADIUS: i32 = 12;
 const RSYNAPSE_PANEL_BLUR_CORNER_GUARD: i32 = 2;
+const RSYNAPSE_UI_CSS_PRIORITY: u32 = gtk::STYLE_PROVIDER_PRIORITY_USER + 1;
 
 struct App {
     window: gtk::Window,
@@ -319,6 +320,17 @@ fn try_toggle_existing() -> bool {
         .unwrap_or(false)
 }
 
+fn install_css() {
+    let Some(display) = gdk::Display::default() else {
+        eprintln!("[rsynapse-ui] No GDK display available for CSS");
+        return;
+    };
+
+    let provider = gtk::CssProvider::new();
+    provider.load_from_data(include_str!("style.css"));
+    gtk::style_context_add_provider_for_display(&display, &provider, RSYNAPSE_UI_CSS_PRIORITY);
+}
+
 fn main() {
     if try_toggle_existing() {
         return;
@@ -327,6 +339,6 @@ fn main() {
     adw::init().expect("Failed to init libadwaita");
 
     let app = RelmApp::new("org.rsynapse.UI");
-    relm4::set_global_css(include_str!("style.css"));
+    install_css();
     app.run::<App>(());
 }
