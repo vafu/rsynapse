@@ -1,15 +1,19 @@
 mod dbus;
 
+use gtk4_background_effect::{BackgroundEffect, BackgroundEffectRegion, apply_background_effect};
 use gtk4_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
 use relm4::adw;
 use relm4::adw::prelude::*;
 use relm4::gtk;
 use relm4::gtk::gdk;
 use relm4::gtk::glib;
-use relm4::gtk::prelude::*;
 use relm4::prelude::*;
 
 const MAX_ITEMS: usize = 10;
+const RSYNAPSE_PANEL_BLUR_CLASS: &str = "rsynapse-blur";
+const RSYNAPSE_PANEL_BLUR_CLASSES: &[&str] = &[RSYNAPSE_PANEL_BLUR_CLASS];
+const RSYNAPSE_PANEL_BLUR_RADIUS: i32 = 12;
+const RSYNAPSE_PANEL_BLUR_CORNER_GUARD: i32 = 2;
 
 struct App {
     window: gtk::Window,
@@ -47,6 +51,7 @@ impl SimpleComponent for App {
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
         root.init_layer_shell();
+        root.set_namespace(Some("rsynapse-ui"));
         root.set_layer(Layer::Overlay);
         root.set_keyboard_mode(KeyboardMode::Exclusive);
         root.set_anchor(Edge::Top, true);
@@ -55,6 +60,14 @@ impl SimpleComponent for App {
         root.set_anchor(Edge::Right, false);
         root.set_decorated(false);
         root.add_css_class("rsynapse-window");
+        apply_background_effect(
+            &root,
+            BackgroundEffect::Blur(BackgroundEffectRegion::CornerGuardRoundedCssClasses {
+                classes: RSYNAPSE_PANEL_BLUR_CLASSES,
+                radius: RSYNAPSE_PANEL_BLUR_RADIUS,
+                corner_guard: RSYNAPSE_PANEL_BLUR_CORNER_GUARD,
+            }),
+        );
 
         let widgets = view_output!();
 
@@ -80,7 +93,7 @@ impl SimpleComponent for App {
         let container = gtk::Box::builder()
             .orientation(gtk::Orientation::Vertical)
             .valign(gtk::Align::End)
-            .css_classes(["rsynapse"])
+            .css_classes(["rsynapse", RSYNAPSE_PANEL_BLUR_CLASS])
             .build();
         container.append(&scrolled);
         container.append(&search_entry);
@@ -128,18 +141,20 @@ impl SimpleComponent for App {
 
         // Wire Up/Down to next-match/previous-match
         let shortcuts = gtk::ShortcutController::new();
-        shortcuts.add_shortcut(
-            gtk::Shortcut::new(
-                Some(gtk::KeyvalTrigger::new(gdk::Key::Down, gdk::ModifierType::empty())),
-                Some(gtk::SignalAction::new("next-match")),
-            ),
-        );
-        shortcuts.add_shortcut(
-            gtk::Shortcut::new(
-                Some(gtk::KeyvalTrigger::new(gdk::Key::Up, gdk::ModifierType::empty())),
-                Some(gtk::SignalAction::new("previous-match")),
-            ),
-        );
+        shortcuts.add_shortcut(gtk::Shortcut::new(
+            Some(gtk::KeyvalTrigger::new(
+                gdk::Key::Down,
+                gdk::ModifierType::empty(),
+            )),
+            Some(gtk::SignalAction::new("next-match")),
+        ));
+        shortcuts.add_shortcut(gtk::Shortcut::new(
+            Some(gtk::KeyvalTrigger::new(
+                gdk::Key::Up,
+                gdk::ModifierType::empty(),
+            )),
+            Some(gtk::SignalAction::new("previous-match")),
+        ));
         search_entry.add_controller(shortcuts);
 
         // D-Bus toggle interface
@@ -152,11 +167,16 @@ impl SimpleComponent for App {
             rt.block_on(async {
                 let conn = match zbus::Connection::session().await {
                     Ok(c) => c,
-                    Err(e) => { eprintln!("[rsynapse-ui] D-Bus connect failed: {}", e); return; }
+                    Err(e) => {
+                        eprintln!("[rsynapse-ui] D-Bus connect failed: {}", e);
+                        return;
+                    }
                 };
-                if let Err(e) = conn.object_server()
+                if let Err(e) = conn
+                    .object_server()
                     .at("/org/rsynapse/UI", UiDbus { sender: dbus_tx })
-                    .await {
+                    .await
+                {
                     eprintln!("[rsynapse-ui] D-Bus object_server failed: {}", e);
                     return;
                 }
@@ -165,7 +185,9 @@ impl SimpleComponent for App {
                     return;
                 }
                 eprintln!("[rsynapse-ui] D-Bus toggle interface registered");
-                loop { std::future::pending::<()>().await; }
+                loop {
+                    std::future::pending::<()>().await;
+                }
             });
         });
 
@@ -284,7 +306,14 @@ impl UiDbus {
 
 fn try_toggle_existing() -> bool {
     std::process::Command::new("busctl")
-        .args(["--user", "call", "org.rsynapse.UIToggle", "/org/rsynapse/UI", "org.rsynapse.UIToggle1", "Toggle"])
+        .args([
+            "--user",
+            "call",
+            "org.rsynapse.UIToggle",
+            "/org/rsynapse/UI",
+            "org.rsynapse.UIToggle1",
+            "Toggle",
+        ])
         .status()
         .map(|s| s.success())
         .unwrap_or(false)

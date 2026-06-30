@@ -8,8 +8,9 @@ name = "rsynapse-ui"
 path = "src/main.rs"
 
 [dependencies]
-relm4 = { version = "0.10", features = ["libadwaita"] }
-gtk4-layer-shell = "0.7"
+relm4 = { version = "0.11", features = ["libadwaita"] }
+gtk4-layer-shell = "0.8"
+gtk4-background-effect = { path = "../../../locus-shell/shell/background-effect" }
 zbus = { version = "4", default-features = false, features = ["tokio"] }
 tokio = { version = "1", features = ["rt-multi-thread"] }
 anyhow = "1"
