@@ -5,6 +5,13 @@ small, Rust-first session stack. Prefer D-Bus and typed async streams for live
 reactive state. Do not rebuild a filesystem-backed IPC layer for shell hot
 paths.
 
+## First Steps
+
+Before planning or editing, read `README.md` for the workspace overview. When
+work touches `shell/`, also read `shell/README.md`, `shell/PROJECT.md`,
+`shell/PLAN.md`, and any nested `AGENTS.md` that applies to the files being
+changed.
+
 ## Direction
 
 The current direction is:
@@ -29,15 +36,15 @@ components.
   later.
 
 - `niri-dbus/`
-  A planned session D-Bus projection for niri IPC. It should expose outputs,
-  workspaces, windows, focus, and events as D-Bus objects/properties/signals.
-  It must not contain shell UI policy.
+  A session D-Bus projection for niri IPC. It exposes outputs, workspaces,
+  windows, focus, and events as D-Bus objects/properties/signals. It must not
+  contain shell UI policy.
 
 - `locus/`
-  A planned session D-Bus relation service. It stores typed associations
-  between objects exposed by other services, such as workspace -> project or
-  window -> agent. It should store relations and emit relation change signals;
-  source services remain authoritative for their own properties.
+  A session D-Bus relation service. It stores typed associations between
+  objects exposed by other services, such as workspace -> project or window ->
+  agent. It stores relations and emits relation change signals; source services
+  remain authoritative for their own properties.
 
 ## Relation Service Shape
 

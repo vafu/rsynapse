@@ -9,7 +9,7 @@ Macros subscribe those observables and write emitted values into Relm4 model
 fields.
 
 ```text
-DBus source function / user source function
+D-Bus source function / user source function
     -> Observable<T>
     -> shell macro subscription
     -> Relm4 Msg
@@ -85,9 +85,9 @@ Do not use `#[source]` on derived-source function arguments. Reserve
 `#[source(...)]` for model fields so the same word always means "bind this
 model value from this source expression."
 
-## DBus Sources
+## D-Bus Sources
 
-`shell_core::source::dbus` owns generic DBus primitives:
+`shell_core::source::dbus` owns generic D-Bus primitives:
 
 - `property(PropertyDescriptor)` for typed property values.
 - `signal(SignalDescriptor)` for typed signal payloads.
@@ -104,7 +104,7 @@ Generic helpers should:
   `source::shared_by_key`.
 - Replay the latest value to late subscribers.
 - Stop upstream work when the last subscriber drops.
-- Keep DBus object paths typed with `zbus` path/name types at helper
+- Keep D-Bus object paths typed with `zbus` path/name types at helper
   boundaries when practical.
 
 ## Macro Responsibilities
@@ -175,7 +175,7 @@ The Observable source API is DI-inspired, but it is not a general DI container.
 
 Use DI for stable services:
 
-- DBus clients and typed service proxies
+- D-Bus clients and typed service proxies
 - configuration and theme state
 - caches and registries
 - logging and metrics
@@ -183,7 +183,7 @@ Use DI for stable services:
 
 Use Observable source construction for dynamic values:
 
-- DBus properties and object collections
+- D-Bus properties and object collections
 - relation-service lookups
 - timers, file watches, and process output
 - derived UI DTOs from multiple sources
@@ -201,7 +201,7 @@ The remaining migration work is:
 
 1. Add `#[shell_macros::observable]`, `#[observe(...)]`, and `#[inject]` for
    user-authored derived sources.
-2. Build typed DBus helper modules for Niri, AgentDBus, notifications, power,
+2. Build typed D-Bus helper modules for Niri, AgentDBus, notifications, power,
    audio, media, and tray data as the corresponding services exist.
 3. Replace placeholder app surfaces with source-bound widgets using those
    helpers.

@@ -15,7 +15,7 @@ Widgets own their view models and source providers locally.
 - Prefer enum-shaped view model parts when Relm4 view code can match them
   cleanly. If enum unpacking makes the view awkward, use subcomponents per
   submodel instead.
-- Keep helper structs, source composition, DBus descriptor construction,
+- Keep helper structs, source composition, D-Bus descriptor construction,
   decoding policy, and formatting helpers private in the same widget module
   unless another widget actually needs them.
 - Prefer composing `shell_core::source` observables with Rx operators directly.

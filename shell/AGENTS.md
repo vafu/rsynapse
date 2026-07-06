@@ -1,9 +1,9 @@
 # Rsynapse Shell Agent Guide
 
-This repository is the Rsynapse shell monorepo. It contains reusable
+This directory is the Rsynapse shell monorepo. It contains reusable
 Rust/Relm4 shell framework crates plus concrete Rsynapse UI surfaces.
 
-The current architecture is DBus-first: shell code consumes typed DBus services
+The current architecture is D-Bus-first: shell code consumes typed D-Bus services
 through `shell_core::source` observables. Do not add a FUSE/filesystem-backed
 reactivity layer back into this workspace.
 
@@ -11,9 +11,10 @@ reactivity layer back into this workspace.
 
 Before planning or editing, read:
 
+- `README.md` for the shell workspace overview and common commands.
 - `PROJECT.md` for the project blueprint and constraints.
 - `PLAN.md` for the current roadmap and crate boundaries.
-- `SOURCE_API.md` when work touches source bindings, observable APIs, DBus
+- `SOURCE_API.md` when work touches source bindings, observable APIs, D-Bus
   source helpers, or macro ergonomics.
 - `app/src/widgets/AGENTS.md` before changing concrete widgets or
   widget-local source providers.
@@ -24,7 +25,7 @@ framework-boundary work.
 ## Workspace Boundaries
 
 - `core/shell-core` owns generic GTK/layer-shell app setup, window primitives,
-  stylesheet loading, reusable Observable source primitives, and DBus source
+  stylesheet loading, reusable Observable source primitives, and D-Bus source
   helpers.
 - `core/background-effect` owns reusable GTK4 `ext-background-effect-v1`
   helpers.
@@ -39,9 +40,9 @@ framework-boundary work.
 - Do not reintroduce removed `provider/*` crates, `ObservableSource<T>`, a
   custom provider task runtime, a filesystem watch transport, or a provider
   facade in this repo.
-- DBus service implementation belongs in sibling service projects such as
-  `../niri-dbus`, `../locus`, or `../../claude-dbus`. Shell code only consumes
-  their public surfaces.
+- D-Bus service implementation belongs in sibling service projects such as
+  `../niri-dbus`, `../locus`, or adjacent AgentDBus-style services. Shell code
+  only consumes their public surfaces.
 
 ## Observable Source Contract
 
@@ -77,7 +78,7 @@ Consumer source rules:
 - Add a shell-core observable primitive when a backend capability is generally
   reusable.
 - Keep concrete widget view models and display policy in app or surface crates.
-- Prefer typed DBus descriptors and service helpers over raw string traversal at
+- Prefer typed D-Bus descriptors and service helpers over raw string traversal at
   widget call sites.
 
 ## Widget Rules
@@ -112,9 +113,9 @@ Consumer source rules:
   future surface crates.
 - Prefer existing `shell_core::source` primitives and Rx operators over custom
   source runtimes.
-- Add focused tests for DBus descriptors, source filtering, parsing, and
+- Add focused tests for D-Bus descriptors, source filtering, parsing, and
   request-command behavior.
-- Update `PLAN.md` or relevant refactor docs when architecture changes.
+- Update `README.md`, `PLAN.md`, or `SOURCE_API.md` when architecture changes.
 - Preserve nested AGENTS guidance; top-level rules are broad, nested rules win
   for their directories.
 

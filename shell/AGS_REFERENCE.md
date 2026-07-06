@@ -1,6 +1,10 @@
-# AGS Shell Reference
+# Historical AGS Shell Reference
 
-This document summarizes `/home/v47/.config/ags` as a product reference for future Rust shell widgets. It is not an implementation template. The AGS code uses JavaScript/TypeScript, Astal, RxJS-style streams, and imperative GTK updates; `locus-shell` should use the feature inventory and data contracts while keeping the Rust/Relm4 architecture typed, compiled, and declarative.
+This document summarizes `/home/v47/.config/ags` as a product reference for
+Rust shell widgets. It is not an implementation template. The AGS code uses
+JavaScript/TypeScript, Astal, RxJS-style streams, and imperative GTK updates;
+Rsynapse should preserve useful product behavior while keeping the Rust/Relm4
+architecture typed, compiled, and declarative.
 
 ## Top-Level Shape
 
@@ -14,7 +18,9 @@ The bar is split into three regions:
 - Center: active workspace window indicators.
 - Right: media, system stats, tray, power, Bluetooth, audio, network, battery, and clock.
 
-For Rust this suggests a future external `locus-bar` crate, not framework code. The framework should provide provider/macros/core primitives that make this composition ergonomic.
+For Rust this belongs in `app/` or a future surface crate beside it, not in
+framework code. The framework should provide source, macro, and GTK primitives
+that make this composition ergonomic.
 
 ## Data Sources
 
@@ -60,10 +66,9 @@ Styling is external SCSS/CSS. The bar uses class-driven states for active, urgen
 Likely reusable crates or feature-gated modules:
 
 - Observable source API: `SOURCE_API.md`.
-- Current `providers`: migration bridge for source traits, subscriptions, and sharing.
-- `locus-provider`: generic Locus graph watch implementation used by generated schema sources.
-- `dbus-provider`: generic D-Bus object/property source implementation.
-- `common-providers`: feature-gated typed definitions for common services such as UPower.
+- `shell-core::source`: generic Observable and D-Bus source primitives.
+- Consumer-owned typed helpers for Niri, Locus relations, AgentDBus, UPower,
+  MPRIS, tray/status-notifier, PipeWire/WirePlumber, and similar services.
 - Future `pipewire` or `common-pipewire`: typed audio sources.
 - Future `common-system`: time, sysstats, filesystem, process sources.
 - Future `common-network`: network and Bluetooth sources if D-Bus definitions grow large.

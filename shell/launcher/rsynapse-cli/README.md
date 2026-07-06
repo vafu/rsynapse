@@ -1,36 +1,22 @@
+# rsynapse-cli
 
-*rsynapse-cli*
+`rsynapse-cli` is a command-line client for the launcher daemon at
+`org.rsynapse.Engine`.
 
-`rsynapse-cli` is a command-line interface for interacting with the rsynapse daemon. It allows you to perform searches and execute commands directly from your terminal.
+Run from `shell/launcher`:
 
-**Usage**
-The CLI operates through subcommands. The two primary commands are search and exec.
-To search for an item, use the search subcommand followed by your query. The output will be a formatted table of results, including the ID required for execution.
-
-
-`rsynapse-cli search <QUERY>`
-
-Example:
-
-```
-$ rsynapse-cli search fire
-+--------------------------------+---------+--------------------------+
-| ID                             | Title   | Description              |
-+================================+=========+==========================+
-| Application Launcher::firefox.desktop | Firefox | Browse the World Wide Web|
-+--------------------------------+---------+--------------------------+
+```sh
+cargo run -p rsynapse-cli -- search firefox
+cargo run -p rsynapse-cli -- exec firefox.desktop
 ```
 
-**Executing an Item (WIP)**
+Installed usage:
 
-To execute an item, use the exec subcommand followed by the item's unique ID obtained from a search.
-
-`rsynapse-cli exec <ID>`
-
-Example:
-
-```
-$ rsynapse-cli exec "Application Launcher::firefox.desktop"
-Execution request sent for ID: Application Launcher::firefox.desktop
+```sh
+rsynapse-cli search firefox
+rsynapse-cli exec firefox.desktop
 ```
 
+`search` prints a table with result IDs. `exec` sends one of those IDs back to
+the daemon. The daemon executes it only if the result is still present in the
+daemon's latest cached search results and the plugin has an execute template.

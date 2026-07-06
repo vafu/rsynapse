@@ -1,113 +1,115 @@
-# rsynapse
+# Rsynapse Launcher Workspace
 
-**rsynapse** is a modular and extensible launcher backend for the Linux operating system, implemented in Rust. It is designed to operate as a headless daemon that manages data sources through a dynamic plugin system. The service communicates with any user interface via its D-Bus API, thereby establishing a clear separation between backend logic and frontend presentation.
+This directory contains the launcher portion of Rsynapse. It is a nested Cargo
+workspace under `shell/`, not the whole Rsynapse repository.
 
-The system is architected for performance and efficiency.
+The launcher consists of a headless D-Bus daemon, a CLI, a GTK launcher UI, a
+dynamic plugin API, and bundled plugins.
 
-## ⚠️ Disclaimer
+## Crates
 
-This software is currently under active development and should be considered a **Work In Progress**. The architecture, D-Bus API, plugin interface, and installation procedures are subject to frequent and substantial changes. Use it at your own risk.
+| Crate | Type | Purpose |
+| --- | --- | --- |
+| `rsynapse-daemon` | Binary | Owns `org.rsynapse.Engine`, loads plugins, serves search/execute over D-Bus. |
+| `rsynapse-cli` | Binary | CLI client for querying and executing launcher results. |
+| `rsynapse-ui` | Binary | GTK4/Relm4 launcher UI client. |
+| `rsynapse-plugin` | Library | Plugin trait and result item types. |
+| `rsynapse-plugin-launcher` | `cdylib` | Indexes `.desktop` applications from XDG application directories. |
+| `rsynapse-plugin-shell` | `cdylib` | Offers syntactically valid shell commands as low-priority results. |
+| `rsynapse-plugin-calc` | `cdylib` | Evaluates calculator expressions with `meval`. |
+| `rsynapse-plugin-commands` | `cdylib` | Runs configured command queries from `~/.config/rsynapse/config.toml`. |
 
-## Features
+## D-Bus API
 
-* **Modular Architecture**: The system is extensible with dynamically loaded plugins that are compiled as shared libraries (`.so`).
-* **D-Bus API**: A language-agnostic interface is provided for UI clients.
-* **Centralized Execution**: The daemon is responsible for handling command execution, which enables stateful features such as command history (WIP).
-* **rsynapse-cli**: A simple CLI to test things. More here [rsynapse-cli](./rsynapse-cli/)
+The daemon owns:
 
-### Current Plugins
+- Service: `org.rsynapse.Engine`
+- Object path: `/org/rsynapse/Engine1`
+- Interface: `org.rsynapse.Engine1`
 
-* **Application Launcher**: Indexes and provides fuzzy-search capabilities for `.desktop` files from standard XDG directories.
-* **Shell Executor**: Validates and executes shell commands.
-* **Calculator**: Evaluates mathematical expressions.
-* **History**: Stores and provides access to previously executed commands (WIP).
+Methods:
 
-## Installation
+- `Search(query: String) -> Vec<(id, title, description, icon, data)>`
+- `Execute(id: String) -> String`
 
-The following instructions are for a manual, user-local installation.
+`Execute` uses the daemon's cached result list from the latest search. Plugins
+can provide a default execute template, and users can override plugin execute
+templates in `~/.config/rsynapse/config.toml`.
 
-### 1. Prerequisites
+## Build And Run
 
-Ensure the Rust toolchain is installed.
+For debug runs, start from this directory so the daemon finds debug plugins
+under `./target/debug`:
 
-### 2. Install From The Rsynapse Workspace
+```sh
+cargo build --workspace
+cargo run -p rsynapse-daemon
+cargo run -p rsynapse-cli -- search firefox
+cargo run -p rsynapse-ui
+```
 
-From the Rsynapse workspace root, run the local installer:
+From the repository root, use the nested manifest explicitly:
 
-```bash
+```sh
+cargo test --manifest-path shell/launcher/Cargo.toml --workspace
+cargo build --manifest-path shell/launcher/Cargo.toml --workspace --release
+```
+
+## Install
+
+Prefer the repository installer:
+
+```sh
 ./install/local.sh
 ```
 
-This installs release binaries under `~/.local/bin`, installs launcher plugins
-under `~/.local/lib/rsynapse/plugins`, updates D-Bus activation files, and
-updates the user systemd units for the shell UI surfaces.
+It installs release binaries under `~/.local/bin`, launcher plugins under
+`~/.local/lib/rsynapse/plugins`, and the D-Bus activation file for
+`org.rsynapse.Engine`.
 
-### 3. Manual Executable Install
+Manual binary installs from the repository root:
 
-The `cargo install` command compiles and copies individual executables to a
-chosen local root.
-
-```bash
-cargo install --path rsynapse-daemon --locked --force --root ~/.local
-cargo install --path rsynapse-cli --locked --force --root ~/.local
+```sh
+cargo install --path shell/launcher/rsynapse-daemon --locked --force --root ~/.local
+cargo install --path shell/launcher/rsynapse-cli --locked --force --root ~/.local
+cargo install --path shell/launcher/rsynapse-ui --locked --force --root ~/.local
 ```
 
-**Note**: Ensure that the `~/.local/bin` directory is included in your shell's `PATH` environment variable. If it is not, add the following line to your shell configuration:
+Manual plugin install:
 
-```bash
-export PATH="$HOME/.local/bin:$PATH"
+```sh
+cargo build --manifest-path shell/launcher/Cargo.toml --release \
+  -p rsynapse-plugin-launcher \
+  -p rsynapse-plugin-shell \
+  -p rsynapse-plugin-calc \
+  -p rsynapse-plugin-commands
+
+mkdir -p ~/.local/lib/rsynapse/plugins
+install -m 0755 shell/launcher/target/release/librsynapse_plugin_*.so \
+  ~/.local/lib/rsynapse/plugins/
 ```
 
-### 4. Install Plugins
+## Configuration
 
-The plugin libraries (`.so` files) must be copied to a dedicated directory.
+The daemon and command plugin read `~/.config/rsynapse/config.toml`.
 
-```bash
-# Create the plugin directory
-mkdir -p ~/.local/lib/rsynapse/plugins/
+Example execute override:
 
-# Copy the compiled plugins
-cp target/release/*.so ~/.local/lib/rsynapse/plugins/
+```toml
+[plugins."Application Launcher"]
+execute = "{data}"
+
+[plugins."Shell Executor"]
+execute = "{data}"
 ```
 
-### 5. Configure D-Bus Activation
+Example command plugin entry:
 
-To enable D-Bus to start the daemon automatically on demand, install the
-repo-owned activation files:
-
-```bash
-./install/local.sh
+```toml
+[[plugins.Commands.commands]]
+pattern = "^note (.*)$"
+command = "printf '{\"title\":\"Capture note\",\"data\":\"%s\"}\\n' '$1'"
 ```
 
-Once this configuration is in place, the daemon no longer needs to be started manually. Any client connecting to the `org.rsynapse.Engine` service will trigger D-Bus to launch it automatically.
-
-
-## D-Bus API (Unstable)
-
-rsynapse communicates with UI clients via a D-Bus interface on the session bus. This API is designed to be simple and stable.
-
-* **Service Name**: `org.rsynapse.Engine`
-* **Object Path**: `/org/rsynapse/Engine1`
-* **Interface Name**: `org.rsynapse.Engine1`
-
-### Methods
-
-#### `Search(query: String) -> Array<Struct>`
-
-Takes a search query and returns a sorted list of matching results from all active plugins.
-
-* **Arguments**:
-    * `query` (`s`): The user-inputted search term.
-* **Returns** (`a(ssss)`): An array of structs. Each struct represents a single result item with the following fields:
-    * `id` (`s`): A unique identifier for the result item, used for the `Execute` method.
-    * `title` (`s`): The main text to be displayed.
-    * `description` (`s`): Sub-text or a description of the item.
-    * `icon` (`s`): XDG icon name.
-
-#### `Execute(id: String)`
-
-Instructs the daemon to execute the action associated with a specific result item and, if applicable, add it to the history.
-
-* **Arguments**:
-    * `id` (`s`): The unique identifier of the item to execute, as received from a `Search` call.
-* **Returns**: None.
+Plugin templates can reference `{id}`, `{title}`, `{description}`, `{icon}`,
+and `{data}`.

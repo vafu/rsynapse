@@ -1,4 +1,4 @@
-# Locus Shell Roadmap
+# Rsynapse Shell Roadmap
 
 ## Core Idea
 
@@ -192,7 +192,7 @@ Framework crates under `core/` own:
 - Completed: removed the filesystem-backed source primitives and active
   widget consumers from this workspace; the old implementation was moved out
   for reference.
-- Completed: added generic DBus source primitives in `shell_core::source::dbus`
+- Completed: added generic D-Bus source primitives in `shell_core::source::dbus`
   for properties, signals, and ObjectManager snapshots.
 - Keep model `#[source(...)]` bindings as plain value fields and subscribe to
   Observable sources in generated Relm4 glue.
@@ -212,11 +212,12 @@ Framework crates under `core/` own:
 - Completed in `rsynapse-shell`: app-local request CLI/server for
   `scheme-toggle` and `hints active|show|hide|toggle`, matching the useful AGS
   request-handler behavior without adding a framework-level command bus.
-- Replace placeholder app surfaces with typed DBus-backed widget sources.
+- Replace placeholder app surfaces with typed D-Bus-backed widget sources.
 - Replace ad hoc consumer source code with user-authored observable source
   functions where it improves ergonomics.
 
 ## Next Concrete Step
 
-Scaffold typed service helpers for the first DBus-backed app surfaces, starting
-with Niri workspace/window data and the notification model.
+Continue replacing ad hoc app sources with typed D-Bus-backed helper modules,
+starting with the remaining Niri, notification, audio, media, and tray paths
+that still need stable service contracts.

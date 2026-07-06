@@ -1,9 +1,10 @@
-# Locus Shell Project Blueprint
+# Rsynapse Shell Project Blueprint
 
 ## Objective
 
-Locus Shell is a Rust/Relm4 framework for high-performance, low-footprint
-desktop shell widgets such as bars, OSDs, and notifications. It replaces
+Rsynapse Shell is a Rust/Relm4 framework and consumer shell for
+high-performance, low-footprint desktop surfaces such as bars, OSDs, and
+notifications. It replaces
 heavier GJS/AGS-style shell code with native GTK4 binaries and typed reactive
 source helpers.
 
@@ -20,10 +21,10 @@ The shell should provide a concise authoring model for widgets while preserving 
   responsibility.
 - Live UI state should use D-Bus-backed observable source helpers built on
   `zbus`. Filesystem-backed reactivity is not part of the active architecture.
-- Sources such as UPower, time, weather, media, D-Bus services, and custom user logic
-  enter the UI through typed source expressions. The public source API is
-  Observable-first; the old `ObservableSource<T>` contract is being removed rather than
-  preserved as a parallel abstraction.
+- Sources such as UPower, time, weather, media, D-Bus services, and custom user
+  logic enter the UI through typed source expressions. The public source API is
+  Observable-first; the old `ObservableSource<T>` contract has been removed
+  instead of preserved as a parallel abstraction.
 - Relm4 boilerplate should be hidden behind procedural macros where practical.
 - Blocking source work must stay outside the GTK UI thread.
 - Styling belongs in external CSS files, not hardcoded Rust widget properties.
@@ -39,7 +40,7 @@ rsynapse/shell/
 │   ├── macros/            # package: shell-macros
 │   └── rx-macros/         # package: shell-rx-macros
 ├── app/                   # package: rsynapse-shell
-└── launcher/              # launcher workspace, to be renamed/split later
+└── launcher/              # nested launcher workspace
 ```
 
 This repository is the shell UI monorepo. Reusable framework crates live under
@@ -49,7 +50,7 @@ must not take product-specific policy from the app or launcher.
 
 ## Runtime Architecture
 
-Locus Shell widgets are thin UI processes. They subscribe to typed source
+Rsynapse Shell widgets are thin UI processes. They subscribe to typed source
 expressions, translate source updates into Relm4 messages, and let Relm4 update
 watched GTK properties. D-Bus-backed sources should receive updates through
 signals and property change streams; custom sources use the same Observable
