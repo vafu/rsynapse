@@ -1,7 +1,5 @@
-use std::collections::HashMap;
-
 use futures_util::StreamExt;
-use serde::Deserialize;
+use locus::{RelationEndpoint, RelationRecord, keys};
 use shell_core::source::{
     self, Observable,
     dbus::{self, Bus, ObjectDescriptor, PropertyDescriptor},
@@ -9,7 +7,6 @@ use shell_core::source::{
 };
 use shell_rx_macros::combine_latest;
 use zbus::{Connection, Proxy, zvariant::OwnedObjectPath};
-use zvariant::Type;
 
 use super::super::{Agent, State};
 use crate::widgets::bar::WindowNode;
@@ -17,20 +14,7 @@ use crate::widgets::bar::WindowNode;
 const AGENT_DBUS_BUS: &str = "io.github.AgentDBus";
 const AGENT_SESSION_INTERFACE: &str = "io.github.AgentDBus1.Session";
 const AGENT_SESSION_PREFIX: &str = "/io/github/AgentDBus/sessions/";
-const LOCUS_BUS: &str = "org.rsynapse.Locus";
-const LOCUS_PATH: &str = "/org/rsynapse/Locus";
-const LOCUS_INTERFACE: &str = "org.rsynapse.Locus.Relations1";
 const WINDOW_AGENT_RELATION: &str = "org.rsynapse.window.agent-session";
-
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Type)]
-struct RelationRecord {
-    subject: String,
-    relation: String,
-    target: String,
-    metadata: HashMap<String, String>,
-    created_at_unix_ms: u64,
-    updated_at_unix_ms: u64,
-}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 struct AgentSession {
@@ -50,15 +34,18 @@ pub(super) fn agent_for_window(window: WindowNode) -> Observable<Option<Agent>> 
     .box_it()
 }
 
-fn agent_session_target(subject: String) -> Observable<Option<String>> {
+fn agent_session_target(subject: RelationEndpoint) -> Observable<Option<RelationEndpoint>> {
     locus_targets(subject, WINDOW_AGENT_RELATION)
         .map(|targets| targets.into_iter().next())
         .distinct_until_changed()
         .box_it()
 }
 
-fn locus_targets(subject: String, relation: &'static str) -> Observable<Vec<String>> {
-    let key = format!("{subject}:{relation}");
+fn locus_targets(
+    subject: RelationEndpoint,
+    relation: &'static str,
+) -> Observable<Vec<RelationEndpoint>> {
+    let key = format!("{subject:?}:{relation}");
     source::shared_by_key("rsynapse.locus-targets", key, move || {
         let subject = subject.clone();
         source::from_task(move |sender| {
@@ -68,7 +55,7 @@ fn locus_targets(subject: String, relation: &'static str) -> Observable<Vec<Stri
                     return;
                 };
                 eprintln!(
-                    "[agent-source] failed to watch locus targets for {subject}/{relation}: {error}"
+                    "[agent-source] failed to watch locus targets for {subject:?}/{relation}: {error}"
                 );
             }
         })
@@ -78,8 +65,8 @@ fn locus_targets(subject: String, relation: &'static str) -> Observable<Vec<Stri
 }
 
 async fn run_locus_targets(
-    sender: async_channel::Sender<Result<Vec<String>, String>>,
-    subject: String,
+    sender: async_channel::Sender<Result<Vec<RelationEndpoint>, String>>,
+    subject: RelationEndpoint,
     relation: &'static str,
 ) -> Result<(), String> {
     let connection = Connection::session()
@@ -147,13 +134,13 @@ async fn run_locus_targets(
 }
 
 async fn send_targets(
-    sender: &async_channel::Sender<Result<Vec<String>, String>>,
+    sender: &async_channel::Sender<Result<Vec<RelationEndpoint>, String>>,
     proxy: &Proxy<'_>,
-    subject: &str,
+    subject: &RelationEndpoint,
     relation: &str,
 ) -> Result<(), String> {
     let targets = match proxy
-        .call::<_, _, Vec<String>>("Targets", &(subject, relation))
+        .call::<_, _, Vec<RelationEndpoint>>("Targets", &(subject, relation))
         .await
     {
         Ok(targets) => targets,
@@ -167,27 +154,37 @@ async fn send_targets(
 }
 
 async fn locus_proxy(connection: &Connection) -> zbus::Result<Proxy<'_>> {
-    Proxy::new(connection, LOCUS_BUS, LOCUS_PATH, LOCUS_INTERFACE).await
+    Proxy::new(
+        connection,
+        locus::BUS_NAME,
+        locus::OBJECT_PATH,
+        locus::RELATIONS_INTERFACE,
+    )
+    .await
 }
 
 fn relation_record_matches(
     message: &zbus::Message,
-    subject: &str,
+    subject: &RelationEndpoint,
     relation: &str,
 ) -> Result<bool, String> {
     let record = message
         .body()
         .deserialize::<RelationRecord>()
         .map_err(|error| format!("decode locus relation signal: {error}"))?;
-    Ok(record.subject == subject && record.relation == relation)
+    Ok(record.subject == *subject && record.relation == relation)
 }
 
-fn clear_matches(message: &zbus::Message, subject: &str, relation: &str) -> Result<bool, String> {
+fn clear_matches(
+    message: &zbus::Message,
+    subject: &RelationEndpoint,
+    relation: &str,
+) -> Result<bool, String> {
     let (cleared_subject, cleared_relation, _count) = message
         .body()
-        .deserialize::<(String, String, u32)>()
+        .deserialize::<(RelationEndpoint, String, u32)>()
         .map_err(|error| format!("decode locus clear signal: {error}"))?;
-    Ok(cleared_subject == subject && cleared_relation == relation)
+    Ok(cleared_subject == *subject && cleared_relation == relation)
 }
 
 fn agent_session(session: AgentSession) -> Observable<Option<Agent>> {
@@ -212,8 +209,14 @@ fn agent_session(session: AgentSession) -> Observable<Option<Agent>> {
 }
 
 impl AgentSession {
-    fn from_target(target: &str) -> Option<Self> {
-        let key = target.strip_prefix("agent-session:")?;
+    fn from_target(target: &RelationEndpoint) -> Option<Self> {
+        let RelationEndpoint::StableKey { kind, id } = target else {
+            return None;
+        };
+        if kind != keys::AGENT_SESSION_ID {
+            return None;
+        }
+        let key = id;
         let path = format!("{AGENT_SESSION_PREFIX}{key}");
         let path = OwnedObjectPath::try_from(path).ok()?;
         Some(Self { path })
@@ -261,8 +264,8 @@ where
     dbus::property_or(descriptor, default)
 }
 
-fn window_subject(id: u64) -> String {
-    format!("niri-window:{id}")
+fn window_subject(id: u64) -> RelationEndpoint {
+    RelationEndpoint::stable_key(keys::NIRI_WINDOW_ID, id.to_string())
 }
 
 pub(super) fn agent_icon(_agent_name: &str, _nickname: &str, _role: &str) -> String {

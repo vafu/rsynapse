@@ -1,28 +1,14 @@
 use std::collections::HashMap;
 
 use futures_util::StreamExt;
-use serde::Deserialize;
+use locus::{RelationEndpoint, RelationRecord, keys};
 use shell_core::source::{self, Observable, rx::Observable as _};
 use zbus::{Connection, Proxy};
-use zvariant::Type;
 
 use super::{ProjectDetails, non_empty};
 use crate::widgets::bar::niri::NiriWorkspace;
 
-const LOCUS_BUS: &str = "org.rsynapse.Locus";
-const LOCUS_PATH: &str = "/org/rsynapse/Locus";
-const LOCUS_INTERFACE: &str = "org.rsynapse.Locus.Relations1";
 const WORKSPACE_PROJECT_RELATION: &str = "org.rsynapse.workspace.project";
-
-#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Type)]
-struct RelationRecord {
-    subject: String,
-    relation: String,
-    target: String,
-    metadata: HashMap<String, String>,
-    created_at_unix_ms: u64,
-    updated_at_unix_ms: u64,
-}
 
 pub(super) fn project_details(workspace: NiriWorkspace) -> Observable<ProjectDetails> {
     source::switch_map(workspace.id().map(workspace_subject).box_it(), |subject| {
@@ -32,8 +18,9 @@ pub(super) fn project_details(workspace: NiriWorkspace) -> Observable<ProjectDet
     .box_it()
 }
 
-fn locus_workspace_project(subject: String) -> Observable<ProjectDetails> {
-    source::shared_by_key("rsynapse.workspace-project", subject.clone(), move || {
+fn locus_workspace_project(subject: RelationEndpoint) -> Observable<ProjectDetails> {
+    let key = format!("{subject:?}");
+    source::shared_by_key("rsynapse.workspace-project", key, move || {
         let subject = subject.clone();
         source::from_task(move |sender| {
             let subject = subject.clone();
@@ -41,7 +28,9 @@ fn locus_workspace_project(subject: String) -> Observable<ProjectDetails> {
                 let Err(error) = run_locus_workspace_project(sender, subject.clone()).await else {
                     return;
                 };
-                eprintln!("[project-source] failed to watch locus project for {subject}: {error}");
+                eprintln!(
+                    "[project-source] failed to watch locus project for {subject:?}: {error}"
+                );
             }
         })
         .distinct_until_changed()
@@ -51,7 +40,7 @@ fn locus_workspace_project(subject: String) -> Observable<ProjectDetails> {
 
 async fn run_locus_workspace_project(
     sender: async_channel::Sender<Result<ProjectDetails, String>>,
-    subject: String,
+    subject: RelationEndpoint,
 ) -> Result<(), String> {
     let connection = Connection::session()
         .await
@@ -120,7 +109,7 @@ async fn run_locus_workspace_project(
 async fn send_project(
     sender: &async_channel::Sender<Result<ProjectDetails, String>>,
     proxy: &Proxy<'_>,
-    subject: &str,
+    subject: &RelationEndpoint,
 ) -> Result<(), String> {
     let records = match proxy
         .call::<_, _, Vec<RelationRecord>>("List", &(WORKSPACE_PROJECT_RELATION,))
@@ -132,7 +121,7 @@ async fn send_project(
     };
     let project = records
         .into_iter()
-        .find(|record| record.subject == subject)
+        .find(|record| record.subject == *subject)
         .map(ProjectDetails::from)
         .unwrap_or_default();
     sender
@@ -142,23 +131,32 @@ async fn send_project(
 }
 
 async fn locus_proxy(connection: &Connection) -> zbus::Result<Proxy<'_>> {
-    Proxy::new(connection, LOCUS_BUS, LOCUS_PATH, LOCUS_INTERFACE).await
+    Proxy::new(
+        connection,
+        locus::BUS_NAME,
+        locus::OBJECT_PATH,
+        locus::RELATIONS_INTERFACE,
+    )
+    .await
 }
 
-fn relation_record_matches(message: &zbus::Message, subject: &str) -> Result<bool, String> {
+fn relation_record_matches(
+    message: &zbus::Message,
+    subject: &RelationEndpoint,
+) -> Result<bool, String> {
     let record = message
         .body()
         .deserialize::<RelationRecord>()
         .map_err(|error| format!("decode locus relation signal: {error}"))?;
-    Ok(record.subject == subject && record.relation == WORKSPACE_PROJECT_RELATION)
+    Ok(record.subject == *subject && record.relation == WORKSPACE_PROJECT_RELATION)
 }
 
-fn clear_matches(message: &zbus::Message, subject: &str) -> Result<bool, String> {
+fn clear_matches(message: &zbus::Message, subject: &RelationEndpoint) -> Result<bool, String> {
     let (cleared_subject, cleared_relation, _count) = message
         .body()
-        .deserialize::<(String, String, u32)>()
+        .deserialize::<(RelationEndpoint, String, u32)>()
         .map_err(|error| format!("decode locus clear signal: {error}"))?;
-    Ok(cleared_subject == subject && cleared_relation == WORKSPACE_PROJECT_RELATION)
+    Ok(cleared_subject == *subject && cleared_relation == WORKSPACE_PROJECT_RELATION)
 }
 
 impl From<RelationRecord> for ProjectDetails {
@@ -179,17 +177,18 @@ fn metadata_value(metadata: &HashMap<String, String>, keys: &[&str]) -> Option<S
         .find_map(|key| non_empty(metadata.get(*key).cloned()))
 }
 
-fn project_target_name(target: &str) -> Option<String> {
-    non_empty(
-        target
-            .strip_prefix("project:")
-            .and_then(|path| path.rsplit('/').next())
-            .map(str::to_owned),
-    )
+fn project_target_name(target: &RelationEndpoint) -> Option<String> {
+    let RelationEndpoint::StableKey { kind, id } = target else {
+        return None;
+    };
+    if kind != keys::PROJECT_PATH {
+        return None;
+    }
+    non_empty(id.rsplit('/').next().map(str::to_owned))
 }
 
-fn workspace_subject(id: u64) -> String {
-    format!("niri-workspace:{id}")
+fn workspace_subject(id: u64) -> RelationEndpoint {
+    RelationEndpoint::stable_key(keys::NIRI_WORKSPACE_ID, id.to_string())
 }
 
 fn to_string(error: zbus::Error) -> String {

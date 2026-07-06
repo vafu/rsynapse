@@ -1,6 +1,5 @@
 mod dbus;
 mod ipc;
-mod paths;
 mod service;
 mod state;
 

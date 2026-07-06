@@ -4,10 +4,9 @@ use tokio::sync::Mutex;
 use tracing::info;
 use zbus::{connection::Builder, fdo, interface, object_server::SignalContext};
 
-use crate::store::{RelationRecord, RelationStore, SetOutcome, default_store_path};
+use locus::{BUS_NAME, OBJECT_PATH, RelationEndpoint, RelationRecord};
 
-const BUS_NAME: &str = "org.rsynapse.Locus";
-const OBJECT_PATH: &str = "/org/rsynapse/Locus";
+use crate::store::{RelationStore, SetOutcome, default_store_path};
 
 pub async fn run() -> anyhow::Result<()> {
     let store = RelationStore::open(default_store_path())?;
@@ -39,16 +38,6 @@ impl RelationsService {
 #[interface(name = "org.rsynapse.Locus.Relations1")]
 impl RelationsService {
     #[zbus(property)]
-    async fn store_path(&self) -> String {
-        self.store
-            .lock()
-            .await
-            .path()
-            .to_string_lossy()
-            .into_owned()
-    }
-
-    #[zbus(property)]
     async fn record_count(&self) -> u64 {
         self.store.lock().await.len().try_into().unwrap_or(u64::MAX)
     }
@@ -60,9 +49,9 @@ impl RelationsService {
 
     async fn set(
         &self,
-        subject: String,
+        subject: RelationEndpoint,
         relation: String,
-        target: String,
+        target: RelationEndpoint,
         metadata: HashMap<String, String>,
         #[zbus(signal_context)] ctxt: SignalContext<'_>,
     ) -> fdo::Result<RelationRecord> {
@@ -80,9 +69,9 @@ impl RelationsService {
 
     async fn set_one(
         &self,
-        subject: String,
+        subject: RelationEndpoint,
         relation: String,
-        target: String,
+        target: RelationEndpoint,
         metadata: HashMap<String, String>,
         #[zbus(signal_context)] ctxt: SignalContext<'_>,
     ) -> fdo::Result<RelationRecord> {
@@ -103,9 +92,9 @@ impl RelationsService {
 
     async fn unset(
         &self,
-        subject: String,
+        subject: RelationEndpoint,
         relation: String,
-        target: String,
+        target: RelationEndpoint,
         #[zbus(signal_context)] ctxt: SignalContext<'_>,
     ) -> fdo::Result<bool> {
         let removed = self
@@ -125,7 +114,7 @@ impl RelationsService {
 
     async fn clear(
         &self,
-        subject: String,
+        subject: RelationEndpoint,
         relation: String,
         #[zbus(signal_context)] ctxt: SignalContext<'_>,
     ) -> fdo::Result<u32> {
@@ -138,16 +127,19 @@ impl RelationsService {
         let count = removed.len().try_into().unwrap_or(u32::MAX);
         if count > 0 {
             self.emit_store_properties(&ctxt).await?;
+            for record in removed {
+                Self::relation_removed(&ctxt, record).await?;
+            }
             Self::relation_cleared(&ctxt, subject, relation, count).await?;
         }
         Ok(count)
     }
 
-    async fn targets(&self, subject: String, relation: String) -> Vec<String> {
+    async fn targets(&self, subject: RelationEndpoint, relation: String) -> Vec<RelationEndpoint> {
         self.store.lock().await.targets(&subject, &relation)
     }
 
-    async fn subjects(&self, relation: String, target: String) -> Vec<String> {
+    async fn subjects(&self, relation: String, target: RelationEndpoint) -> Vec<RelationEndpoint> {
         self.store.lock().await.subjects(&relation, &target)
     }
 
@@ -169,7 +161,7 @@ impl RelationsService {
     #[zbus(signal)]
     async fn relation_cleared(
         ctxt: &SignalContext<'_>,
-        subject: String,
+        subject: RelationEndpoint,
         relation: String,
         removed_count: u32,
     ) -> zbus::Result<()>;

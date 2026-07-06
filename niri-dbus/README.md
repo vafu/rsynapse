@@ -23,6 +23,11 @@ The role is narrow:
 
 V1 is read-only. Command methods are intentionally out of scope.
 
+D-Bus object paths are live object locations. Durable Locus relations should
+prefer typed stable keys such as `org.rsynapse.niri.output.name`,
+`org.rsynapse.niri.workspace.id`, `org.rsynapse.niri.workspace.name`, or the
+live-window-scoped `org.rsynapse.niri.window.id`.
+
 ## Commands
 
 From this directory:

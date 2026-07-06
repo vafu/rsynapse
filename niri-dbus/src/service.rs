@@ -1,12 +1,14 @@
 use std::{collections::HashSet, sync::Arc, time::Duration};
 
 use tokio::{sync::RwLock, time::sleep};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 use zbus::{Connection, connection::Builder};
+
+use niri_dbus::paths;
 
 use crate::{
     dbus::{OutputInterface, RootInterface, SharedState, WindowInterface, WorkspaceInterface},
-    ipc, paths,
+    ipc,
     state::{NiriState, ObjectDelta},
 };
 
@@ -71,13 +73,7 @@ impl Service {
         loop {
             let event = stream.read_event().await?;
             debug!(?event, "niri event");
-            let delta = match self.state.write().await.apply_event(event) {
-                Ok(delta) => delta,
-                Err(error) => {
-                    error!("failed to apply niri event: {error:#}");
-                    continue;
-                }
-            };
+            let delta = self.state.write().await.apply_event(event)?;
             self.apply_object_delta(delta).await?;
             self.emit_root_changes().await;
             self.emit_object_changes().await;
@@ -86,43 +82,47 @@ impl Service {
 
     async fn apply_object_delta(&mut self, delta: ObjectDelta) -> anyhow::Result<()> {
         for window in sorted(delta.removed.windows) {
-            if self.registered_windows.remove(&window) {
+            if self.registered_windows.contains(&window) {
                 self.connection
                     .object_server()
                     .remove::<WindowInterface, _>(paths::window_path(window))
                     .await?;
+                self.registered_windows.remove(&window);
             }
         }
         for workspace in sorted(delta.removed.workspaces) {
-            if self.registered_workspaces.remove(&workspace) {
+            if self.registered_workspaces.contains(&workspace) {
                 self.connection
                     .object_server()
                     .remove::<WorkspaceInterface, _>(paths::workspace_path(workspace))
                     .await?;
+                self.registered_workspaces.remove(&workspace);
             }
         }
         for output in sorted_strings(delta.removed.outputs) {
-            if self.registered_outputs.remove(&output) {
+            if self.registered_outputs.contains(&output) {
                 self.connection
                     .object_server()
                     .remove::<OutputInterface, _>(paths::output_path(&output))
                     .await?;
+                self.registered_outputs.remove(&output);
             }
         }
 
         for output in sorted_strings(delta.added.outputs) {
-            if self.registered_outputs.insert(output.clone()) {
+            if !self.registered_outputs.contains(&output) {
                 self.connection
                     .object_server()
                     .at(
                         paths::output_path(&output),
-                        OutputInterface::new(self.state.clone(), output),
+                        OutputInterface::new(self.state.clone(), output.clone()),
                     )
                     .await?;
+                self.registered_outputs.insert(output);
             }
         }
         for workspace in sorted(delta.added.workspaces) {
-            if self.registered_workspaces.insert(workspace) {
+            if !self.registered_workspaces.contains(&workspace) {
                 self.connection
                     .object_server()
                     .at(
@@ -130,10 +130,11 @@ impl Service {
                         WorkspaceInterface::new(self.state.clone(), workspace),
                     )
                     .await?;
+                self.registered_workspaces.insert(workspace);
             }
         }
         for window in sorted(delta.added.windows) {
-            if self.registered_windows.insert(window) {
+            if !self.registered_windows.contains(&window) {
                 self.connection
                     .object_server()
                     .at(
@@ -141,6 +142,7 @@ impl Service {
                         WindowInterface::new(self.state.clone(), window),
                     )
                     .await?;
+                self.registered_windows.insert(window);
             }
         }
 

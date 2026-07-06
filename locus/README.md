@@ -21,9 +21,17 @@ rather than a general RDF/SPARQL database.
 - Owns `org.rsynapse.Locus` on the session bus.
 - Exports `/org/rsynapse/Locus` with `org.rsynapse.Locus.Relations1`.
 - Supports `Set`, `Unset`, `Clear`, `Targets`, `Subjects`, and `List`.
+- Uses typed relation endpoints for subjects and targets:
+  `StableKey { kind, id }` or
+  `DBusObject { bus, service, path, interface }`.
 - Emits relation signals after persistence succeeds.
+- `Clear` emits each removed record and then a coarse completion signal.
 - Persists records atomically to `$LOCUS_RELATIONS_PATH` or
   `$XDG_STATE_HOME/rsynapse/locus/relations.json`.
+
+The typed endpoint change intentionally changes the JSON persistence format.
+Existing local `relations.json` files from the earlier string endpoint format
+should be deleted or rewritten manually.
 
 ## Commands
 

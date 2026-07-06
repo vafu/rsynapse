@@ -14,6 +14,8 @@ niri_interface="org.rsynapse.Niri1"
 
 workspace_project_relation="org.rsynapse.workspace.project"
 project_metadata_relation="org.rsynapse.project.metadata"
+niri_workspace_kind="org.rsynapse.niri.workspace.id"
+project_path_kind="org.rsynapse.project.path"
 
 usage() {
   cat >&2 <<'EOF'
@@ -198,6 +200,47 @@ metadata_bus_args() {
   done < <(snapshot_metadata_args "$snapshot")
 }
 
+endpoint_bus_args_from_ref() {
+  local ref="$1"
+  local -n out_args="$2"
+  local kind id
+  case "$ref" in
+    project:*)
+      kind="$project_path_kind"
+      id="${ref#project:}"
+      ;;
+    niri-workspace:*)
+      kind="$niri_workspace_kind"
+      id="${ref#niri-workspace:}"
+      ;;
+    *)
+      die "unsupported locus endpoint ref: $ref"
+      ;;
+  esac
+  out_args=(3 type stable-key kind "$kind" id "$id")
+}
+
+endpoint_json_to_ref_filter='
+  def dict:
+    if type == "array" then
+      if (.[0]? | type) == "array" then
+        map({key: .[0], value: .[1]}) | from_entries
+      else
+        from_entries
+      end
+    else
+      .
+    end;
+  dict as $endpoint
+  | if $endpoint.type == "stable-key" and $endpoint.kind == "'"$project_path_kind"'" then
+      "project:\($endpoint.id)"
+    elif $endpoint.type == "stable-key" and $endpoint.kind == "'"$niri_workspace_kind"'" then
+      "niri-workspace:\($endpoint.id)"
+    else
+      empty
+    end
+'
+
 # Locus transport boundary. Keep all busctl-specific details here so this can
 # be replaced by a small CLI later without changing command behavior.
 locus_call() {
@@ -215,8 +258,16 @@ locus_set_one() {
   local snapshot="$4"
   local count
   local args
+  local subject_args
+  local target_args
+  endpoint_bus_args_from_ref "$subject" subject_args
+  endpoint_bus_args_from_ref "$target" target_args
   metadata_bus_args "$snapshot" count args
-  locus_call SetOne 'sssa{ss}' "$subject" "$relation" "$target" "$count" "${args[@]}" >/dev/null
+  locus_call SetOne 'a{ss}sa{ss}a{ss}' \
+    "${subject_args[@]}" \
+    "$relation" \
+    "${target_args[@]}" \
+    "$count" "${args[@]}" >/dev/null
 }
 
 locus_set() {
@@ -226,33 +277,53 @@ locus_set() {
   local snapshot="$4"
   local count
   local args
+  local subject_args
+  local target_args
+  endpoint_bus_args_from_ref "$subject" subject_args
+  endpoint_bus_args_from_ref "$target" target_args
   metadata_bus_args "$snapshot" count args
-  locus_call Set 'sssa{ss}' "$subject" "$relation" "$target" "$count" "${args[@]}" >/dev/null
+  locus_call Set 'a{ss}sa{ss}a{ss}' \
+    "${subject_args[@]}" \
+    "$relation" \
+    "${target_args[@]}" \
+    "$count" "${args[@]}" >/dev/null
 }
 
 locus_clear() {
   local subject="$1"
   local relation="$2"
-  locus_call Clear ss "$subject" "$relation" >/dev/null
+  local subject_args
+  endpoint_bus_args_from_ref "$subject" subject_args
+  locus_call Clear 'a{ss}s' "${subject_args[@]}" "$relation" >/dev/null
 }
 
 locus_unset() {
   local subject="$1"
   local relation="$2"
   local target="$3"
-  locus_call Unset sss "$subject" "$relation" "$target" >/dev/null
+  local subject_args
+  local target_args
+  endpoint_bus_args_from_ref "$subject" subject_args
+  endpoint_bus_args_from_ref "$target" target_args
+  locus_call Unset 'a{ss}sa{ss}' "${subject_args[@]}" "$relation" "${target_args[@]}" >/dev/null
 }
 
 locus_subjects() {
   local relation="$1"
   local target="$2"
-  locus_call_json Subjects ss "$relation" "$target" | jq -r '.data[0][]?'
+  local target_args
+  endpoint_bus_args_from_ref "$target" target_args
+  locus_call_json Subjects 'sa{ss}' "$relation" "${target_args[@]}" \
+    | jq -r ".data[0][]? | $endpoint_json_to_ref_filter"
 }
 
 locus_targets() {
   local subject="$1"
   local relation="$2"
-  locus_call_json Targets ss "$subject" "$relation" | jq -r '.data[0][]?'
+  local subject_args
+  endpoint_bus_args_from_ref "$subject" subject_args
+  locus_call_json Targets 'a{ss}s' "${subject_args[@]}" "$relation" \
+    | jq -r ".data[0][]? | $endpoint_json_to_ref_filter"
 }
 
 # Niri transport boundary.

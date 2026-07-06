@@ -9,7 +9,7 @@ use niri_ipc::{
 };
 use zbus::zvariant::OwnedObjectPath;
 
-use crate::paths;
+use niri_dbus::paths;
 
 #[derive(Debug, Default)]
 pub struct NiriState {
@@ -50,9 +50,16 @@ impl NiriState {
 
     pub fn mark_disconnected(&mut self) -> ObjectDelta {
         let before = self.object_set();
+        let had_projected_state = self.connected
+            || !before.outputs.is_empty()
+            || !before.workspaces.is_empty()
+            || !before.windows.is_empty();
         self.connected = false;
         self.outputs.clear();
         self.event_state = EventStreamState::default();
+        if had_projected_state {
+            self.generation = self.generation.wrapping_add(1);
+        }
         self.object_set().delta_from(&before)
     }
 
@@ -301,7 +308,7 @@ mod tests {
         );
         assert_eq!(
             state.focused_output_path().unwrap().as_str(),
-            "/org/rsynapse/Niri/Outputs/eDP_2D1"
+            "/org/rsynapse/Niri/Outputs/x6544502D31"
         );
     }
 
@@ -349,6 +356,26 @@ mod tests {
     }
 
     #[test]
+    fn generation_changes_on_connect_and_meaningful_disconnect_only() {
+        let mut state = NiriState::default();
+
+        state.mark_disconnected();
+        assert_eq!(state.generation, 0);
+
+        state.mark_connected(
+            "niri 26.4".to_owned(),
+            HashMap::from([("eDP-1".to_owned(), output("eDP-1"))]),
+        );
+        assert_eq!(state.generation, 1);
+
+        state.mark_disconnected();
+        assert_eq!(state.generation, 2);
+
+        state.mark_disconnected();
+        assert_eq!(state.generation, 2);
+    }
+
+    #[test]
     fn relationship_paths_are_stably_sorted() {
         let mut state = NiriState::default();
         state.mark_connected(
@@ -384,8 +411,8 @@ mod tests {
                 .map(path_string)
                 .collect::<Vec<_>>(),
             vec![
-                "/org/rsynapse/Niri/Outputs/HDMI_2DA_2D1",
-                "/org/rsynapse/Niri/Outputs/eDP_2D1"
+                "/org/rsynapse/Niri/Outputs/x48444D492D412D31",
+                "/org/rsynapse/Niri/Outputs/x6544502D31"
             ]
         );
         assert_eq!(

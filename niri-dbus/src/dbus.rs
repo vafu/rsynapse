@@ -5,7 +5,9 @@ use tokio::sync::RwLock;
 use zbus::interface;
 use zbus::zvariant::OwnedObjectPath;
 
-use crate::{paths, state::NiriState};
+use niri_dbus::paths;
+
+use crate::state::NiriState;
 
 pub type SharedState = Arc<RwLock<NiriState>>;
 
@@ -54,17 +56,17 @@ impl RootInterface {
 
     #[zbus(property)]
     async fn focused_output(&self) -> Vec<OwnedObjectPath> {
-        paths::optional_path(self.state.read().await.focused_output_path())
+        optional_path(self.state.read().await.focused_output_path())
     }
 
     #[zbus(property)]
     async fn focused_workspace(&self) -> Vec<OwnedObjectPath> {
-        paths::optional_path(self.state.read().await.focused_workspace_path())
+        optional_path(self.state.read().await.focused_workspace_path())
     }
 
     #[zbus(property)]
     async fn focused_window(&self) -> Vec<OwnedObjectPath> {
-        paths::optional_path(self.state.read().await.focused_window_path())
+        optional_path(self.state.read().await.focused_window_path())
     }
 
     #[zbus(property)]
@@ -155,7 +157,7 @@ impl OutputInterface {
 
     #[zbus(property)]
     async fn current_workspace(&self) -> Vec<OwnedObjectPath> {
-        paths::optional_path(
+        optional_path(
             self.state
                 .read()
                 .await
@@ -376,7 +378,7 @@ impl WorkspaceInterface {
 
     #[zbus(property)]
     async fn output(&self) -> Vec<OwnedObjectPath> {
-        paths::optional_path(
+        optional_path(
             self.state
                 .read()
                 .await
@@ -418,7 +420,7 @@ impl WorkspaceInterface {
 
     #[zbus(property)]
     async fn active_window(&self) -> Vec<OwnedObjectPath> {
-        paths::optional_path(
+        optional_path(
             self.state
                 .read()
                 .await
@@ -488,7 +490,7 @@ impl WindowInterface {
 
     #[zbus(property)]
     async fn workspace(&self) -> Vec<OwnedObjectPath> {
-        paths::optional_path(
+        optional_path(
             self.state
                 .read()
                 .await
@@ -501,7 +503,7 @@ impl WindowInterface {
     #[zbus(property)]
     async fn output(&self) -> Vec<OwnedObjectPath> {
         let state = self.state.read().await;
-        paths::optional_path(
+        optional_path(
             state
                 .window(self.id)
                 .and_then(|window| state.output_for_window(window)),
@@ -688,4 +690,8 @@ fn transform_name(transform: Transform) -> &'static str {
         Transform::Flipped180 => "flipped-180",
         Transform::Flipped270 => "flipped-270",
     }
+}
+
+fn optional_path(path: Option<OwnedObjectPath>) -> Vec<OwnedObjectPath> {
+    path.into_iter().collect()
 }

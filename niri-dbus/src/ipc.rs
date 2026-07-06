@@ -38,7 +38,13 @@ impl AsyncNiriSocket {
         self.stream.get_mut().flush().await?;
 
         let mut response = String::new();
-        self.stream.read_line(&mut response).await?;
+        let bytes = self.stream.read_line(&mut response).await?;
+        if bytes == 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::UnexpectedEof,
+                "niri IPC response stream closed",
+            ));
+        }
         serde_json::from_str(&response).map_err(Into::into)
     }
 

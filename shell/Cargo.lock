@@ -1244,6 +1244,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "locus"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "zbus",
+ "zvariant",
+]
+
+[[package]]
 name = "log"
 version = "0.4.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1764,6 +1778,7 @@ dependencies = [
  "gtk4",
  "gtk4-background-effect",
  "libadwaita",
+ "locus",
  "notify",
  "pkg-config",
  "pprof",

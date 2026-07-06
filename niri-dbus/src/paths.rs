@@ -1,50 +1,48 @@
 use zbus::zvariant::OwnedObjectPath;
 
+/// Session bus name owned by the niri projection service.
 pub const BUS_NAME: &str = "org.rsynapse.Niri";
+/// ObjectManager root and root interface object path.
 pub const ROOT_PATH: &str = "/org/rsynapse/Niri";
-#[allow(dead_code)]
+/// Root interface for service-level state and object lists.
 pub const ROOT_INTERFACE: &str = "org.rsynapse.Niri1";
-#[allow(dead_code)]
+/// Output object interface.
 pub const OUTPUT_INTERFACE: &str = "org.rsynapse.Niri1.Output";
-#[allow(dead_code)]
+/// Workspace object interface.
 pub const WORKSPACE_INTERFACE: &str = "org.rsynapse.Niri1.Workspace";
-#[allow(dead_code)]
+/// Window object interface.
 pub const WINDOW_INTERFACE: &str = "org.rsynapse.Niri1.Window";
 
+/// Live D-Bus object path for an output name.
+///
+/// This is a live object location, not a durable identity for persisted Locus
+/// relations.
 pub fn output_path(name: &str) -> OwnedObjectPath {
     object_path(format!("{ROOT_PATH}/Outputs/{}", encode_segment(name)))
 }
 
+/// Live D-Bus object path for a niri workspace id.
+///
+/// Workspace ids are stable while the workspace exists, but this object path is
+/// still a live service address rather than a cross-session durable identity.
 pub fn workspace_path(id: u64) -> OwnedObjectPath {
     object_path(format!("{ROOT_PATH}/Workspaces/workspace_{id}"))
 }
 
+/// Live D-Bus object path for a niri window id.
+///
+/// Window ids are live-window scoped and must not be used as durable identity
+/// after the window closes.
 pub fn window_path(id: u64) -> OwnedObjectPath {
     object_path(format!("{ROOT_PATH}/Windows/window_{id}"))
 }
 
-pub fn optional_path(path: Option<OwnedObjectPath>) -> Vec<OwnedObjectPath> {
-    path.into_iter().collect()
-}
-
-pub fn encode_segment(input: &str) -> String {
-    let mut output = String::new();
-    for (index, byte) in input.bytes().enumerate() {
-        let valid = byte.is_ascii_alphanumeric() || byte == b'_';
-        let valid_first = byte.is_ascii_alphabetic() || byte == b'_';
-        if valid && (index > 0 || valid_first) {
-            output.push(byte as char);
-        } else {
-            output.push('_');
-            output.push_str(&format!("{byte:02X}"));
-        }
+fn encode_segment(input: &str) -> String {
+    let mut output = String::from("x");
+    for byte in input.bytes() {
+        output.push_str(&format!("{byte:02X}"));
     }
-
-    if output.is_empty() {
-        "_".to_owned()
-    } else {
-        output
-    }
+    output
 }
 
 fn object_path(path: impl Into<String>) -> OwnedObjectPath {
@@ -57,9 +55,18 @@ mod tests {
 
     #[test]
     fn encodes_output_names_as_single_dbus_path_segments() {
-        assert_eq!(encode_segment("DP-1"), "DP_2D1");
-        assert_eq!(encode_segment("1-weird/name"), "_31_2Dweird_2Fname");
-        assert_eq!(encode_segment(""), "_");
+        assert_eq!(encode_segment("DP-1"), "x44502D31");
+        assert_eq!(encode_segment("1-weird/name"), "x312D77656972642F6E616D65");
+        assert_eq!(encode_segment(""), "x");
+    }
+
+    #[test]
+    fn output_name_encoding_is_injective_for_previous_collision_cases() {
+        let names = ["-", "_2D", "", "_", "DP-1", "DP_2D1", "é"];
+        let mut encoded = names.into_iter().map(encode_segment).collect::<Vec<_>>();
+        encoded.sort();
+        encoded.dedup();
+        assert_eq!(encoded.len(), names.len());
     }
 
     #[test]
@@ -74,7 +81,7 @@ mod tests {
         );
         assert_eq!(
             output_path("eDP-1").as_str(),
-            "/org/rsynapse/Niri/Outputs/eDP_2D1"
+            "/org/rsynapse/Niri/Outputs/x6544502D31"
         );
     }
 }
