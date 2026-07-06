@@ -1,0 +1,13 @@
+[package]
+name = "rsynapse-window-tiles-example"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+gtk.workspace = true
+relm4.workspace = true
+shell-core.workspace = true
+shell-macros.workspace = true
+zbus = { version = "4.4.0", default-features = false, features = ["tokio"] }

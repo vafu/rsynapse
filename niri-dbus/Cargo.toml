@@ -1,0 +1,16 @@
+[package]
+name = "niri-dbus"
+version = "0.1.0"
+edition = "2024"
+description = "D-Bus projection service for niri IPC state"
+publish = false
+
+[dependencies]
+anyhow = "1.0.100"
+futures-util = "0.3.32"
+niri-ipc = "=26.4.0"
+serde_json = "1.0.145"
+tokio = { version = "1.52.3", features = ["io-util", "macros", "net", "rt-multi-thread", "signal", "time"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
+zbus = { version = "4.4.0", default-features = false, features = ["tokio"] }

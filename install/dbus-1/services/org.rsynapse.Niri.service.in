@@ -1,0 +1,4 @@
+[D-BUS Service]
+Name=org.rsynapse.Niri
+Exec=@LOCAL_BIN@/niri-dbus
+

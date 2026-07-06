@@ -1,0 +1,76 @@
+$rsx-surface: $bg_tint !default;
+$rsx-surface-container: $bg_tint !default;
+$rsx-surface-container-high: $bg_tint !default;
+$rsx-on-surface: $fg !default;
+$rsx-on-surface-variant: "color-mix(in srgb, #{$fg} 68%, transparent)" !default;
+$rsx-primary: $accent_color !default;
+$rsx-error: $sys_danger !default;
+$rsx-outline: "color-mix(in srgb, #{$fg} 22%, transparent)" !default;
+$rsx-outline-variant: "color-mix(in srgb, #{$fg} 14%, transparent)" !default;
+$rsx-selected-outline: "color-mix(in srgb, #{$rsx-primary} 72%, #{$rsx-on-surface})" !default;
+$rsx-error-outline: "color-mix(in srgb, #{$rsx-error} 55%, transparent)" !default;
+$rsx-surface-radius-small: 8px !default;
+$rsx-surface-radius: 12px !default;
+$rsx-surface-radius-large: 24px !default;
+$rsx-surface-radius-pill: 999px !default;
+$rsx-surface-outline-width: 0.5px !default;
+$rsx-selected-outline-width: 1px !default;
+
+@mixin rsx-elevation($level: 1) {
+  @if $level == 0 {
+    @include elevation-0;
+  } @else if $level == 2 {
+    @include elevation-2;
+  } @else if $level == 3 {
+    @include elevation-3;
+  } @else {
+    @include elevation-1;
+  }
+}
+
+@mixin rsx-surface(
+  $container: $rsx-surface-container,
+  $radius: $rsx-surface-radius,
+  $elevation: 1,
+  $outline: true
+) {
+  background-color: #{$container};
+  color: #{$rsx-on-surface};
+  border-radius: $radius;
+
+  @if $outline == true {
+    border: $rsx-surface-outline-width solid #{$rsx-outline-variant};
+  } @else {
+    border: none;
+  }
+
+  @include rsx-elevation($elevation);
+}
+
+@mixin rsx-surface-selected($outline: $rsx-selected-outline) {
+  border: $rsx-selected-outline-width solid #{$outline};
+  outline: none;
+}
+
+@mixin rsx-surface-danger {
+  background-color: color-mix(in srgb, #{$rsx-error} 16%, #{$rsx-surface-container});
+  border: $rsx-selected-outline-width solid #{$rsx-error-outline};
+  outline: none;
+}
+
+.surface,
+.surface-container {
+  @include rsx-surface;
+}
+
+.surface-container-high {
+  @include rsx-surface($container: $rsx-surface-container-high, $elevation: 2);
+}
+
+.surface-pill {
+  @include rsx-surface($radius: $rsx-surface-radius-pill);
+}
+
+.surface-selected {
+  @include rsx-surface-selected;
+}

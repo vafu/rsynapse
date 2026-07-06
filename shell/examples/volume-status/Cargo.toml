@@ -1,0 +1,16 @@
+[package]
+name = "rsynapse-volume-status-example"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[[bin]]
+name = "rsynapse-volume-status"
+path = "src/main.rs"
+
+[dependencies]
+gtk.workspace = true
+relm4.workspace = true
+shell-core.workspace = true

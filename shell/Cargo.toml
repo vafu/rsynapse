@@ -1,0 +1,30 @@
+[workspace]
+members = [
+    "core/shell-core",
+    "core/background-effect",
+    "core/macros",
+    "core/rx-macros",
+    "app",
+    "examples/battery-status",
+    "examples/volume-status",
+    "examples/window-tiles",
+]
+resolver = "3"
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.93"
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+gtk = { package = "gtk4", version = "0.11.3" }
+gtk4-background-effect = { path = "core/background-effect" }
+gtk4-layer-shell = "0.8.0"
+relm4 = "0.11.0"
+rxrust = "1.0.0-rc.5"
+shell-core = { path = "core/shell-core" }
+shell-macros = { path = "core/macros" }
+shell-rx-macros = { path = "core/rx-macros" }
+tracing = "0.1.44"
+wayland-client = { version = "0.31.14", features = ["system"] }
+wayland-protocols = { version = "0.32.12", features = ["client", "staging"] }

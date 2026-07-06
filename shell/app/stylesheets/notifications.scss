@@ -1,0 +1,140 @@
+window.notifications-window,
+.notifications-window,
+window.notification-center-window,
+.notification-center-window {
+  background-color: transparent;
+}
+
+.notifications-stack {
+  margin: 0;
+  min-width: 432px;
+}
+
+.notification-card {
+  @include rsx-surface($radius: $rsx-surface-radius-small);
+
+  min-width: 400px;
+  padding: 12px;
+
+  &.critical {
+    @include rsx-surface-danger;
+  }
+}
+
+.notification-center {
+  min-width: 432px;
+  padding: 8px;
+  background-color: transparent;
+}
+
+.notification-center-header {
+  padding: 0;
+}
+
+.notification-center-title {
+  @include rsx-surface;
+
+  padding: 4px 10px;
+  font-weight: 800;
+}
+
+.notification-center-list {
+  margin: 0;
+}
+
+.notification-center-scroll {
+  background-color: transparent;
+  min-width: 432px;
+
+  viewport {
+    background-color: transparent;
+  }
+}
+
+.notification-group-header {
+  margin: 0;
+}
+
+.notification-group-app {
+  @include rsx-surface($radius: $rsx-surface-radius-pill);
+
+  padding: 3px 9px;
+  font-weight: 800;
+}
+
+.notification-group-count {
+  @include rsx-surface($radius: $rsx-surface-radius-pill);
+
+  min-width: 12px;
+  padding: 3px 8px;
+  font-weight: 700;
+}
+
+.notification-center-card {
+  min-width: 0;
+}
+
+.notification-empty {
+  @include rsx-surface;
+
+  padding: 10px 14px;
+}
+
+.notification-header {
+  min-height: 24px;
+}
+
+.notification-app-icon {
+  opacity: 0.78;
+}
+
+.notification-image {
+  min-width: 42px;
+  min-height: 42px;
+  opacity: 0.9;
+}
+
+.notification-app-name,
+.notification-time {
+  opacity: 0.62;
+  font-size: 0.86em;
+  font-weight: 700;
+}
+
+.notification-summary {
+  font-weight: 800;
+}
+
+.notification-body {
+  opacity: 0.78;
+}
+
+.notification-close {
+  min-width: 0;
+  min-height: 0;
+  padding: 2px;
+
+  image,
+  .materialicon {
+    opacity: 0.62;
+  }
+}
+
+.notification-center-control {
+  @include rsx-surface;
+
+  padding: 4px;
+}
+
+.notification-actions {
+  margin-top: 2px;
+}
+
+.notification-action {
+  border-radius: 8px;
+  padding: 2px 10px;
+
+  &.default {
+    font-weight: 700;
+  }
+}

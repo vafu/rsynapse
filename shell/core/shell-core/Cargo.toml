@@ -1,0 +1,19 @@
+[package]
+name = "shell-core"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+async-channel = "2.5.0"
+futures-util = "0.3.32"
+gtk.workspace = true
+gtk4-background-effect.workspace = true
+gtk4-layer-shell.workspace = true
+notify = "6.1.1"
+relm4.workspace = true
+rxrust.workspace = true
+tokio = { version = "1.52.3", features = ["macros", "rt", "sync"] }
+tracing.workspace = true
+zbus = { version = "4.4.0", default-features = false, features = ["tokio"] }

@@ -1,0 +1,13 @@
+[Unit]
+Description=Rsynapse Notifications
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=@LOCAL_BIN@/rsynapse-notifications
+Restart=on-failure
+RestartSec=2s
+
+[Install]
+WantedBy=default.target
+

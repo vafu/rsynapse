@@ -1,0 +1,29 @@
+window.OSD,
+.OSD {
+  background-color: transparent;
+
+  .osd-shell {
+    @include rsx-surface(
+      $container: $osd_bg,
+      $radius: $rsx-surface-radius-large,
+      $elevation: 2
+    );
+
+    padding: 13px 16px;
+    margin: 50px;
+  }
+
+  image {
+    padding: 12px;
+  }
+
+  levelbar {
+    trough {
+      margin: 0.6rem;
+    }
+
+    block {
+      min-height: 2rem;
+    }
+  }
+}

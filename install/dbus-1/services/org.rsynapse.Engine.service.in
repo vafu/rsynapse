@@ -1,0 +1,4 @@
+[D-BUS Service]
+Name=org.rsynapse.Engine
+Exec=@LOCAL_BIN@/rsynapse-daemon
+

@@ -1,0 +1,362 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+metadata_file=".project.json"
+default_icon="folder_code"
+default_branch_regex='^[^/]+/(?P<subproj>[^/]+)/(?P<task>.+)$'
+
+locus_bus="org.rsynapse.Locus"
+locus_path="/org/rsynapse/Locus"
+locus_interface="org.rsynapse.Locus.Relations1"
+niri_bus="org.rsynapse.Niri"
+niri_path="/org/rsynapse/Niri"
+niri_interface="org.rsynapse.Niri1"
+
+workspace_project_relation="org.rsynapse.workspace.project"
+project_metadata_relation="org.rsynapse.project.metadata"
+
+usage() {
+  cat >&2 <<'EOF'
+usage: proj <command> [args]
+
+commands:
+  init [--force] [path]
+  root [path]
+  metadata [--json] [key] [path]
+  update [path]
+  set-current [path]
+  set_current [path]
+  publish [path]
+  clear [workspace-id]
+EOF
+}
+
+die() {
+  printf 'proj: %s\n' "$*" >&2
+  exit 1
+}
+
+need() {
+  command -v "$1" >/dev/null 2>&1 || die "$1 is required"
+}
+
+absolute_dir() {
+  local path="${1:-.}"
+  [[ -d "$path" ]] || die "not a directory: $path"
+  realpath "$path"
+}
+
+project_root_for_path() {
+  local dir
+  dir="$(absolute_dir "${1:-.}")"
+  while true; do
+    if [[ -f "$dir/$metadata_file" ]]; then
+      printf '%s\n' "$dir"
+      return 0
+    fi
+    [[ "$dir" != "/" ]] || return 1
+    dir="$(dirname "$dir")"
+  done
+}
+
+metadata_json() {
+  local root="$1"
+  jq -c '.' "$root/$metadata_file"
+}
+
+metadata_string_or_empty() {
+  local root="$1"
+  local key="$2"
+  metadata_json "$root" | jq -r --arg key "$key" '.[$key] // empty | select(type == "string")'
+}
+
+project_name() {
+  local root="$1"
+  local name
+  name="$(metadata_string_or_empty "$root" name)"
+  if [[ -n "$name" ]]; then
+    printf '%s\n' "$name"
+  else
+    basename "$root"
+  fi
+}
+
+project_icon_default() {
+  local name="$1"
+  local icon
+  if icon="$(pick-icon "$name" 2>/dev/null)" && [[ -n "$icon" ]]; then
+    printf '%s\n' "$icon"
+  else
+    printf '%s\n' "$default_icon"
+  fi
+}
+
+git_output() {
+  local root="$1"
+  shift
+  git -C "$root" "$@" 2>/dev/null || true
+}
+
+branch_fields() {
+  local branch="$1"
+  local regex="$2"
+  local jq_regex
+  jq_regex="${regex//(?P</(?<}"
+  jq -cn --arg branch "$branch" --arg regex "$jq_regex" '
+    ($branch | capture($regex)? // {}) |
+    {subproj: (.subproj // null), task: (.task // null)}
+  '
+}
+
+project_ref() {
+  local root="$1"
+  printf 'project:%s\n' "$root"
+}
+
+workspace_ref() {
+  local workspace="$1"
+  workspace="${workspace#niri-workspace:}"
+  workspace="${workspace##*/}"
+  workspace="${workspace#workspace_}"
+  [[ -n "$workspace" ]] || return 1
+  printf 'niri-workspace:%s\n' "$workspace"
+}
+
+selected_workspace_id() {
+  local path
+  path="$(niri_get_property FocusedWorkspace | jq -r '.data[0] // empty')"
+  [[ -n "$path" ]] || return 1
+  path="${path##*/}"
+  path="${path#workspace_}"
+  [[ -n "$path" ]] || return 1
+  printf '%s\n' "$path"
+}
+
+build_snapshot() {
+  local root="$1"
+  local metadata branch worktree worktree_name regex fields icon_default
+  metadata="$(metadata_json "$root")"
+  branch="$(git_output "$root" branch --show-current)"
+  worktree="$(git_output "$root" rev-parse --show-toplevel)"
+  worktree_name=""
+  [[ -n "$worktree" ]] && worktree_name="$(basename "$worktree")"
+  regex="$(jq -r --arg default "$default_branch_regex" '.branch_regex // $default' <<<"$metadata")"
+  fields="$(branch_fields "$branch" "$regex")"
+  icon_default="$(project_icon_default "$(project_name "$root")")"
+  jq -cn \
+    --arg subject "$(project_ref "$root")" \
+    --arg path "$root" \
+    --arg name "$(project_name "$root")" \
+    --arg icon_default "$icon_default" \
+    --arg branch "$branch" \
+    --arg worktree "$worktree_name" \
+    --arg worktree_path "$worktree" \
+    --argjson metadata "$metadata" \
+    --argjson fields "$fields" '
+      {
+        subject: $subject,
+        path: $path,
+        name: $name,
+        icon: ($metadata.icon // $icon_default),
+        "display-icon": ($metadata."display-icon" // $metadata.icon // $icon_default),
+        "display-main": ($metadata."display-main" // $metadata.name // $name),
+        "display-secondary": ($metadata."display-secondary" // null),
+        branch: (if $branch == "" then null else $branch end),
+        worktree: (if $worktree == "" then null else $worktree end),
+        "worktree-path": (if $worktree_path == "" then null else $worktree_path end),
+        subproj: $fields.subproj,
+        task: $fields.task,
+        metadata: $metadata
+      }
+    '
+}
+
+snapshot_metadata_args() {
+  local snapshot="$1"
+  jq -r '
+    to_entries[]
+    | select(.key != "subject")
+    | select(.value != null)
+    | [
+        .key,
+        (if (.value | type) == "string" then .value else (.value | tojson) end)
+      ]
+    | @tsv
+  ' <<<"$snapshot"
+}
+
+metadata_bus_args() {
+  local snapshot="$1"
+  local -n out_count="$2"
+  local -n out_args="$3"
+  out_count=0
+  out_args=()
+  while IFS=$'\t' read -r key value; do
+    [[ -n "${key:-}" ]] || continue
+    out_args+=("$key" "$value")
+    out_count=$((out_count + 1))
+  done < <(snapshot_metadata_args "$snapshot")
+}
+
+# Locus transport boundary. Keep all busctl-specific details here so this can
+# be replaced by a small CLI later without changing command behavior.
+locus_call() {
+  busctl --user call "$locus_bus" "$locus_path" "$locus_interface" "$@"
+}
+
+locus_call_json() {
+  busctl --user --json=short call "$locus_bus" "$locus_path" "$locus_interface" "$@"
+}
+
+locus_set_one() {
+  local subject="$1"
+  local relation="$2"
+  local target="$3"
+  local snapshot="$4"
+  local count
+  local args
+  metadata_bus_args "$snapshot" count args
+  locus_call SetOne 'sssa{ss}' "$subject" "$relation" "$target" "$count" "${args[@]}" >/dev/null
+}
+
+locus_set() {
+  local subject="$1"
+  local relation="$2"
+  local target="$3"
+  local snapshot="$4"
+  local count
+  local args
+  metadata_bus_args "$snapshot" count args
+  locus_call Set 'sssa{ss}' "$subject" "$relation" "$target" "$count" "${args[@]}" >/dev/null
+}
+
+locus_clear() {
+  local subject="$1"
+  local relation="$2"
+  locus_call Clear ss "$subject" "$relation" >/dev/null
+}
+
+locus_unset() {
+  local subject="$1"
+  local relation="$2"
+  local target="$3"
+  locus_call Unset sss "$subject" "$relation" "$target" >/dev/null
+}
+
+locus_subjects() {
+  local relation="$1"
+  local target="$2"
+  locus_call_json Subjects ss "$relation" "$target" | jq -r '.data[0][]?'
+}
+
+locus_targets() {
+  local subject="$1"
+  local relation="$2"
+  locus_call_json Targets ss "$subject" "$relation" | jq -r '.data[0][]?'
+}
+
+# Niri transport boundary.
+niri_get_property() {
+  local property="$1"
+  busctl --user --json=short get-property "$niri_bus" "$niri_path" "$niri_interface" "$property"
+}
+
+cmd_init() {
+  local force=false
+  if [[ "${1:-}" == "--force" ]]; then
+    force=true
+    shift
+  fi
+  local root name icon
+  root="$(absolute_dir "${1:-.}")"
+  local file="$root/$metadata_file"
+  if [[ -e "$file" && "$force" != true ]]; then
+    die "$file already exists"
+  fi
+  name="$(basename "$root")"
+  icon="$(project_icon_default "$name")"
+  jq -n --arg name "$name" --arg icon "$icon" \
+    '{name: $name, icon: $icon}' > "$file"
+  printf '%s\n' "$file"
+}
+
+cmd_root() {
+  project_root_for_path "${1:-.}" || die "project root not found"
+}
+
+cmd_metadata() {
+  local json=false
+  if [[ "${1:-}" == "--json" ]]; then
+    json=true
+    shift
+  fi
+  local key="${1:-}"
+  local path="${2:-.}"
+  if [[ "$json" == true ]]; then
+    path="${1:-.}"
+  elif [[ -z "$key" ]]; then
+    die "metadata key is required"
+  fi
+  local root
+  root="$(project_root_for_path "$path")" || die "project root not found"
+  if [[ "$json" == true ]]; then
+    build_snapshot "$root" | jq '.'
+  else
+    metadata_json "$root" | jq -r --arg key "$key" '.[$key] // empty'
+  fi
+}
+
+cmd_update() {
+  local root snapshot target subject
+  root="$(project_root_for_path "${1:-.}")" || return 0
+  snapshot="$(build_snapshot "$root")"
+  target="$(project_ref "$root")"
+
+  locus_set "$target" "$project_metadata_relation" "$target" "$snapshot"
+
+  while IFS= read -r subject; do
+    [[ -n "$subject" ]] || continue
+    locus_set_one "$subject" "$workspace_project_relation" "$target" "$snapshot"
+  done < <(locus_subjects "$workspace_project_relation" "$target")
+}
+
+cmd_set_current() {
+  local root snapshot workspace subject target
+  root="$(project_root_for_path "${1:-.}")" || return 0
+  snapshot="$(build_snapshot "$root")"
+  workspace="$(selected_workspace_id)" || return 0
+  subject="$(workspace_ref "$workspace")"
+  target="$(project_ref "$root")"
+
+  locus_set "$target" "$project_metadata_relation" "$target" "$snapshot"
+  locus_set_one "$subject" "$workspace_project_relation" "$target" "$snapshot"
+}
+
+cmd_clear() {
+  local workspace="${1:-}"
+  if [[ -z "$workspace" ]]; then
+    workspace="$(selected_workspace_id)" || return 0
+  fi
+  locus_clear "$(workspace_ref "$workspace")" "$workspace_project_relation"
+}
+
+main() {
+  need jq
+  need realpath
+  need busctl
+  local command="${1:-}"
+  [[ -n "$command" ]] || { usage; exit 2; }
+  shift || true
+  case "$command" in
+    init) cmd_init "$@" ;;
+    root) cmd_root "$@" ;;
+    metadata) cmd_metadata "$@" ;;
+    update) cmd_update "$@" ;;
+    set-current | set_current | publish) cmd_set_current "$@" ;;
+    clear) cmd_clear "$@" ;;
+    -h | --help | help) usage ;;
+    *) usage; exit 2 ;;
+  esac
+}
+
+main "$@"
