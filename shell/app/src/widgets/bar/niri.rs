@@ -41,8 +41,19 @@ impl NiriWorkspace {
         required(self.property("Focused"), false)
     }
 
+    pub(super) fn active(&self) -> Observable<bool> {
+        required(self.property("Active"), false)
+    }
+
     pub(super) fn urgent(&self) -> Observable<bool> {
         required(self.property("Urgent"), false)
+    }
+
+    pub(super) fn output_path_key(&self) -> Observable<Option<String>> {
+        dbus::optional_array_property::<OwnedObjectPath>(self.property("Output"))
+            .map(|path| path.map(|path| path.as_str().to_owned()))
+            .distinct_until_changed()
+            .box_it()
     }
 
     fn property(&self, name: &'static str) -> PropertyDescriptor {
@@ -158,6 +169,18 @@ where
     dbus::optional_array_property::<OwnedObjectPath>(descriptor)
         .map(move |path| path.map(map))
         .box_it()
+}
+
+pub(super) fn output_path_for_name(name: &str) -> String {
+    format!("{ROOT_PATH}/Outputs/{}", encode_path_segment(name))
+}
+
+fn encode_path_segment(input: &str) -> String {
+    let mut output = String::from("x");
+    for byte in input.bytes() {
+        output.push_str(&format!("{byte:02X}"));
+    }
+    output
 }
 
 fn root_property(name: &'static str) -> PropertyDescriptor {

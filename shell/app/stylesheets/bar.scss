@@ -468,7 +468,13 @@ $outline-offset: $label-margin * 0.5;
     @include rsx-surface-selected;
   }
 
-  &.is-empty:not(.current-workspace) {
+  &.inactive-selected-workspace {
+    @include rsx-surface-selected("color-mix(in srgb, #{$fg} 32%, transparent)");
+    color: color-mix(in srgb, #{$fg} 70%, transparent);
+    opacity: 0.72;
+  }
+
+  &.is-empty:not(.current-workspace):not(.inactive-selected-workspace) {
     opacity: 0.64;
   }
 

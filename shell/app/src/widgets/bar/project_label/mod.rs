@@ -41,7 +41,7 @@ impl SimpleComponent for ProjectLabel {
             #[name = "group"]
             gtk::Box {
                 #[watch]
-                set_css_classes: &project_group_classes(&model.vm),
+                set_css_classes: &project_group_classes(&model.vm, &model.workspace),
 
                 set_halign: gtk::Align::Start,
                 set_hexpand: false,
@@ -50,7 +50,7 @@ impl SimpleComponent for ProjectLabel {
                 #[name = "root_button"]
                 gtk::Button {
                     #[watch]
-                    set_css_classes: root_button_classes(model.vm.active),
+                    set_css_classes: root_button_classes(model.workspace.selected),
 
                     #[watch]
                     set_tooltip_text: Some(project_tooltip(&model.vm, &model.workspace).as_str()),
@@ -78,7 +78,7 @@ impl SimpleComponent for ProjectLabel {
                 #[name = "title_revealer"]
                 gtk::Revealer {
                     #[watch]
-                    set_reveal_child: model.vm.active,
+                    set_reveal_child: model.workspace.selected,
 
                     set_halign: gtk::Align::Start,
                     set_hexpand: false,
@@ -201,7 +201,7 @@ const ROOT_BUTTON_OPEN_CLASSES: &[&str] = &[
     "opened",
 ];
 
-fn project_group_classes(vm: &ProjectLabelVm) -> Vec<&'static str> {
+fn project_group_classes(vm: &ProjectLabelVm, workspace: &WorkspaceNode) -> Vec<&'static str> {
     let mut classes = vec![
         "projects-project",
         BACKGROUND_BLUR_CLASS,
@@ -209,8 +209,13 @@ fn project_group_classes(vm: &ProjectLabelVm) -> Vec<&'static str> {
         "button-subgroup-expand-right",
     ];
 
+    if workspace.selected {
+        classes.push("selected-workspace");
+    }
     if vm.active {
         classes.push("current-workspace");
+    } else if workspace.selected {
+        classes.push("inactive-selected-workspace");
     }
     if vm.urgent || vm.agent.has_attention {
         classes.push("has-attention");

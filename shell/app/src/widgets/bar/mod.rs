@@ -28,6 +28,7 @@ use relm4::component::ComponentController;
 use relm4::prelude::*;
 use shell_core::{
     gtk::{self, prelude::*},
+    gtk4_layer_shell::LayerShell,
     list::ComponentListBoxExt,
     source::SourceError,
     window::{self, Anchors, Edge, Layer, WindowConfig},
@@ -63,9 +64,43 @@ type WindowNode = niri::NiriWindow;
 const BAR_BACKGROUND_BLUR_CLASSES: &[&str] = &[BACKGROUND_BLUR_CLASS];
 const BAR_BACKGROUND_BLUR_RADIUS: i32 = 12;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone)]
 pub struct MainBarInit {
     pub title: &'static str,
+    monitor: Option<gtk::gdk::Monitor>,
+    output_name: Option<String>,
+    primary: bool,
+}
+
+impl MainBarInit {
+    pub fn primary(title: &'static str) -> Self {
+        Self {
+            title,
+            monitor: None,
+            output_name: None,
+            primary: true,
+        }
+    }
+
+    fn secondary(title: &'static str, monitor: gtk::gdk::Monitor) -> Self {
+        Self {
+            title,
+            output_name: monitor_output_name(Some(&monitor)),
+            monitor: Some(monitor),
+            primary: false,
+        }
+    }
+}
+
+impl std::fmt::Debug for MainBarInit {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("MainBarInit")
+            .field("title", &self.title)
+            .field("output_name", &self.output_name)
+            .field("primary", &self.primary)
+            .finish_non_exhaustive()
+    }
 }
 
 #[derive(Debug)]
@@ -93,15 +128,17 @@ pub enum MediaAction {
 
 #[shell_macros::model]
 pub struct MainBar {
-    _osd: AsyncController<OsdWindow>,
+    _osd: Option<AsyncController<OsdWindow>>,
     _request_server: Option<request::RequestServer>,
+    _child_bars: Vec<AsyncController<MainBar>>,
     _audio_osd_ready: bool,
     _brightness_osd_ready: bool,
+    output_name: Option<String>,
 
-    #[source(workspaces())]
+    #[source(workspaces(output_name.clone()))]
     project_labels: Vec<WorkspaceNode>,
 
-    #[source(selected_workspace_windows())]
+    #[source(selected_workspace_windows(output_name.clone()))]
     window_tiles: Vec<WindowNode>,
 
     #[source(bzbus_status())]
@@ -740,19 +777,40 @@ impl SimpleAsyncComponent for MainBar {
         root: Self::Root,
         sender: AsyncComponentSender<Self>,
     ) -> AsyncComponentParts<Self> {
+        let monitors = if init.primary {
+            available_monitors()
+        } else {
+            Vec::new()
+        };
+        let monitor = init.monitor.clone().or_else(|| monitors.first().cloned());
+        let output_name = init
+            .output_name
+            .clone()
+            .or_else(|| monitor_output_name(monitor.as_ref()));
+        log_bar_monitor(init.primary, monitor.as_ref(), output_name.as_deref());
+
         window::apply_layer_shell_config(&root, bar_window_config());
+        if let Some(monitor) = monitor.as_ref() {
+            root.set_monitor(Some(monitor));
+        }
         root.set_title(Some(init.title));
 
-        let osd_builder = OsdWindow::builder();
-        relm4::main_application().add_window(&osd_builder.root);
-        let osd = osd_builder
-            .launch(OsdInit {
-                title: "Rsynapse OSD",
-            })
-            .detach();
+        let osd = if init.primary {
+            let osd_builder = OsdWindow::builder();
+            relm4::main_application().add_window(&osd_builder.root);
+            Some(
+                osd_builder
+                    .launch(OsdInit {
+                        title: "Rsynapse OSD",
+                    })
+                    .detach(),
+            )
+        } else {
+            None
+        };
 
-        let request_sender = sender.input_sender().clone();
-        let request_server =
+        let request_server = if init.primary {
+            let request_sender = sender.input_sender().clone();
             match request::start_server(request::RequestTarget::Shell, move |request| {
                 request_sender.emit(MainBarInput::Request(request));
             }) {
@@ -761,9 +819,18 @@ impl SimpleAsyncComponent for MainBar {
                     eprintln!("[request] failed to start request server: {error}");
                     None
                 }
-            };
+            }
+        } else {
+            None
+        };
 
-        let model = MainBar::new(osd, request_server, false, false);
+        let child_bars = if init.primary {
+            launch_secondary_bars(init.title, monitors.into_iter().skip(1))
+        } else {
+            Vec::new()
+        };
+
+        let model = MainBar::new(osd, request_server, child_bars, false, false, output_name);
         let widgets = view_output!();
         let input_sender = sender.input_sender().clone();
         widgets.clock_button.connect_clicked(move |_| {
@@ -916,10 +983,12 @@ impl MainBar {
         }
 
         if self._audio_osd_ready && self.audio.visible {
-            self._osd.sender().emit(OsdInput::ShowAudio(OsdAudioView {
-                icon: self.audio.icon.clone(),
-                percent: self.audio.percent,
-            }));
+            if let Some(osd) = &self._osd {
+                osd.sender().emit(OsdInput::ShowAudio(OsdAudioView {
+                    icon: self.audio.icon.clone(),
+                    percent: self.audio.percent,
+                }));
+            }
         }
         self._audio_osd_ready = true;
     }
@@ -930,12 +999,13 @@ impl MainBar {
         }
 
         if self._brightness_osd_ready && self.brightness.visible {
-            self._osd
-                .sender()
-                .emit(OsdInput::ShowBrightness(OsdBrightnessView {
-                    icon: self.brightness.icon.to_owned(),
-                    percent: self.brightness.percent,
-                }));
+            if let Some(osd) = &self._osd {
+                osd.sender()
+                    .emit(OsdInput::ShowBrightness(OsdBrightnessView {
+                        icon: self.brightness.icon.to_owned(),
+                        percent: self.brightness.percent,
+                    }));
+            }
         }
         self._brightness_osd_ready = true;
     }
@@ -983,6 +1053,58 @@ fn request_notification_center_toggle() {
             }
         }
     });
+}
+
+fn available_monitors() -> Vec<gtk::gdk::Monitor> {
+    let Some(display) = gtk::gdk::Display::default() else {
+        return Vec::new();
+    };
+    let monitors = display.monitors();
+    (0..monitors.n_items())
+        .filter_map(|index| monitors.item(index))
+        .filter_map(|item| item.downcast::<gtk::gdk::Monitor>().ok())
+        .collect()
+}
+
+fn launch_secondary_bars(
+    title: &'static str,
+    monitors: impl Iterator<Item = gtk::gdk::Monitor>,
+) -> Vec<AsyncController<MainBar>> {
+    monitors
+        .map(|monitor| {
+            let builder = MainBar::builder();
+            let root = builder.root.clone();
+            relm4::main_application().add_window(&root);
+            let controller = builder
+                .launch(MainBarInit::secondary(title, monitor))
+                .detach();
+            root.present();
+            controller
+        })
+        .collect()
+}
+
+fn monitor_output_name(monitor: Option<&gtk::gdk::Monitor>) -> Option<String> {
+    monitor
+        .and_then(|monitor| monitor.connector())
+        .and_then(|connector| non_empty_string(connector.as_str()))
+}
+
+fn non_empty_string(value: &str) -> Option<String> {
+    let value = value.trim();
+    (!value.is_empty()).then(|| value.to_owned())
+}
+
+fn log_bar_monitor(primary: bool, monitor: Option<&gtk::gdk::Monitor>, output_name: Option<&str>) {
+    let role = if primary { "primary" } else { "secondary" };
+    let connector = monitor.and_then(|monitor| monitor.connector());
+    let geometry = monitor.map(|monitor| monitor.geometry());
+    eprintln!(
+        "[bar] launching {role} bar: gtk_connector={:?} geometry={:?} niri_output_filter={:?}",
+        connector.as_deref(),
+        geometry,
+        output_name
+    );
 }
 
 fn bar_window_config() -> WindowConfig {
