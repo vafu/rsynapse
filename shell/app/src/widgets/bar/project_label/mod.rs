@@ -163,7 +163,7 @@ impl SimpleComponent for ProjectLabel {
                 set_visible: workspace_agent_unseen_visible(&model.vm),
 
                 set_halign: gtk::Align::End,
-                set_valign: gtk::Align::End,
+                set_valign: gtk::Align::Start,
             }
         }
     }
