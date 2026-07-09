@@ -68,6 +68,7 @@ impl SimpleAsyncComponent for NotificationsWindow {
         #[root]
         gtk::Window {
             add_css_class: "notifications-window",
+            add_css_class: BACKGROUND_BLUR_CLASS,
             #[watch]
             set_visible: model.window_visible(),
 

@@ -11,7 +11,13 @@ pub(super) struct WorkspaceEntry {
     pub(super) workspace: NiriWorkspace,
     index: u32,
     output_path: Option<String>,
-    pub(super) selected: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct WorkspaceSelectionEntry {
+    workspace: NiriWorkspace,
+    output_path: Option<String>,
+    selected: bool,
 }
 
 pub(super) fn workspaces(output_name: Option<String>) -> Observable<Vec<WorkspaceNode>> {
@@ -25,11 +31,23 @@ pub(super) fn workspaces(output_name: Option<String>) -> Observable<Vec<Workspac
 fn workspace_entry(workspace: NiriWorkspace) -> Observable<WorkspaceEntry> {
     combine_latest!(
         workspace.index().map(u32::from),
-        workspace.output_path_key(),
-        workspace.active()
-            => move |(index, output_path, selected)| WorkspaceEntry {
+        workspace.output_path_key()
+            => move |(index, output_path)| WorkspaceEntry {
                 workspace: workspace.clone(),
                 index,
+                output_path,
+            },
+    )
+    .distinct_until_changed()
+    .box_it()
+}
+
+fn workspace_selection_entry(workspace: NiriWorkspace) -> Observable<WorkspaceSelectionEntry> {
+    combine_latest!(
+        workspace.output_path_key(),
+        workspace.active()
+            => move |(output_path, selected)| WorkspaceSelectionEntry {
+                workspace: workspace.clone(),
                 output_path,
                 selected,
             },
@@ -45,7 +63,7 @@ fn selected_workspace(output_name: Option<String>) -> Observable<Option<NiriWork
 
     let output_path = niri::output_path_for_name(&output_name);
 
-    source::switch_map_list(niri::workspaces(), workspace_entry)
+    source::switch_map_list(niri::workspaces(), workspace_selection_entry)
         .map(move |workspaces| active_workspace_for_output(workspaces, output_path.as_str()))
         .distinct_until_changed()
         .box_it()
@@ -111,7 +129,7 @@ fn filter_workspaces_for_output(
 }
 
 fn active_workspace_for_output(
-    workspaces: Vec<WorkspaceEntry>,
+    workspaces: Vec<WorkspaceSelectionEntry>,
     output_path: &str,
 ) -> Option<NiriWorkspace> {
     let active_workspace = workspaces.iter().find(|workspace| {
@@ -185,11 +203,7 @@ mod tests {
 
     #[test]
     fn output_filter_falls_back_to_all_workspaces_when_connector_misses() {
-        let workspaces = vec![workspace(
-            1,
-            Some("/org/rsynapse/Niri/Outputs/x44502D32"),
-            true,
-        )];
+        let workspaces = vec![workspace(1, Some("/org/rsynapse/Niri/Outputs/x44502D32"))];
 
         assert_eq!(
             filter_workspaces_for_output(
@@ -202,7 +216,7 @@ mod tests {
 
     #[test]
     fn selected_workspace_falls_back_to_active_workspace_when_connector_misses() {
-        let workspaces = vec![workspace(
+        let workspaces = vec![selection_workspace(
             1,
             Some("/org/rsynapse/Niri/Outputs/x44502D32"),
             true,
@@ -217,17 +231,30 @@ mod tests {
         );
     }
 
-    fn workspace(index: u32, output_path: Option<&str>, selected: bool) -> super::WorkspaceEntry {
+    fn workspace(index: u32, output_path: Option<&str>) -> super::WorkspaceEntry {
         super::WorkspaceEntry {
-            workspace: NiriWorkspace::at(
-                OwnedObjectPath::try_from(format!(
-                    "/org/rsynapse/Niri/Workspaces/workspace_{index}"
-                ))
-                .unwrap(),
-            ),
+            workspace: niri_workspace(index),
             index,
+            output_path: output_path.map(str::to_owned),
+        }
+    }
+
+    fn selection_workspace(
+        index: u32,
+        output_path: Option<&str>,
+        selected: bool,
+    ) -> super::WorkspaceSelectionEntry {
+        super::WorkspaceSelectionEntry {
+            workspace: niri_workspace(index),
             output_path: output_path.map(str::to_owned),
             selected,
         }
+    }
+
+    fn niri_workspace(index: u32) -> NiriWorkspace {
+        NiriWorkspace::at(
+            OwnedObjectPath::try_from(format!("/org/rsynapse/Niri/Workspaces/workspace_{index}"))
+                .unwrap(),
+        )
     }
 }

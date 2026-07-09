@@ -19,6 +19,9 @@ pub(super) struct ProjectLabel {
     #[source(project_label_vm(workspace.workspace.clone()))]
     pub vm: ProjectLabelVm,
 
+    #[source(workspace.workspace.active())]
+    pub selected: bool,
+
     #[source(hints_active())]
     pub hints_active: bool,
 }
@@ -41,7 +44,7 @@ impl SimpleComponent for ProjectLabel {
             #[name = "group"]
             gtk::Box {
                 #[watch]
-                set_css_classes: &project_group_classes(&model.vm, &model.workspace),
+                set_css_classes: &project_group_classes(&model.vm, model.selected),
 
                 set_halign: gtk::Align::Start,
                 set_hexpand: false,
@@ -50,7 +53,7 @@ impl SimpleComponent for ProjectLabel {
                 #[name = "root_button"]
                 gtk::Button {
                     #[watch]
-                    set_css_classes: root_button_classes(model.workspace.selected),
+                    set_css_classes: root_button_classes(model.selected),
 
                     #[watch]
                     set_tooltip_text: Some(project_tooltip(&model.vm, &model.workspace).as_str()),
@@ -78,7 +81,7 @@ impl SimpleComponent for ProjectLabel {
                 #[name = "title_revealer"]
                 gtk::Revealer {
                     #[watch]
-                    set_reveal_child: model.workspace.selected,
+                    set_reveal_child: model.selected,
 
                     set_halign: gtk::Align::Start,
                     set_hexpand: false,
@@ -155,15 +158,17 @@ impl SimpleComponent for ProjectLabel {
             },
 
             add_overlay = &gtk::Box {
+                add_css_class: "bar-widget-badge",
                 add_css_class: "agent-unseen-badge",
-                add_css_class: "workspace-agent-unseen-badge",
                 set_can_target: false,
+                set_width_request: 8,
+                set_height_request: 8,
 
                 #[watch]
                 set_visible: workspace_agent_unseen_visible(&model.vm),
 
                 set_halign: gtk::Align::End,
-                set_valign: gtk::Align::End,
+                set_valign: gtk::Align::Start,
             }
         }
     }
@@ -201,7 +206,7 @@ const ROOT_BUTTON_OPEN_CLASSES: &[&str] = &[
     "opened",
 ];
 
-fn project_group_classes(vm: &ProjectLabelVm, workspace: &WorkspaceNode) -> Vec<&'static str> {
+fn project_group_classes(vm: &ProjectLabelVm, selected: bool) -> Vec<&'static str> {
     let mut classes = vec![
         "projects-project",
         BACKGROUND_BLUR_CLASS,
@@ -209,12 +214,12 @@ fn project_group_classes(vm: &ProjectLabelVm, workspace: &WorkspaceNode) -> Vec<
         "button-subgroup-expand-right",
     ];
 
-    if workspace.selected {
+    if selected {
         classes.push("selected-workspace");
     }
     if vm.active {
         classes.push("current-workspace");
-    } else if workspace.selected {
+    } else if selected {
         classes.push("inactive-selected-workspace");
     }
     if vm.urgent || vm.agent.has_attention {

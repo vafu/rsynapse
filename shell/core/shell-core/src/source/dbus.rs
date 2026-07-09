@@ -245,6 +245,38 @@ where
     })
 }
 
+/// Emits a typed D-Bus property value, using an ObjectManager snapshot value as
+/// the first emission and subscribing to later `PropertiesChanged` updates.
+///
+/// This is useful for ObjectManager-backed services whose initial
+/// `GetManagedObjects` payload already includes property values. It avoids a
+/// startup burst of `org.freedesktop.DBus.Properties.Get` calls for each
+/// object/property while preserving signal-driven live updates.
+pub fn property_with_initial<T>(
+    descriptor: PropertyDescriptor,
+    initial: Option<T>,
+) -> Observable<Option<T>>
+where
+    T: TryFrom<OwnedValue> + Clone + PartialEq + Send + Sync + 'static,
+    T::Error: fmt::Display,
+{
+    let key = descriptor.key();
+    shared_by_key("dbus-property-seeded", key, move || {
+        let path = descriptor_error_path(&descriptor.key());
+        let descriptor = descriptor.clone();
+        let initial = initial.clone();
+        let observable = defer(move || {
+            from_stream_result(property_stream_with_initial::<T>(
+                descriptor.clone(),
+                initial.clone(),
+            ))
+        })
+        .distinct_until_changed()
+        .box_it();
+        log_errors("dbus-property-seeded", path, observable)
+    })
+}
+
 /// Emits a typed D-Bus property value, substituting `default` while absent.
 pub fn property_or<T>(descriptor: PropertyDescriptor, default: T) -> Observable<T>
 where
@@ -252,6 +284,21 @@ where
     T::Error: fmt::Display,
 {
     property(descriptor)
+        .map(move |value| value.unwrap_or_else(|| default.clone()))
+        .box_it()
+}
+
+/// Emits a seeded typed D-Bus property value, substituting `default` while absent.
+pub fn property_or_with_initial<T>(
+    descriptor: PropertyDescriptor,
+    initial: Option<T>,
+    default: T,
+) -> Observable<T>
+where
+    T: TryFrom<OwnedValue> + Clone + PartialEq + Send + Sync + 'static,
+    T::Error: fmt::Display,
+{
+    property_with_initial(descriptor, initial)
         .map(move |value| value.unwrap_or_else(|| default.clone()))
         .box_it()
 }
@@ -644,6 +691,86 @@ where
                         }
                     }
                     PropertyPhase::Done => return None,
+                }
+            }
+        },
+    )
+}
+
+fn property_stream_with_initial<T>(
+    descriptor: PropertyDescriptor,
+    initial: Option<T>,
+) -> impl Stream<Item = Result<Option<T>, String>>
+where
+    T: TryFrom<OwnedValue> + Clone + Send + 'static,
+    T::Error: fmt::Display,
+{
+    stream::unfold(
+        PropertyStreamState {
+            descriptor,
+            proxy: None,
+            stream: None,
+            phase: PropertyPhase::Connect,
+        },
+        move |mut state| {
+            let initial = initial.clone();
+            async move {
+                loop {
+                    match state.phase {
+                        PropertyPhase::Connect => {
+                            match properties_proxy(&state.descriptor.object).await {
+                                Ok(proxy) => {
+                                    state.proxy = Some(proxy);
+                                    state.phase = PropertyPhase::Watch;
+                                    return Some((Ok(initial), state));
+                                }
+                                Err(error) => {
+                                    state.phase = PropertyPhase::Done;
+                                    return Some((
+                                        Err(format_dbus_error("connect property source", error)),
+                                        state,
+                                    ));
+                                }
+                            }
+                        }
+                        PropertyPhase::InitialRead => unreachable!(
+                            "seeded property stream starts from an ObjectManager snapshot"
+                        ),
+                        PropertyPhase::Watch => {
+                            if state.stream.is_none() {
+                                state.stream = Some(Box::pin(
+                                    properties_changed(state.descriptor.object.clone())
+                                        .into_stream(),
+                                ));
+                            }
+
+                            let Some(update) = state
+                                .stream
+                                .as_mut()
+                                .expect("stream initialized")
+                                .next()
+                                .await
+                            else {
+                                return None;
+                            };
+
+                            let result = property_changed_value::<T>(
+                                &state.descriptor,
+                                state.proxy(),
+                                update,
+                            )
+                            .await;
+                            match result {
+                                PropertyChange::Emit(value) => return Some((value, state)),
+                                PropertyChange::Ignore => continue,
+                                PropertyChange::Error(error) => {
+                                    state.phase = PropertyPhase::Done;
+                                    return Some((Err(error), state));
+                                }
+                            }
+                        }
+                        PropertyPhase::Done => return None,
+                    }
                 }
             }
         },

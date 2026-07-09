@@ -1,5 +1,16 @@
+use std::sync::Arc;
+
+use shell_core::source::dbus::{DbusInterface, DbusObject, DbusPropertyValue};
+use zbus::{
+    names::OwnedInterfaceName,
+    zvariant::{OwnedObjectPath, OwnedValue, Value},
+};
+
 use super::super::{Agent, State};
-use super::actual::{AgentSeenState, agent_icon, agent_with_seen_state, session_state};
+use super::actual::{
+    AgentSeenState, agent_icon, agent_with_seen_state, find_agent_session_by_window_id,
+    session_state,
+};
 
 #[test]
 fn maps_agent_name_to_renderable_icon() {
@@ -23,6 +34,22 @@ fn maps_agent_dbus_state() {
     assert_eq!(session_state("tool-use"), State::ToolUse);
     assert_eq!(session_state("compacting"), State::Compacting);
     assert_eq!(session_state(""), State::None);
+}
+
+#[test]
+fn finds_agent_session_by_window_id_snapshot() {
+    let objects = vec![session_object(
+        "/io/github/AgentDBus/sessions/codex/session",
+        "42",
+    )];
+
+    let session = find_agent_session_by_window_id(&objects, 42).expect("session");
+
+    assert_eq!(
+        session.path.as_str(),
+        "/io/github/AgentDBus/sessions/codex/session"
+    );
+    assert!(find_agent_session_by_window_id(&objects, 41).is_none());
 }
 
 #[test]
@@ -97,5 +124,18 @@ fn make_agent(state: State) -> Agent {
         state,
         context_pct: 0,
         unseen: false,
+    }
+}
+
+fn session_object(path: &str, window_id: &str) -> DbusObject {
+    DbusObject {
+        path: OwnedObjectPath::try_from(path).unwrap(),
+        interfaces: vec![DbusInterface {
+            name: OwnedInterfaceName::try_from("io.github.AgentDBus1.Session").unwrap(),
+            properties: vec![DbusPropertyValue {
+                name: "WindowId".to_owned(),
+                value: Arc::new(OwnedValue::try_from(Value::from(window_id)).unwrap()),
+            }],
+        }],
     }
 }
