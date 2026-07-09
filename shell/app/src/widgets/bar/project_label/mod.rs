@@ -152,6 +152,18 @@ impl SimpleComponent for ProjectLabel {
 
                 set_halign: gtk::Align::End,
                 set_valign: gtk::Align::Start,
+            },
+
+            add_overlay = &gtk::Box {
+                add_css_class: "agent-unseen-badge",
+                add_css_class: "workspace-agent-unseen-badge",
+                set_can_target: false,
+
+                #[watch]
+                set_visible: workspace_agent_unseen_visible(&model.vm),
+
+                set_halign: gtk::Align::End,
+                set_valign: gtk::Align::End,
             }
         }
     }
@@ -205,6 +217,9 @@ fn project_group_classes(vm: &ProjectLabelVm) -> Vec<&'static str> {
     }
     if vm.agent.has_working {
         classes.push("has-working");
+    }
+    if workspace_agent_unseen_visible(vm) {
+        classes.push("has-unseen");
     }
     if vm.empty {
         classes.push("is-empty");
@@ -270,6 +285,10 @@ fn project_tooltip(model: &ProjectLabelVm, workspace: &WorkspaceNode) -> String 
         Some(secondary) => format!("{primary} · {secondary}"),
         None => primary,
     }
+}
+
+fn workspace_agent_unseen_visible(model: &ProjectLabelVm) -> bool {
+    model.agent.has_unseen
 }
 
 fn workspace_title(workspace_name: &str, index: u32) -> String {

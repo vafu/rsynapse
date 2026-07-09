@@ -2,6 +2,9 @@ mod agent;
 mod project;
 mod workspace_fallback;
 
+#[cfg(test)]
+mod test;
+
 use shell_core::source::{Observable, rx::Observable as _};
 use shell_rx_macros::combine_latest;
 

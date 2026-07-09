@@ -21,7 +21,40 @@ struct AgentSession {
     path: OwnedObjectPath,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(super) struct AgentSeenState {
+    last_agent_state: Option<State>,
+    unseen: bool,
+}
+
 pub(super) fn agent_for_window(window: WindowNode) -> Observable<Option<Agent>> {
+    let keyed_window = window.clone();
+    source::switch_map(window.id().box_it(), move |window_id| {
+        let window = keyed_window.clone();
+        source::shared_by_key(
+            "rsynapse.agent-for-window",
+            window_id.to_string(),
+            move || agent_for_window_status(window.clone()),
+        )
+    })
+    .distinct_until_changed()
+    .box_it()
+}
+
+fn agent_for_window_status(window: WindowNode) -> Observable<Option<Agent>> {
+    source::from_task(move |sender| {
+        let window = window.clone();
+        async move {
+            let agent = raw_agent_for_window(window.clone());
+            let focused = window.focused();
+            run_agent_seen_state(sender, agent, focused).await;
+        }
+    })
+    .distinct_until_changed()
+    .box_it()
+}
+
+fn raw_agent_for_window(window: WindowNode) -> Observable<Option<Agent>> {
     source::switch_map(window.id().map(window_subject).box_it(), |subject| {
         source::switch_map(agent_session_target(subject), |target| {
             target
@@ -32,6 +65,59 @@ pub(super) fn agent_for_window(window: WindowNode) -> Observable<Option<Agent>> 
     })
     .distinct_until_changed()
     .box_it()
+}
+
+async fn run_agent_seen_state(
+    sender: async_channel::Sender<Result<Option<Agent>, String>>,
+    agent: Observable<Option<Agent>>,
+    focused: Observable<bool>,
+) {
+    let mut updates = Box::pin(
+        agent
+            .combine_latest(focused, |agent, focused| (agent, focused))
+            .into_stream(),
+    );
+    let mut state = AgentSeenState::default();
+
+    while let Some(update) = updates.next().await {
+        let value = match update {
+            Ok((agent, focused)) => Ok(agent_with_seen_state(agent, focused, &mut state)),
+            Err(error) => Err(error),
+        };
+
+        if sender.send(value).await.is_err() {
+            return;
+        }
+    }
+}
+
+pub(super) fn agent_with_seen_state(
+    mut agent: Option<Agent>,
+    focused: bool,
+    state: &mut AgentSeenState,
+) -> Option<Agent> {
+    let agent_state = agent.as_ref().map(|agent| agent.state);
+
+    match agent_state {
+        Some(State::Idle) if state.last_agent_state != Some(State::Idle) => {
+            state.unseen = !focused;
+        }
+        Some(State::Thinking | State::ToolUse | State::Compacting | State::None) | None => {
+            state.unseen = false;
+        }
+        Some(State::Idle) => {}
+    }
+
+    if focused {
+        state.unseen = false;
+    }
+
+    state.last_agent_state = agent_state;
+
+    if let Some(agent) = agent.as_mut() {
+        agent.unseen = state.unseen;
+    }
+    agent
 }
 
 fn agent_session_target(subject: RelationEndpoint) -> Observable<Option<RelationEndpoint>> {
@@ -201,6 +287,7 @@ fn agent_session(session: AgentSession) -> Observable<Option<Agent>> {
                     attention,
                     state: session_state(&state),
                     context_pct: context_pct_percent(context_pct),
+                    unseen: false,
                 })
             },
     )
@@ -272,8 +359,9 @@ pub(super) fn agent_icon(_agent_name: &str, _nickname: &str, _role: &str) -> Str
     "cognition".to_string()
 }
 
-fn session_state(state: &str) -> State {
-    match state {
+pub(super) fn session_state(state: &str) -> State {
+    match state.trim() {
+        "idle" => State::Idle,
         "thinking" => State::Thinking,
         "tool-use" => State::ToolUse,
         "compacting" => State::Compacting,

@@ -59,7 +59,7 @@ impl SimpleComponent for WindowTile {
     type Output = ();
 
     view! {
-        gtk::Box {
+        gtk::Overlay {
             #[watch]
             set_visible: model.vm.is_some(),
 
@@ -133,6 +133,17 @@ impl SimpleComponent for WindowTile {
                         }
                     }
                 }
+            },
+
+            add_overlay = &gtk::Box {
+                add_css_class: "agent-unseen-badge",
+                add_css_class: "window-agent-unseen-badge",
+                set_can_target: false,
+                set_halign: gtk::Align::End,
+                set_valign: gtk::Align::Start,
+
+                #[watch]
+                set_visible: agent_unseen_visible(&model.vm),
             }
         }
     }
@@ -185,6 +196,7 @@ fn window_tile_classes(vm: &Option<ViewModel>) -> Vec<&'static str> {
         }
         match agent.state {
             AgentState::None => {}
+            AgentState::Idle => classes.push("idle"),
             AgentState::Thinking => classes.push("thinking"),
             AgentState::ToolUse => classes.push("tool-use"),
             AgentState::Compacting => classes.push("compacting"),
@@ -219,6 +231,13 @@ fn agent_icon(agent: &Agent, fallback: &str) -> String {
 fn is_agent(vm: &Option<ViewModel>) -> bool {
     vm.as_ref()
         .is_some_and(|vm| matches!(vm.kind, Kind::Agent(_)))
+}
+
+fn agent_unseen_visible(vm: &Option<ViewModel>) -> bool {
+    vm.as_ref().is_some_and(|vm| match &vm.kind {
+        Kind::Agent(agent) => agent.unseen,
+        Kind::Plain | Kind::Neovim => false,
+    })
 }
 
 fn context_pct(vm: &Option<ViewModel>) -> u32 {

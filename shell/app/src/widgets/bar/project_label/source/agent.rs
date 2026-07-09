@@ -10,6 +10,7 @@ use crate::widgets::bar::{
 pub(in crate::widgets::bar::project_label) struct WorkspaceAgentState {
     pub(in crate::widgets::bar::project_label) has_attention: bool,
     pub(in crate::widgets::bar::project_label) has_working: bool,
+    pub(in crate::widgets::bar::project_label) has_unseen: bool,
 }
 
 pub(super) fn workspace_agent_state(workspace: NiriWorkspace) -> Observable<WorkspaceAgentState> {
@@ -45,7 +46,7 @@ fn window_agent_state(window: WindowSnapshot) -> Observable<Option<Agent>> {
     agent_for_window(window.window)
 }
 
-fn workspace_agent_state_from_agents(agents: Vec<Option<Agent>>) -> WorkspaceAgentState {
+pub(super) fn workspace_agent_state_from_agents(agents: Vec<Option<Agent>>) -> WorkspaceAgentState {
     WorkspaceAgentState {
         has_attention: agents.iter().flatten().any(|agent| agent.attention),
         has_working: agents.iter().flatten().any(|agent| {
@@ -54,5 +55,6 @@ fn workspace_agent_state_from_agents(agents: Vec<Option<Agent>>) -> WorkspaceAge
                 State::Thinking | State::ToolUse | State::Compacting
             )
         }),
+        has_unseen: agents.iter().flatten().any(|agent| agent.unseen),
     }
 }
