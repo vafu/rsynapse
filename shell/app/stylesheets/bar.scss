@@ -43,18 +43,15 @@ $outline-offset: $label-margin * 0.5;
   color: color-mix(in srgb, #{$fg} 72%, transparent);
 }
 
-.bar-widget-badge {
+.barblock-badge.agent-unseen-badge {
   min-width: 8px;
   min-height: 8px;
-  margin-top: 8px;
-  margin-right: 2px;
-  border-radius: 999px;
+  margin-top: 4px;
+  margin-right: 0px;
+  padding: 0;
+  background-color: #{$accent_color};
   box-shadow: 0 0 0 1px color-mix(in srgb, #{$bg} 72%, transparent);
   outline: solid 1px color-mix(in srgb, #{$sys_critical} 72%, #{$accent_color});
-}
-
-.bar-widget-badge.agent-unseen-badge {
-  background-color: #{$accent_color};
 }
 
 .workspace-window-frame {
@@ -474,6 +471,12 @@ $outline-offset: $label-margin * 0.5;
     opacity: 0.64;
   }
 
+  &.has-unseen {
+    animation: workspace-unseen-accent-pulse 2.8s ease-in-out infinite;
+    border-color: color-mix(in srgb, #{$accent_color} 62%, transparent);
+    opacity: 1;
+  }
+
   .projects-collapsed-icon {
     padding: 0 6px;
     border-radius: 12px 0 0 12px;
@@ -536,6 +539,21 @@ $outline-offset: $label-margin * 0.5;
   &.has-attention .projects-collapsed-icon materialicon,
   &.has-attention .projects-collapsed-icon .materialicon {
     animation: agent-attention-shake 0.4s ease-in-out infinite;
+  }
+}
+
+@keyframes workspace-unseen-accent-pulse {
+  0%,
+  100% {
+    background-color: color-mix(in srgb, #{$accent_color} 12%, #{$bg_tint});
+    border-color: color-mix(in srgb, #{$accent_color} 46%, transparent);
+    box-shadow: 0 0 8px 0 #{$shadow};
+  }
+
+  50% {
+    background-color: color-mix(in srgb, #{$accent_color} 26%, #{$bg_tint});
+    border-color: color-mix(in srgb, #{$accent_color} 78%, #{$fg});
+    box-shadow: 0 0 14px 1px color-mix(in srgb, #{$accent_color} 34%, transparent);
   }
 }
 

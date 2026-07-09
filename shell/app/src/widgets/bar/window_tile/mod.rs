@@ -136,7 +136,7 @@ impl SimpleComponent for WindowTile {
             },
 
             add_overlay = &gtk::Box {
-                add_css_class: "bar-widget-badge",
+                add_css_class: "barblock-badge",
                 add_css_class: "agent-unseen-badge",
                 set_can_target: false,
                 set_width_request: 8,

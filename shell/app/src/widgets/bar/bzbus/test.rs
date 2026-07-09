@@ -1,4 +1,9 @@
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::{
+    collections::HashMap,
+    time::{SystemTime, UNIX_EPOCH},
+};
+
+use zbus::zvariant::{OwnedObjectPath, OwnedValue, Value};
 
 use super::{
     source,
@@ -76,14 +81,114 @@ fn latest_active_invocation_wins_over_finished() {
 }
 
 #[test]
-fn parses_wrapped_dbus_integer_values() {
+fn invocation_from_properties_decodes_bzbus_dbus_payload() {
+    let path = OwnedObjectPath::try_from(
+        "/com/snap/BzBus/invocations/invocation_4c4bf6a1_4e5b_4fd8_b6a0_c03d50ed1b33",
+    )
+    .unwrap();
+    let properties = properties(&[
+        ("Id", value("invocation-live")),
+        ("BuildId", value("build-1")),
+        ("Component", value("TOOL")),
+        ("Source", value("bes")),
+        ("LastObservedSequenceNumber", value(99i64)),
+        ("Status", value("running")),
+        ("Outcome", value("unknown")),
+        ("CommandName", value("run")),
+        ("ProgressCompleted", value(72_427u32)),
+        ("ProgressTotal", value(72_435u32)),
+        ("ActionsCompleted", value(8u32)),
+        ("TotalActions", value(12i64)),
+        ("ActionsFailed", value(1u32)),
+        ("RunningActions", value(3u32)),
+        ("StartedAtUnixMs", value(1_783_556_374_071i64)),
+        ("EndedAtUnixMs", value(0i64)),
+    ]);
+
+    let invocation = source::invocation_from_properties(&path, &properties);
+
+    assert_eq!(invocation.id, "invocation-live");
+    assert_eq!(invocation.build_id, "build-1");
+    assert_eq!(invocation.component, "TOOL");
+    assert_eq!(invocation.source, "bes");
+    assert_eq!(invocation.last_sequence, 99);
+    assert_eq!(invocation.status, "running");
+    assert_eq!(invocation.outcome, "unknown");
+    assert_eq!(invocation.command_name, "run");
+    assert_eq!(invocation.progress_completed, 72_427);
+    assert_eq!(invocation.progress_total, 72_435);
+    assert_eq!(invocation.actions_completed, 8);
+    assert_eq!(invocation.total_actions, 12);
+    assert_eq!(invocation.actions_failed, 1);
+    assert_eq!(invocation.running_actions, 3);
+    assert_eq!(invocation.started_at_unix_ms, 1_783_556_374_071);
+    assert_eq!(invocation.ended_at_unix_ms, 0);
+}
+
+#[test]
+fn invocation_uses_path_id_when_id_property_is_missing() {
+    let path = OwnedObjectPath::try_from(
+        "/com/snap/BzBus/invocations/invocation_fd898886_c248_437c_8a1a_5d374dc68888",
+    )
+    .unwrap();
+
+    let invocation = source::invocation_from_properties(&path, &HashMap::new());
+
     assert_eq!(
-        source::parse_i64("OwnedValue(I64(1782436305258))"),
-        1782436305258
+        invocation.id,
+        "invocation_fd898886_c248_437c_8a1a_5d374dc68888"
     );
-    assert_eq!(source::parse_i64("-42"), -42);
-    assert_eq!(source::parse_u32("OwnedValue(U32(17))"), 17);
-    assert_eq!(source::parse_u32("13261"), 13261);
+}
+
+#[test]
+fn apply_invocation_properties_updates_existing_invocation() {
+    let mut invocation = Invocation {
+        id: "existing".to_owned(),
+        status: "queued".to_owned(),
+        progress_completed: 1,
+        progress_total: 4,
+        total_actions: 0,
+        ..Invocation::default()
+    };
+    let changed = properties(&[
+        ("Status", value("running")),
+        ("ProgressCompleted", value(3u32)),
+        ("TotalActions", value(9i64)),
+    ]);
+
+    source::apply_invocation_properties(&mut invocation, &changed);
+
+    assert_eq!(invocation.id, "existing");
+    assert_eq!(invocation.status, "running");
+    assert_eq!(invocation.progress_completed, 3);
+    assert_eq!(invocation.progress_total, 4);
+    assert_eq!(invocation.total_actions, 9);
+}
+
+#[test]
+fn numeric_values_accept_bzbus_integer_shapes() {
+    assert_eq!(
+        source::i64_value(&value(1_782_436_305_258i64)),
+        Some(1_782_436_305_258)
+    );
+    assert_eq!(source::i64_value(&value(17u32)), Some(17));
+    assert_eq!(source::u32_value(&value(17u32)), Some(17));
+    assert_eq!(source::u32_value(&value(17i64)), Some(17));
+    assert_eq!(source::u64_value(&value(13261i64)), Some(13261));
+}
+
+fn properties(entries: &[(&str, OwnedValue)]) -> HashMap<String, OwnedValue> {
+    entries
+        .iter()
+        .map(|(name, value)| (name.to_string(), value.try_clone().unwrap()))
+        .collect()
+}
+
+fn value<T>(value: T) -> OwnedValue
+where
+    Value<'static>: From<T>,
+{
+    OwnedValue::try_from(Value::from(value)).unwrap()
 }
 
 fn now_unix_ms() -> i64 {

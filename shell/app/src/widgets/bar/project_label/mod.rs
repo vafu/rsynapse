@@ -156,20 +156,6 @@ impl SimpleComponent for ProjectLabel {
                 set_halign: gtk::Align::End,
                 set_valign: gtk::Align::Start,
             },
-
-            add_overlay = &gtk::Box {
-                add_css_class: "bar-widget-badge",
-                add_css_class: "agent-unseen-badge",
-                set_can_target: false,
-                set_width_request: 8,
-                set_height_request: 8,
-
-                #[watch]
-                set_visible: workspace_agent_unseen_visible(&model.vm),
-
-                set_halign: gtk::Align::End,
-                set_valign: gtk::Align::Start,
-            }
         }
     }
 
