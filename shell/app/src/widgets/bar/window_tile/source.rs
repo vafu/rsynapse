@@ -30,7 +30,6 @@ pub(in crate::widgets::bar) struct ViewModel {
 
 pub(super) fn window_tile_vm(window: WindowNode) -> Observable<Option<ViewModel>> {
     let window_id = window.id();
-    let title = window.title().map(|title| title.and_then(non_empty));
     let app_id = window.app_id().map(|app_id| app_id.and_then(non_empty));
     let active = window.focused();
     let urgent = window.urgent();
@@ -38,12 +37,11 @@ pub(super) fn window_tile_vm(window: WindowNode) -> Observable<Option<ViewModel>
 
     combine_latest!(
         window_id,
-        title,
         app_id,
         active,
         urgent,
         agent
-            => move |(_window_id, title, app_id, active, urgent, agent)| {
+            => move |(_window_id, app_id, active, urgent, agent)| {
                 let _span = tracing::trace_span!(
                     "bar.window_tile_vm",
                     window_id = _window_id,
@@ -53,10 +51,9 @@ pub(super) fn window_tile_vm(window: WindowNode) -> Observable<Option<ViewModel>
                 )
                 .entered();
                 let app_id = app_id.unwrap_or_default();
-                let title = title.unwrap_or_default();
                 Some(ViewModel {
-                    tooltip: window_tooltip(&title, agent.as_ref()),
-                    kind: window_kind(&title, agent),
+                    tooltip: window_tooltip(&app_id, agent.as_ref()),
+                    kind: window_kind(&app_id, agent),
                     icon: desktop_icon::icon_for_app_id(&app_id),
                     active,
                     urgent,
@@ -67,25 +64,26 @@ pub(super) fn window_tile_vm(window: WindowNode) -> Observable<Option<ViewModel>
     .box_it()
 }
 
-fn window_kind(title: &str, agent: Option<Agent>) -> Kind {
+fn window_kind(app_id: &str, agent: Option<Agent>) -> Kind {
     if let Some(agent) = agent {
         return Kind::Agent(agent);
     }
 
-    let title = title.to_ascii_lowercase();
-    if title.contains("nvim") || title.contains("neovim") {
+    let app_id = app_id.to_ascii_lowercase();
+    if app_id.contains("nvim") || app_id.contains("neovim") {
         Kind::Neovim
     } else {
         Kind::Plain
     }
 }
 
-fn window_tooltip(title: &str, agent: Option<&Agent>) -> String {
+fn window_tooltip(app_id: &str, agent: Option<&Agent>) -> String {
+    let label = if app_id.is_empty() { "Window" } else { app_id };
     let Some(agent) = agent else {
-        return title.to_owned();
+        return label.to_owned();
     };
 
-    let mut lines = vec![title.to_owned(), format!("Agent: {:?}", agent.state)];
+    let mut lines = vec![label.to_owned(), format!("Agent: {:?}", agent.state)];
     if agent.context_pct > 0 {
         lines.push(format!("Context: {}%", agent.context_pct));
     }

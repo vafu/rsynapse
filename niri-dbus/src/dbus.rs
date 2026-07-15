@@ -455,7 +455,7 @@ impl WindowInterface {
         self.id
     }
 
-    #[zbus(property)]
+    #[zbus(property(emits_changed_signal = "false"))]
     async fn title(&self) -> Vec<String> {
         self.state
             .read()
@@ -648,7 +648,7 @@ impl WindowInterface {
             .unwrap_or(0.0)
     }
 
-    #[zbus(property)]
+    #[zbus(property(emits_changed_signal = "false"))]
     async fn focus_timestamp_secs(&self) -> Vec<u64> {
         self.state
             .read()
@@ -660,7 +660,7 @@ impl WindowInterface {
             .collect()
     }
 
-    #[zbus(property)]
+    #[zbus(property(emits_changed_signal = "false"))]
     async fn focus_timestamp_nanos(&self) -> Vec<u32> {
         self.state
             .read()

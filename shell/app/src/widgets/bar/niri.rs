@@ -83,10 +83,6 @@ impl NiriWindow {
         required(self.property("Id"), 0)
     }
 
-    pub(super) fn title(&self) -> Observable<Option<String>> {
-        optional(self.property("Title"))
-    }
-
     pub(super) fn app_id(&self) -> Observable<Option<String>> {
         optional(self.property("AppId"))
     }

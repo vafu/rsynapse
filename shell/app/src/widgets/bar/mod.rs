@@ -23,7 +23,6 @@ use std::{
     thread,
 };
 
-use gtk4_background_effect::BackgroundEffectRegion;
 use relm4::component::ComponentController;
 use relm4::prelude::*;
 use shell_core::{
@@ -60,9 +59,6 @@ use super::{
 use crate::{hints, request, theme};
 
 type WindowNode = niri::NiriWindow;
-
-const BAR_BACKGROUND_BLUR_CLASSES: &[&str] = &[BACKGROUND_BLUR_CLASS];
-const BAR_BACKGROUND_BLUR_RADIUS: i32 = 12;
 
 #[derive(Clone)]
 pub struct MainBarInit {
@@ -1116,10 +1112,6 @@ fn bar_window_config() -> WindowConfig {
                 .with_edge(Edge::Left),
         )
         .with_auto_exclusive_zone()
-        .with_background_blur_region(BackgroundEffectRegion::RoundedCssClasses {
-            classes: BAR_BACKGROUND_BLUR_CLASSES,
-            radius: BAR_BACKGROUND_BLUR_RADIUS,
-        })
         .with_namespace("rsynapse-bar")
 }
 
