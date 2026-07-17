@@ -1,9 +1,12 @@
 use async_channel::Sender;
 use futures_util::StreamExt;
+use locus::{RelationEndpoint, RelationRecord, keys};
 use shell_core::source::{self, Observable, rx::Observable as _};
+use shell_rx_macros::combine_latest;
 use zbus::{Connection, MatchRule, Message, MessageStream, Proxy, message::Type, names::BusName};
 
 use super::view::{self, BzBusView, Invocation};
+use crate::widgets::bar::WindowNode;
 use protocol::{
     INVOCATION_INTERFACE, InvocationMap, RawManagedObjects, SourceChange,
     apply_object_manager_signal, apply_properties_changed, invocations_from_managed_objects,
@@ -56,9 +59,43 @@ const DBUS_BUS_INTERFACE: &str = "org.freedesktop.DBus";
 const DBUS_OBJECT_MANAGER: &str = "org.freedesktop.DBus.ObjectManager";
 const DBUS_PROPERTIES: &str = "org.freedesktop.DBus.Properties";
 const PROPERTIES_CHANGED: &str = "PropertiesChanged";
+const WINDOW_BUILD_INVOCATION_RELATION: &str = "org.rsynapse.window.build-invocation";
 
-pub(in crate::widgets::bar) fn bzbus_status() -> Observable<BzBusView> {
-    source::shared_by_key("rsynapse.bzbus-status", BZBUS_OBJECT_PATH, || {
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct BzBusSnapshot {
+    active: bool,
+    invocations: Vec<Invocation>,
+}
+
+pub(in crate::widgets::bar) fn bzbus_for_window(
+    window: WindowNode,
+) -> Observable<Option<BzBusView>> {
+    source::switch_map(window.id().box_it(), |window_id| {
+        combine_latest!(
+            bzbus_snapshots(),
+            invocation_ids_for_window(window_id)
+                => |(snapshot, invocation_ids)| {
+                    if invocation_ids.is_empty() {
+                        return None;
+                    }
+
+                    let invocations = snapshot
+                        .invocations
+                        .into_iter()
+                        .filter(|invocation| invocation_ids.iter().any(|id| id == &invocation.id))
+                        .collect();
+                    Some(view::view(snapshot.active, invocations))
+                },
+        )
+        .distinct_until_changed()
+        .box_it()
+    })
+    .distinct_until_changed()
+    .box_it()
+}
+
+fn bzbus_snapshots() -> Observable<BzBusSnapshot> {
+    source::shared_by_key("rsynapse.bzbus-snapshots", BZBUS_OBJECT_PATH, || {
         source::from_task(|sender| async move {
             run_bzbus_source(sender).await;
         })
@@ -67,7 +104,7 @@ pub(in crate::widgets::bar) fn bzbus_status() -> Observable<BzBusView> {
     })
 }
 
-async fn run_bzbus_source(sender: Sender<Result<BzBusView, String>>) {
+async fn run_bzbus_source(sender: Sender<Result<BzBusSnapshot, String>>) {
     let connection = match Connection::session().await {
         Ok(connection) => connection,
         Err(error) => {
@@ -117,8 +154,8 @@ async fn run_bzbus_source(sender: Sender<Result<BzBusView, String>>) {
 
 async fn watch_bzbus_until_owner_changes(
     connection: &Connection,
-    sender: &Sender<Result<BzBusView, String>>,
-    latest: &mut Option<BzBusView>,
+    sender: &Sender<Result<BzBusSnapshot, String>>,
+    latest: &mut Option<BzBusSnapshot>,
     owner_changes: &mut MessageStream,
 ) -> Result<WatchExit, String> {
     let manager = object_manager_proxy(connection).await?;
@@ -192,18 +229,187 @@ async fn watch_bzbus_until_owner_changes(
 }
 
 async fn emit_view(
-    sender: &Sender<Result<BzBusView, String>>,
-    latest: &mut Option<BzBusView>,
+    sender: &Sender<Result<BzBusSnapshot, String>>,
+    latest: &mut Option<BzBusSnapshot>,
     active: bool,
     invocations: Vec<Invocation>,
 ) -> bool {
-    let view = view::view(active, invocations);
-    if latest.as_ref() == Some(&view) {
+    let snapshot = BzBusSnapshot {
+        active,
+        invocations,
+    };
+    if latest.as_ref() == Some(&snapshot) {
         return true;
     }
 
-    *latest = Some(view.clone());
-    sender.send(Ok(view)).await.is_ok()
+    *latest = Some(snapshot.clone());
+    sender.send(Ok(snapshot)).await.is_ok()
+}
+
+fn invocation_ids_for_window(window_id: u64) -> Observable<Vec<String>> {
+    let subject = RelationEndpoint::stable_key(keys::NIRI_WINDOW_ID, window_id.to_string());
+    locus_targets(subject, WINDOW_BUILD_INVOCATION_RELATION)
+        .map(|targets| {
+            targets
+                .into_iter()
+                .filter_map(invocation_id_from_target)
+                .collect()
+        })
+        .distinct_until_changed()
+        .box_it()
+}
+
+fn invocation_id_from_target(target: RelationEndpoint) -> Option<String> {
+    let RelationEndpoint::StableKey { kind, id } = target else {
+        return None;
+    };
+    (kind == keys::BAZEL_INVOCATION_ID).then_some(id)
+}
+
+fn locus_targets(
+    subject: RelationEndpoint,
+    relation: &'static str,
+) -> Observable<Vec<RelationEndpoint>> {
+    let key = format!("{subject:?}:{relation}");
+    source::shared_by_key("rsynapse.bzbus-locus-targets", key, move || {
+        let subject = subject.clone();
+        source::from_task(move |sender| {
+            let subject = subject.clone();
+            async move {
+                let Err(error) = run_locus_targets(sender, subject.clone(), relation).await else {
+                    return;
+                };
+                eprintln!(
+                    "[bzbus] failed to watch locus targets for {subject:?}/{relation}: {error}"
+                );
+            }
+        })
+        .distinct_until_changed()
+        .box_it()
+    })
+}
+
+async fn run_locus_targets(
+    sender: async_channel::Sender<Result<Vec<RelationEndpoint>, String>>,
+    subject: RelationEndpoint,
+    relation: &'static str,
+) -> Result<(), String> {
+    let connection = Connection::session()
+        .await
+        .map_err(|error| format!("connect session bus: {error}"))?;
+    let proxy = relations_proxy(&connection)
+        .await
+        .map_err(|error| format!("connect locus proxy: {error}"))?;
+
+    send_targets(&sender, &proxy, &subject, relation).await?;
+
+    let mut added = Box::pin(
+        proxy
+            .receive_signal("RelationAdded")
+            .await
+            .map_err(to_string)?,
+    );
+    let mut updated = Box::pin(
+        proxy
+            .receive_signal("RelationUpdated")
+            .await
+            .map_err(to_string)?,
+    );
+    let mut removed = Box::pin(
+        proxy
+            .receive_signal("RelationRemoved")
+            .await
+            .map_err(to_string)?,
+    );
+    let mut cleared = Box::pin(
+        proxy
+            .receive_signal("RelationCleared")
+            .await
+            .map_err(to_string)?,
+    );
+
+    loop {
+        tokio::select! {
+            message = added.next() => {
+                let Some(message) = message else { return Ok(()); };
+                if relation_record_matches(&message, &subject, relation)? {
+                    send_targets(&sender, &proxy, &subject, relation).await?;
+                }
+            }
+            message = updated.next() => {
+                let Some(message) = message else { return Ok(()); };
+                if relation_record_matches(&message, &subject, relation)? {
+                    send_targets(&sender, &proxy, &subject, relation).await?;
+                }
+            }
+            message = removed.next() => {
+                let Some(message) = message else { return Ok(()); };
+                if relation_record_matches(&message, &subject, relation)? {
+                    send_targets(&sender, &proxy, &subject, relation).await?;
+                }
+            }
+            message = cleared.next() => {
+                let Some(message) = message else { return Ok(()); };
+                if clear_matches(&message, &subject, relation)? {
+                    send_targets(&sender, &proxy, &subject, relation).await?;
+                }
+            }
+        }
+    }
+}
+
+async fn send_targets(
+    sender: &async_channel::Sender<Result<Vec<RelationEndpoint>, String>>,
+    proxy: &Proxy<'_>,
+    subject: &RelationEndpoint,
+    relation: &str,
+) -> Result<(), String> {
+    let targets = match proxy
+        .call::<_, _, Vec<RelationEndpoint>>("Targets", &(subject, relation))
+        .await
+    {
+        Ok(targets) => targets,
+        Err(error) if is_locus_unavailable(&error) => Vec::new(),
+        Err(error) => return Err(format!("read locus targets: {error}")),
+    };
+    sender
+        .send(Ok(targets))
+        .await
+        .map_err(|_| "locus targets subscriber dropped".to_string())
+}
+
+async fn relations_proxy(connection: &Connection) -> zbus::Result<Proxy<'_>> {
+    Proxy::new(
+        connection,
+        locus::BUS_NAME,
+        locus::OBJECT_PATH,
+        locus::RELATIONS_INTERFACE,
+    )
+    .await
+}
+
+fn relation_record_matches(
+    message: &zbus::Message,
+    subject: &RelationEndpoint,
+    relation: &str,
+) -> Result<bool, String> {
+    let record = message
+        .body()
+        .deserialize::<RelationRecord>()
+        .map_err(|error| format!("decode locus relation signal: {error}"))?;
+    Ok(record.subject == *subject && record.relation == relation)
+}
+
+fn clear_matches(
+    message: &zbus::Message,
+    subject: &RelationEndpoint,
+    relation: &str,
+) -> Result<bool, String> {
+    let (cleared_subject, cleared_relation, _count) = message
+        .body()
+        .deserialize::<(RelationEndpoint, String, u32)>()
+        .map_err(|error| format!("decode locus clear signal: {error}"))?;
+    Ok(cleared_subject == *subject && cleared_relation == relation)
 }
 
 async fn object_manager_proxy(connection: &Connection) -> Result<Proxy<'_>, String> {
@@ -306,6 +512,22 @@ fn decode_bzbus_owner_changed(message: zbus::Result<Message>) -> Result<Option<b
 
 fn format_dbus_error(context: &str, error: impl std::fmt::Display) -> String {
     format!("{context} failed: {error}")
+}
+
+fn to_string(error: zbus::Error) -> String {
+    error.to_string()
+}
+
+fn is_locus_unavailable(error: &zbus::Error) -> bool {
+    match error {
+        zbus::Error::MethodError(name, _, _) => {
+            name.as_str() == "org.freedesktop.DBus.Error.ServiceUnknown"
+        }
+        zbus::Error::FDO(error) => {
+            matches!(error.as_ref(), zbus::fdo::Error::ServiceUnknown(_))
+        }
+        _ => false,
+    }
 }
 
 enum WatchExit {

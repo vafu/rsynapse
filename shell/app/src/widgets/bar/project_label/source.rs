@@ -1,4 +1,5 @@
 mod agent;
+mod build;
 mod project;
 mod workspace_fallback;
 
@@ -8,8 +9,10 @@ mod test;
 use shell_core::source::{Observable, rx::Observable as _};
 use shell_rx_macros::combine_latest;
 
+pub(super) use self::build::WorkspaceBuildState;
 use self::{
     agent::{WorkspaceAgentState, workspace_agent_state},
+    build::workspace_build_state,
     project::project_details,
     workspace_fallback::workspace_window_fallback_source,
 };
@@ -27,6 +30,7 @@ pub(in crate::widgets::bar) struct ProjectLabelVm {
     pub(super) project_icon_is_app: bool,
     pub(super) empty: bool,
     pub(super) agent: WorkspaceAgentState,
+    pub(super) build: WorkspaceBuildState,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -41,6 +45,7 @@ pub(super) fn project_label_vm(workspace: NiriWorkspace) -> Observable<ProjectLa
     let project = project_details(workspace.clone());
     let workspace_fallback = workspace_window_fallback_source(workspace.clone());
     let agent = workspace_agent_state(workspace.clone());
+    let build = workspace_build_state(workspace.clone());
 
     combine_latest!(
         workspace.index().map(u32::from),
@@ -49,8 +54,9 @@ pub(super) fn project_label_vm(workspace: NiriWorkspace) -> Observable<ProjectLa
         workspace.focused(),
         project,
         workspace_fallback,
-        agent
-            => |(index, workspace_name, urgent, active, project, fallback, agent)| {
+        agent,
+        build
+            => |(index, workspace_name, urgent, active, project, fallback, agent, build)| {
                 let fallback_icon = (!project.has_project).then_some(fallback.icon).flatten();
                 let project_icon_is_app = fallback_icon.is_some();
                 let project_icon = project.icon.or(fallback_icon);
@@ -65,6 +71,7 @@ pub(super) fn project_label_vm(workspace: NiriWorkspace) -> Observable<ProjectLa
                     project_icon_is_app,
                     empty: !project.has_project && fallback.empty,
                     agent,
+                    build,
                 }
             },
     )

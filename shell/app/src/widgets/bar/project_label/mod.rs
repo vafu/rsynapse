@@ -3,7 +3,7 @@ mod source;
 use relm4::prelude::*;
 use shell_core::gtk::{self, prelude::*};
 
-use self::source::{ProjectLabelVm, project_label_vm};
+use self::source::{ProjectLabelVm, WorkspaceBuildState, project_label_vm};
 
 use super::WorkspaceNode;
 use crate::{
@@ -66,6 +66,8 @@ impl SimpleComponent for ProjectLabel {
                         add_css_class: "workspaces-collapsed-icon",
                         set_halign: gtk::Align::Center,
                         set_hexpand: false,
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 2,
 
                         #[local_ref]
                         icon -> gtk::Image {
@@ -74,6 +76,19 @@ impl SimpleComponent for ProjectLabel {
 
                             #[watch]
                             set_icon_name: Some(project_icon_name(&model.vm).as_str()),
+                        },
+
+                        gtk::Image {
+                            #[watch]
+                            set_css_classes: &workspace_build_indicator_classes(model.vm.build),
+
+                            #[watch]
+                            set_icon_name: Some(workspace_build_indicator_icon(model.vm.build).as_str()),
+
+                            #[watch]
+                            set_visible: model.vm.build != WorkspaceBuildState::None,
+
+                            set_pixel_size: 12,
                         }
                     }
                 },
@@ -252,10 +267,31 @@ fn project_icon_name(model: &ProjectLabelVm) -> String {
 
 fn project_icon_classes(model: &ProjectLabelVm) -> &'static [&'static str] {
     if model.project_icon_is_app {
-        &["workspace-app-icon"]
+        &["workspace-app-icon", "workspace-project-icon"]
     } else {
-        &["materialicon"]
+        &["materialicon", "workspace-project-icon"]
     }
+}
+
+fn workspace_build_indicator_classes(state: WorkspaceBuildState) -> Vec<&'static str> {
+    let mut classes = vec!["materialicon", "workspace-build-indicator"];
+    match state {
+        WorkspaceBuildState::None => {}
+        WorkspaceBuildState::Running => classes.push("workspace-build-running"),
+        WorkspaceBuildState::Failed => classes.push("workspace-build-failed"),
+        WorkspaceBuildState::Finished => classes.push("workspace-build-finished"),
+    }
+    classes
+}
+
+fn workspace_build_indicator_icon(state: WorkspaceBuildState) -> String {
+    let icon = match state {
+        WorkspaceBuildState::None => "",
+        WorkspaceBuildState::Running => "build",
+        WorkspaceBuildState::Failed => "priority_high",
+        WorkspaceBuildState::Finished => "check",
+    };
+    material_icon::icon_name(icon)
 }
 
 fn project_primary(model: &ProjectLabelVm, _workspace: &WorkspaceNode) -> String {

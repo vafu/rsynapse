@@ -57,6 +57,32 @@ $outline-offset: $label-margin * 0.5;
 .workspace-window-frame {
   margin-top: 4px;
 
+  >.track,
+  >.level {
+    margin: 0;
+  }
+
+  >.track {
+    color: color-mix(in srgb, #{$fg} 20%, transparent);
+  }
+
+  >.level {
+    color: #{$fg};
+
+    &.idle,
+    &.offline {
+      color: color-mix(in srgb, #{$fg} 60%, #{$bg});
+    }
+
+    &.failed {
+      color: color-mix(in srgb, #{$ws_urgent} 78%, #{$fg});
+    }
+
+    &.finished {
+      color: color-mix(in srgb, #{$sys_ok} 74%, #{$fg});
+    }
+  }
+
   &.workspace-window-agent {
     .agent-subagent-badge {
       min-width: 12px;
@@ -97,6 +123,29 @@ $outline-offset: $label-margin * 0.5;
     @include rsx-surface-danger;
 
     opacity: 1;
+  }
+
+  &.workspace-window-build {
+    &.idle {
+      opacity: 0.58;
+    }
+
+    &.offline {
+      color: color-mix(in srgb, #{$fg} 60%, #{$bg});
+    }
+
+    &.running image {
+      animation: bzbus-spin 1.2s linear infinite;
+    }
+
+    &.failed {
+      @include rsx-surface-danger;
+      opacity: 1;
+    }
+
+    &.finished {
+      color: color-mix(in srgb, #{$sys_ok} 74%, #{$fg});
+    }
   }
 
   &.workspace-window-agent {
@@ -482,6 +531,24 @@ $outline-offset: $label-margin * 0.5;
     border-radius: 12px 0 0 12px;
   }
 
+  .workspace-build-indicator {
+    margin-left: 1px;
+    opacity: 0.96;
+
+    &.workspace-build-running {
+      color: color-mix(in srgb, #{$accent_color} 86%, #{$fg});
+      animation: bzbus-spin 1.2s linear infinite;
+    }
+
+    &.workspace-build-failed {
+      color: color-mix(in srgb, #{$ws_urgent} 86%, #{$fg});
+    }
+
+    &.workspace-build-finished {
+      color: color-mix(in srgb, #{$sys_ok} 82%, #{$fg});
+    }
+  }
+
   .button-subgroup-main,
   .projects-root-button {
     min-width: 0;
@@ -531,13 +598,11 @@ $outline-offset: $label-margin * 0.5;
     opacity: 0.58;
   }
 
-  &.has-working:not(.has-attention) .projects-collapsed-icon materialicon,
-  &.has-working:not(.has-attention) .projects-collapsed-icon .materialicon {
+  &.has-working:not(.has-attention) .projects-collapsed-icon .workspace-project-icon {
     animation: agent-thinking-pulse 0.5s ease-in-out infinite;
   }
 
-  &.has-attention .projects-collapsed-icon materialicon,
-  &.has-attention .projects-collapsed-icon .materialicon {
+  &.has-attention .projects-collapsed-icon .workspace-project-icon {
     animation: agent-attention-shake 0.4s ease-in-out infinite;
   }
 }

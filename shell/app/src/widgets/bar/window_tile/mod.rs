@@ -8,7 +8,7 @@ use self::{
     agent::{Agent, State as AgentState},
     source::{Kind, ViewModel, window_tile_vm},
 };
-use super::WindowNode;
+use super::{WindowNode, bzbus};
 use crate::widgets::{
     BACKGROUND_BLUR_CLASS,
     level_indicator::{self, LevelRenderStyle, LevelStage, LineStyle},
@@ -146,6 +146,32 @@ impl SimpleComponent for WindowTile {
 
                 #[watch]
                 set_visible: agent_unseen_visible(&model.vm),
+            },
+
+            add_overlay = &gtk::DrawingArea {
+                #[watch]
+                set_visible: build_progress_visible(&model.vm),
+                set_css_classes: bzbus::progress_track_classes(),
+                set_halign: gtk::Align::Fill,
+                set_valign: gtk::Align::Fill,
+                set_hexpand: true,
+                set_vexpand: true,
+                set_can_target: false,
+                set_draw_func: bzbus::progress_track_draw_func(),
+            },
+
+            add_overlay = &gtk::DrawingArea {
+                #[watch]
+                set_visible: build_progress_visible(&model.vm),
+                #[watch]
+                set_css_classes: &build_progress_level_classes(&model.vm),
+                set_halign: gtk::Align::Fill,
+                set_valign: gtk::Align::Fill,
+                set_hexpand: true,
+                set_vexpand: true,
+                set_can_target: false,
+                #[watch]
+                set_draw_func: bzbus::progress_level_draw_func(build_progress_percent(&model.vm)),
             }
         }
     }
@@ -170,6 +196,9 @@ fn traced_window_tile_classes(vm: &Option<ViewModel>) -> Vec<&'static str> {
         has_agent = vm
             .as_ref()
             .is_some_and(|vm| matches!(vm.kind, Kind::Agent(_))),
+        has_build = vm
+            .as_ref()
+            .is_some_and(|vm| matches!(vm.kind, Kind::Build(_))),
     )
     .entered();
     window_tile_classes(vm)
@@ -189,20 +218,28 @@ fn window_tile_classes(vm: &Option<ViewModel>) -> Vec<&'static str> {
         Kind::Plain => "workspace-window-plain",
         Kind::Neovim => "workspace-window-neovim",
         Kind::Agent(_) => "workspace-window-agent",
+        Kind::Build(_) => "workspace-window-build",
     });
 
-    if let Kind::Agent(agent) = &vm.kind {
-        classes.push("agent-window");
-        if agent.attention {
-            classes.push("attention");
+    match &vm.kind {
+        Kind::Agent(agent) => {
+            classes.push("agent-window");
+            if agent.attention {
+                classes.push("attention");
+            }
+            match agent.state {
+                AgentState::None => {}
+                AgentState::Idle => classes.push("idle"),
+                AgentState::Thinking => classes.push("thinking"),
+                AgentState::ToolUse => classes.push("tool-use"),
+                AgentState::Compacting => classes.push("compacting"),
+            }
         }
-        match agent.state {
-            AgentState::None => {}
-            AgentState::Idle => classes.push("idle"),
-            AgentState::Thinking => classes.push("thinking"),
-            AgentState::ToolUse => classes.push("tool-use"),
-            AgentState::Compacting => classes.push("compacting"),
+        Kind::Build(build) => {
+            classes.push("build-window");
+            classes.extend(build_state_classes(build));
         }
+        Kind::Plain | Kind::Neovim => {}
     }
 
     if vm.active {
@@ -218,6 +255,7 @@ fn window_tile_classes(vm: &Option<ViewModel>) -> Vec<&'static str> {
 fn window_icon_name(vm: &Option<ViewModel>) -> Option<String> {
     vm.as_ref().map(|vm| match &vm.kind {
         Kind::Agent(agent) => agent_icon(agent, &vm.icon),
+        Kind::Build(build) => material_icon::icon_name(build.icon),
         Kind::Plain | Kind::Neovim => vm.icon.clone(),
     })
 }
@@ -238,7 +276,7 @@ fn is_agent(vm: &Option<ViewModel>) -> bool {
 fn agent_unseen_visible(vm: &Option<ViewModel>) -> bool {
     vm.as_ref().is_some_and(|vm| match &vm.kind {
         Kind::Agent(agent) => agent.unseen,
-        Kind::Plain | Kind::Neovim => false,
+        Kind::Build(_) | Kind::Plain | Kind::Neovim => false,
     })
 }
 
@@ -246,7 +284,7 @@ fn context_pct(vm: &Option<ViewModel>) -> u32 {
     vm.as_ref()
         .and_then(|vm| match &vm.kind {
             Kind::Agent(agent) => Some(agent.context_pct),
-            Kind::Plain | Kind::Neovim => None,
+            Kind::Build(_) | Kind::Plain | Kind::Neovim => None,
         })
         .unwrap_or(0)
 }
@@ -257,4 +295,38 @@ fn context_indicator_root_classes() -> Vec<&'static str> {
 
 fn context_indicator_level_classes(context_pct: u32) -> Vec<&'static str> {
     level_indicator::level_classes(f64::from(context_pct), 0.0, CONTEXT_STAGES)
+}
+
+fn build_state_classes(build: &bzbus::BzBusView) -> impl Iterator<Item = &'static str> + '_ {
+    build.classes.iter().copied().filter(|class| {
+        matches!(
+            *class,
+            "idle" | "offline" | "running" | "failed" | "finished"
+        )
+    })
+}
+
+fn build_progress_visible(vm: &Option<ViewModel>) -> bool {
+    vm.as_ref().is_some_and(|vm| match &vm.kind {
+        Kind::Build(build) => build.progress_visible,
+        Kind::Agent(_) | Kind::Plain | Kind::Neovim => false,
+    })
+}
+
+fn build_progress_percent(vm: &Option<ViewModel>) -> u8 {
+    vm.as_ref()
+        .and_then(|vm| match &vm.kind {
+            Kind::Build(build) => Some(build.progress_percent),
+            Kind::Agent(_) | Kind::Plain | Kind::Neovim => None,
+        })
+        .unwrap_or(0)
+}
+
+fn build_progress_level_classes(vm: &Option<ViewModel>) -> Vec<&'static str> {
+    vm.as_ref()
+        .and_then(|vm| match &vm.kind {
+            Kind::Build(build) => Some(build.progress_level_classes.clone()),
+            Kind::Agent(_) | Kind::Plain | Kind::Neovim => None,
+        })
+        .unwrap_or_else(|| vec!["level", "idle"])
 }

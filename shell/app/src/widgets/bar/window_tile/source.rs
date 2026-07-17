@@ -3,7 +3,10 @@ use shell_rx_macros::combine_latest;
 
 use crate::desktop_icon;
 
-use super::super::WindowNode;
+use super::super::{
+    WindowNode,
+    bzbus::{self, BzBusView},
+};
 use super::agent::{self, Agent};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -11,6 +14,7 @@ pub(in crate::widgets::bar) enum Kind {
     Plain,
     Neovim,
     Agent(Agent),
+    Build(BzBusView),
 }
 
 impl Default for Kind {
@@ -33,27 +37,30 @@ pub(super) fn window_tile_vm(window: WindowNode) -> Observable<Option<ViewModel>
     let app_id = window.app_id().map(|app_id| app_id.and_then(non_empty));
     let active = window.focused();
     let urgent = window.urgent();
-    let agent = agent::agent_for_window(window);
+    let agent = agent::agent_for_window(window.clone());
+    let build = bzbus::bzbus_for_window(window);
 
     combine_latest!(
         window_id,
         app_id,
         active,
         urgent,
-        agent
-            => move |(_window_id, app_id, active, urgent, agent)| {
+        agent,
+        build
+            => move |(_window_id, app_id, active, urgent, agent, build)| {
                 let _span = tracing::trace_span!(
                     "bar.window_tile_vm",
                     window_id = _window_id,
                     active,
                     urgent,
-                    has_agent = agent.is_some()
+                    has_agent = agent.is_some(),
+                    has_build = build.is_some()
                 )
                 .entered();
                 let app_id = app_id.unwrap_or_default();
                 Some(ViewModel {
-                    tooltip: window_tooltip(&app_id, agent.as_ref()),
-                    kind: window_kind(&app_id, agent),
+                    tooltip: window_tooltip(&app_id, agent.as_ref(), build.as_ref()),
+                    kind: window_kind(&app_id, agent, build),
                     icon: desktop_icon::icon_for_app_id(&app_id),
                     active,
                     urgent,
@@ -64,9 +71,12 @@ pub(super) fn window_tile_vm(window: WindowNode) -> Observable<Option<ViewModel>
     .box_it()
 }
 
-fn window_kind(app_id: &str, agent: Option<Agent>) -> Kind {
+fn window_kind(app_id: &str, agent: Option<Agent>, build: Option<BzBusView>) -> Kind {
     if let Some(agent) = agent {
         return Kind::Agent(agent);
+    }
+    if let Some(build) = build {
+        return Kind::Build(build);
     }
 
     let app_id = app_id.to_ascii_lowercase();
@@ -77,18 +87,20 @@ fn window_kind(app_id: &str, agent: Option<Agent>) -> Kind {
     }
 }
 
-fn window_tooltip(app_id: &str, agent: Option<&Agent>) -> String {
+fn window_tooltip(app_id: &str, agent: Option<&Agent>, build: Option<&BzBusView>) -> String {
     let label = if app_id.is_empty() { "Window" } else { app_id };
-    let Some(agent) = agent else {
-        return label.to_owned();
-    };
-
-    let mut lines = vec![label.to_owned(), format!("Agent: {:?}", agent.state)];
-    if agent.context_pct > 0 {
-        lines.push(format!("Context: {}%", agent.context_pct));
+    if let Some(agent) = agent {
+        let mut lines = vec![label.to_owned(), format!("Agent: {:?}", agent.state)];
+        if agent.context_pct > 0 {
+            lines.push(format!("Context: {}%", agent.context_pct));
+        }
+        return lines.join("\n");
+    }
+    if let Some(build) = build {
+        return format!("{label}\n{}", build.tooltip);
     }
 
-    lines.join("\n")
+    label.to_owned()
 }
 
 pub(super) fn non_empty(value: String) -> Option<String> {
