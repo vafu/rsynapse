@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-metadata_file=".project.json"
 default_icon="folder_code"
 default_branch_regex='^(?:[^/]+/)?(?P<subproj>[^/]+)/(?P<task>.+)$'
 
@@ -54,36 +53,20 @@ project_root_for_path() {
   realpath "$root"
 }
 
-metadata_json() {
-  local root="$1"
-  if [[ -f "$root/$metadata_file" ]]; then
-    jq -c 'if type == "object" then . else error("'"$metadata_file"' must contain a JSON object") end' "$root/$metadata_file"
-  else
-    printf '{}\n'
-  fi
-}
-
-metadata_string_or_empty() {
-  local root="$1"
-  local key="$2"
-  metadata_json "$root" | jq -r --arg key "$key" '.[$key] // empty | select(type == "string")'
-}
-
 project_name() {
   local root="$1"
-  local name
-  name="$(metadata_string_or_empty "$root" name)"
-  if [[ -n "$name" ]]; then
-    printf '%s\n' "$name"
-  else
-    basename "$root"
-  fi
+  basename "$root"
 }
 
-project_icon_default() {
-  local name="$1"
-  local icon
-  if icon="$(pick-icon --string "$name" --top 1 --json 2>/dev/null | jq -r '.[0].icon // empty')" && [[ -n "$icon" ]]; then
+project_icon() {
+  local query icon
+  local -a args
+  args=()
+  for query in "$@"; do
+    [[ -n "$query" ]] || continue
+    args+=(--string "$query")
+  done
+  if [[ "${#args[@]}" -gt 0 ]] && icon="$(pick-icon "${args[@]}" --top 1 --json 2>/dev/null | jq -r '.[0].icon // empty')" && [[ -n "$icon" ]]; then
     printf '%s\n' "$icon"
   else
     printf '%s\n' "$default_icon"
@@ -96,15 +79,46 @@ git_output() {
   git -C "$root" "$@" 2>/dev/null || true
 }
 
-branch_fields() {
+split_branch() {
   local branch="$1"
-  local regex="$2"
   local jq_regex
-  jq_regex="${regex//(?P</(?<}"
+  jq_regex="${default_branch_regex//(?P</(?<}"
   jq -cn --arg branch "$branch" --arg regex "$jq_regex" '
     ($branch | capture($regex)? // {}) |
     {subproj: (.subproj // null), task: (.task // null)}
   '
+}
+
+branch_field() {
+  local fields="$1"
+  local key="$2"
+  jq -r --arg key "$key" '.[$key] // empty' <<<"$fields"
+}
+
+display_main_for_project() {
+  local name="$1"
+  local fields="$2"
+  local subproj task
+  subproj="$(branch_field "$fields" subproj)"
+  task="$(branch_field "$fields" task)"
+  if [[ -n "$subproj" && -n "$task" ]]; then
+    printf '%s\n' "$subproj"
+  else
+    printf '%s\n' "$name"
+  fi
+}
+
+display_secondary_for_project() {
+  local branch="$1"
+  local fields="$2"
+  local subproj task
+  subproj="$(branch_field "$fields" subproj)"
+  task="$(branch_field "$fields" task)"
+  if [[ -n "$subproj" && -n "$task" ]]; then
+    printf '%s\n' "$task"
+  else
+    printf '%s\n' "$branch"
+  fi
 }
 
 project_ref() {
@@ -133,54 +147,42 @@ selected_workspace_id() {
 
 build_snapshot() {
   local root="$1"
-  local metadata branch worktree worktree_name regex fields display_main icon_default
-  metadata="$(metadata_json "$root")"
+  local name branch worktree worktree_name fields display_main display_secondary icon
+  name="$(project_name "$root")"
   branch="$(git_output "$root" branch --show-current)"
   worktree="$(git_output "$root" rev-parse --show-toplevel)"
   worktree_name=""
   [[ -n "$worktree" ]] && worktree_name="$(basename "$worktree")"
-  regex="$(jq -r --arg default "$default_branch_regex" '.branch_regex // $default' <<<"$metadata")"
-  fields="$(branch_fields "$branch" "$regex")"
-  display_main="$(jq -rn \
-    --arg name "$(project_name "$root")" \
-    --argjson metadata "$metadata" \
-    --argjson fields "$fields" \
-    '$metadata."display-main" // (if $fields.subproj != null and $fields.task != null then $fields.subproj else ($metadata.name // $name) end)')"
-  icon_default="$(project_icon_default "$display_main")"
+  fields="$(split_branch "$branch")"
+  display_main="$(display_main_for_project "$name" "$fields")"
+  display_secondary="$(display_secondary_for_project "$branch" "$fields")"
+  icon="$(project_icon "$display_main" "$display_secondary")"
+
   jq -cn \
     --arg subject "$(project_ref "$root")" \
     --arg path "$root" \
-    --arg name "$(project_name "$root")" \
+    --arg name "$name" \
+    --arg icon "$icon" \
     --arg display_main "$display_main" \
-    --arg icon_default "$icon_default" \
+    --arg display_secondary "$display_secondary" \
     --arg branch "$branch" \
     --arg worktree "$worktree_name" \
     --arg worktree_path "$worktree" \
-    --argjson metadata "$metadata" \
     --argjson fields "$fields" '
       {
         subject: $subject,
         path: $path,
         name: $name,
-        icon: ($metadata.icon // $icon_default),
-        "display-icon": ($metadata."display-icon" // $icon_default),
+        icon: $icon,
+        "display-icon": $icon,
         "display-main": $display_main,
-        "display-secondary": (
-          $metadata."display-secondary"
-          // (if $fields.subproj != null and $fields.task != null then
-                $fields.task
-              elif $branch != "" then
-                $branch
-              else
-                null
-              end)
-        ),
+        "display-secondary": (if $display_secondary == "" then null else $display_secondary end),
         branch: (if $branch == "" then null else $branch end),
         worktree: (if $worktree == "" then null else $worktree end),
         "worktree-path": (if $worktree_path == "" then null else $worktree_path end),
         subproj: $fields.subproj,
         task: $fields.task,
-        metadata: $metadata
+        metadata: {}
       }
     '
 }

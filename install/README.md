@@ -14,6 +14,7 @@ The installer writes only user-local paths by default:
 - Launcher plugins: `~/.local/lib/rsynapse/plugins`
 - D-Bus activation files: `~/.local/share/dbus-1/services`
 - systemd user units: `~/.config/systemd/user`
+- git hooks: `~/.local/share/rsynapse/git-hooks`
 
 Installed binaries currently include:
 
@@ -25,6 +26,17 @@ Installed binaries currently include:
 - `rsynapse-cli`
 - `rsynapse-ui`
 - `proj`
+
+Installed git hooks currently include:
+
+- `post-checkout`
+- `post-merge`
+- `post-rewrite`
+
+When no global `core.hooksPath` is configured, the installer points it at the
+Rsynapse hook directory so branch changes from any process refresh project
+metadata through `proj update`. If another global hook path is already set, the
+installer leaves it alone.
 
 Installed D-Bus activation files currently include:
 

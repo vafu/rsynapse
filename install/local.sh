@@ -6,6 +6,7 @@ prefix="${PREFIX:-"$HOME/.local"}"
 local_bin="$prefix/bin"
 dbus_dir="$prefix/share/dbus-1/services"
 plugin_dir="$prefix/lib/rsynapse/plugins"
+git_hooks_dir="$prefix/share/rsynapse/git-hooks"
 systemd_user_dir="$HOME/.config/systemd/user"
 
 cargo_install() {
@@ -38,6 +39,19 @@ cargo_install "$repo_root/shell/launcher/rsynapse-ui"
 echo "Installing helper scripts to $local_bin"
 install -d "$local_bin"
 install -m 0755 "$repo_root/install/bin/proj" "$local_bin/proj"
+
+echo "Installing Rsynapse git hooks to $git_hooks_dir"
+install -d "$git_hooks_dir"
+find "$repo_root/install/git-hooks" -maxdepth 1 -type f \
+    -exec install -m 0755 {} "$git_hooks_dir/" \;
+if command -v git >/dev/null 2>&1; then
+    existing_hooks_path="$(git config --global --get core.hooksPath 2>/dev/null || true)"
+    if [[ -z "$existing_hooks_path" || "$existing_hooks_path" == "$git_hooks_dir" ]]; then
+        git config --global core.hooksPath "$git_hooks_dir"
+    else
+        echo "Global core.hooksPath is already set to $existing_hooks_path; skipped Rsynapse git hook activation"
+    fi
+fi
 
 echo "Building and installing launcher plugins to $plugin_dir"
 cargo build \
