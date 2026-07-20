@@ -3,7 +3,7 @@ set -euo pipefail
 
 metadata_file=".project.json"
 default_icon="folder_code"
-default_branch_regex='^[^/]+/(?P<subproj>[^/]+)/(?P<task>.+)$'
+default_branch_regex='^(?:[^/]+/)?(?P<subproj>[^/]+)/(?P<task>.+)$'
 
 locus_bus="org.rsynapse.Locus"
 locus_path="/org/rsynapse/Locus"
@@ -22,7 +22,6 @@ usage() {
 usage: proj <command> [args]
 
 commands:
-  init [--force] [path]
   root [path]
   metadata [--json] [key] [path]
   update [path]
@@ -49,21 +48,19 @@ absolute_dir() {
 }
 
 project_root_for_path() {
-  local dir
+  local dir root
   dir="$(absolute_dir "${1:-.}")"
-  while true; do
-    if [[ -f "$dir/$metadata_file" ]]; then
-      printf '%s\n' "$dir"
-      return 0
-    fi
-    [[ "$dir" != "/" ]] || return 1
-    dir="$(dirname "$dir")"
-  done
+  root="$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null)" || return 1
+  realpath "$root"
 }
 
 metadata_json() {
   local root="$1"
-  jq -c '.' "$root/$metadata_file"
+  if [[ -f "$root/$metadata_file" ]]; then
+    jq -c 'if type == "object" then . else error("'"$metadata_file"' must contain a JSON object") end' "$root/$metadata_file"
+  else
+    printf '{}\n'
+  fi
 }
 
 metadata_string_or_empty() {
@@ -86,7 +83,7 @@ project_name() {
 project_icon_default() {
   local name="$1"
   local icon
-  if icon="$(pick-icon "$name" 2>/dev/null)" && [[ -n "$icon" ]]; then
+  if icon="$(pick-icon --string "$name" --top 1 --json 2>/dev/null | jq -r '.[0].icon // empty')" && [[ -n "$icon" ]]; then
     printf '%s\n' "$icon"
   else
     printf '%s\n' "$default_icon"
@@ -136,7 +133,7 @@ selected_workspace_id() {
 
 build_snapshot() {
   local root="$1"
-  local metadata branch worktree worktree_name regex fields icon_default
+  local metadata branch worktree worktree_name regex fields display_main icon_default
   metadata="$(metadata_json "$root")"
   branch="$(git_output "$root" branch --show-current)"
   worktree="$(git_output "$root" rev-parse --show-toplevel)"
@@ -144,11 +141,17 @@ build_snapshot() {
   [[ -n "$worktree" ]] && worktree_name="$(basename "$worktree")"
   regex="$(jq -r --arg default "$default_branch_regex" '.branch_regex // $default' <<<"$metadata")"
   fields="$(branch_fields "$branch" "$regex")"
-  icon_default="$(project_icon_default "$(project_name "$root")")"
+  display_main="$(jq -rn \
+    --arg name "$(project_name "$root")" \
+    --argjson metadata "$metadata" \
+    --argjson fields "$fields" \
+    '$metadata."display-main" // (if $fields.subproj != null and $fields.task != null then $fields.subproj else ($metadata.name // $name) end)')"
+  icon_default="$(project_icon_default "$display_main")"
   jq -cn \
     --arg subject "$(project_ref "$root")" \
     --arg path "$root" \
     --arg name "$(project_name "$root")" \
+    --arg display_main "$display_main" \
     --arg icon_default "$icon_default" \
     --arg branch "$branch" \
     --arg worktree "$worktree_name" \
@@ -160,9 +163,18 @@ build_snapshot() {
         path: $path,
         name: $name,
         icon: ($metadata.icon // $icon_default),
-        "display-icon": ($metadata."display-icon" // $metadata.icon // $icon_default),
-        "display-main": ($metadata."display-main" // $metadata.name // $name),
-        "display-secondary": ($metadata."display-secondary" // null),
+        "display-icon": ($metadata."display-icon" // $icon_default),
+        "display-main": $display_main,
+        "display-secondary": (
+          $metadata."display-secondary"
+          // (if $fields.subproj != null and $fields.task != null then
+                $fields.task
+              elif $branch != "" then
+                $branch
+              else
+                null
+              end)
+        ),
         branch: (if $branch == "" then null else $branch end),
         worktree: (if $worktree == "" then null else $worktree end),
         "worktree-path": (if $worktree_path == "" then null else $worktree_path end),
@@ -332,25 +344,6 @@ niri_get_property() {
   busctl --user --json=short get-property "$niri_bus" "$niri_path" "$niri_interface" "$property"
 }
 
-cmd_init() {
-  local force=false
-  if [[ "${1:-}" == "--force" ]]; then
-    force=true
-    shift
-  fi
-  local root name icon
-  root="$(absolute_dir "${1:-.}")"
-  local file="$root/$metadata_file"
-  if [[ -e "$file" && "$force" != true ]]; then
-    die "$file already exists"
-  fi
-  name="$(basename "$root")"
-  icon="$(project_icon_default "$name")"
-  jq -n --arg name "$name" --arg icon "$icon" \
-    '{name: $name, icon: $icon}' > "$file"
-  printf '%s\n' "$file"
-}
-
 cmd_root() {
   project_root_for_path "${1:-.}" || die "project root not found"
 }
@@ -373,7 +366,7 @@ cmd_metadata() {
   if [[ "$json" == true ]]; then
     build_snapshot "$root" | jq '.'
   else
-    metadata_json "$root" | jq -r --arg key "$key" '.[$key] // empty'
+    build_snapshot "$root" | jq -r --arg key "$key" '.[$key] // empty'
   fi
 }
 
@@ -413,13 +406,13 @@ cmd_clear() {
 
 main() {
   need jq
+  need git
   need realpath
   need busctl
   local command="${1:-}"
   [[ -n "$command" ]] || { usage; exit 2; }
   shift || true
   case "$command" in
-    init) cmd_init "$@" ;;
     root) cmd_root "$@" ;;
     metadata) cmd_metadata "$@" ;;
     update) cmd_update "$@" ;;

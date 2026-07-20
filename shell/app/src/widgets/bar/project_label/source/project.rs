@@ -161,12 +161,10 @@ fn clear_matches(message: &zbus::Message, subject: &RelationEndpoint) -> Result<
 
 impl From<RelationRecord> for ProjectDetails {
     fn from(record: RelationRecord) -> Self {
-        let name = metadata_value(&record.metadata, &["display-main", "name"])
-            .or_else(|| project_target_name(&record.target));
         Self {
             has_project: true,
-            name,
-            branch: metadata_value(&record.metadata, &["display-secondary", "branch"]),
+            name: metadata_value(&record.metadata, &["display-main"]),
+            branch: metadata_value(&record.metadata, &["display-secondary"]),
             icon: metadata_value(&record.metadata, &["display-icon", "icon"]),
         }
     }
@@ -175,16 +173,6 @@ impl From<RelationRecord> for ProjectDetails {
 fn metadata_value(metadata: &HashMap<String, String>, keys: &[&str]) -> Option<String> {
     keys.iter()
         .find_map(|key| non_empty(metadata.get(*key).cloned()))
-}
-
-fn project_target_name(target: &RelationEndpoint) -> Option<String> {
-    let RelationEndpoint::StableKey { kind, id } = target else {
-        return None;
-    };
-    if kind != keys::PROJECT_PATH {
-        return None;
-    }
-    non_empty(id.rsplit('/').next().map(str::to_owned))
 }
 
 fn workspace_subject(id: u64) -> RelationEndpoint {
