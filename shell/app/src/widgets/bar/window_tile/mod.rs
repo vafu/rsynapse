@@ -39,6 +39,15 @@ const CONTEXT_STAGES: &[LevelStage] = &[
     },
 ];
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+enum BuildIndicatorState {
+    #[default]
+    None,
+    Running,
+    Failed,
+    Finished,
+}
+
 #[derive(Debug)]
 #[shell_macros::model(module = window_tile_sources)]
 pub(super) struct WindowTile {
@@ -148,6 +157,22 @@ impl SimpleComponent for WindowTile {
                 set_visible: agent_unseen_visible(&model.vm),
             },
 
+            add_overlay = &gtk::Image {
+                #[watch]
+                set_css_classes: &agent_build_indicator_classes(&model.vm),
+
+                #[watch]
+                set_icon_name: Some(agent_build_indicator_icon(&model.vm).as_str()),
+
+                #[watch]
+                set_visible: agent_build_indicator_visible(&model.vm),
+
+                set_can_target: false,
+                set_pixel_size: 12,
+                set_halign: gtk::Align::End,
+                set_valign: gtk::Align::End,
+            },
+
             add_overlay = &gtk::DrawingArea {
                 #[watch]
                 set_visible: build_progress_visible(&model.vm),
@@ -196,9 +221,7 @@ fn traced_window_tile_classes(vm: &Option<ViewModel>) -> Vec<&'static str> {
         has_agent = vm
             .as_ref()
             .is_some_and(|vm| matches!(vm.kind, Kind::Agent(_))),
-        has_build = vm
-            .as_ref()
-            .is_some_and(|vm| matches!(vm.kind, Kind::Build(_))),
+        has_build = vm.as_ref().is_some_and(|vm| vm.build.is_some()),
     )
     .entered();
     window_tile_classes(vm)
@@ -297,6 +320,60 @@ fn context_indicator_level_classes(context_pct: u32) -> Vec<&'static str> {
     level_indicator::level_classes(f64::from(context_pct), 0.0, CONTEXT_STAGES)
 }
 
+fn agent_build_indicator_state(vm: &Option<ViewModel>) -> BuildIndicatorState {
+    let Some(vm) = vm else {
+        return BuildIndicatorState::None;
+    };
+    if !matches!(vm.kind, Kind::Agent(_)) {
+        return BuildIndicatorState::None;
+    }
+    vm.build
+        .as_ref()
+        .map(build_indicator_state)
+        .unwrap_or_default()
+}
+
+fn build_indicator_state(build: &bzbus::BzBusView) -> BuildIndicatorState {
+    if build_has_state(build, "failed") {
+        BuildIndicatorState::Failed
+    } else if build_has_state(build, "running") {
+        BuildIndicatorState::Running
+    } else if build_has_state(build, "finished") {
+        BuildIndicatorState::Finished
+    } else {
+        BuildIndicatorState::None
+    }
+}
+
+fn agent_build_indicator_classes(vm: &Option<ViewModel>) -> Vec<&'static str> {
+    let mut classes = vec![
+        "materialicon",
+        "workspace-build-indicator",
+        "agent-build-indicator",
+    ];
+    match agent_build_indicator_state(vm) {
+        BuildIndicatorState::None => {}
+        BuildIndicatorState::Running => classes.push("workspace-build-running"),
+        BuildIndicatorState::Failed => classes.push("workspace-build-failed"),
+        BuildIndicatorState::Finished => classes.push("workspace-build-finished"),
+    }
+    classes
+}
+
+fn agent_build_indicator_icon(vm: &Option<ViewModel>) -> String {
+    let icon = match agent_build_indicator_state(vm) {
+        BuildIndicatorState::None => "",
+        BuildIndicatorState::Running => "build",
+        BuildIndicatorState::Failed => "priority_high",
+        BuildIndicatorState::Finished => "check",
+    };
+    material_icon::icon_name(icon)
+}
+
+fn agent_build_indicator_visible(vm: &Option<ViewModel>) -> bool {
+    agent_build_indicator_state(vm) != BuildIndicatorState::None
+}
+
 fn build_state_classes(build: &bzbus::BzBusView) -> impl Iterator<Item = &'static str> + '_ {
     build.classes.iter().copied().filter(|class| {
         matches!(
@@ -304,6 +381,10 @@ fn build_state_classes(build: &bzbus::BzBusView) -> impl Iterator<Item = &'stati
             "idle" | "offline" | "running" | "failed" | "finished"
         )
     })
+}
+
+fn build_has_state(build: &bzbus::BzBusView, state: &str) -> bool {
+    build.classes.iter().any(|class| class == &state)
 }
 
 fn build_progress_visible(vm: &Option<ViewModel>) -> bool {

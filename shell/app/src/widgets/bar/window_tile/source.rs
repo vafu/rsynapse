@@ -26,6 +26,7 @@ impl Default for Kind {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(in crate::widgets::bar) struct ViewModel {
     pub(super) kind: Kind,
+    pub(super) build: Option<BzBusView>,
     pub(super) icon: String,
     pub(super) tooltip: String,
     pub(super) active: bool,
@@ -60,7 +61,8 @@ pub(super) fn window_tile_vm(window: WindowNode) -> Observable<Option<ViewModel>
                 let app_id = app_id.unwrap_or_default();
                 Some(ViewModel {
                     tooltip: window_tooltip(&app_id, agent.as_ref(), build.as_ref()),
-                    kind: window_kind(&app_id, agent, build),
+                    kind: window_kind(&app_id, agent, build.clone()),
+                    build,
                     icon: desktop_icon::icon_for_app_id(&app_id),
                     active,
                     urgent,
@@ -93,6 +95,10 @@ fn window_tooltip(app_id: &str, agent: Option<&Agent>, build: Option<&BzBusView>
         let mut lines = vec![label.to_owned(), format!("Agent: {:?}", agent.state)];
         if agent.context_pct > 0 {
             lines.push(format!("Context: {}%", agent.context_pct));
+        }
+        if let Some(build) = build {
+            lines.push("Build:".to_owned());
+            lines.extend(build.tooltip.lines().map(str::to_owned));
         }
         return lines.join("\n");
     }

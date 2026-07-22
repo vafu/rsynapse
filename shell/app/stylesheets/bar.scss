@@ -57,6 +57,26 @@ $outline-offset: $label-margin * 0.5;
 .workspace-window-frame {
   margin-top: 4px;
 
+  .agent-build-indicator {
+    margin-bottom: -4px;
+    margin-right: -4px;
+    opacity: 0.96;
+    text-shadow: 0 0 2px color-mix(in srgb, #{$bg} 88%, transparent);
+
+    &.workspace-build-running {
+      color: color-mix(in srgb, #{$accent_color} 86%, #{$fg});
+      animation: bzbus-spin 1.2s linear infinite;
+    }
+
+    &.workspace-build-failed {
+      color: color-mix(in srgb, #{$ws_urgent} 86%, #{$fg});
+    }
+
+    &.workspace-build-finished {
+      color: color-mix(in srgb, #{$sys_ok} 82%, #{$fg});
+    }
+  }
+
   >.track,
   >.level {
     margin: 0;
