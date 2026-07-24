@@ -1,6 +1,8 @@
 mod card;
 mod model;
 mod service;
+#[cfg(test)]
+mod test;
 
 use std::time::Duration;
 
@@ -8,7 +10,10 @@ use relm4::prelude::*;
 use shell_core::{
     gtk::{self, prelude::*},
     list::{ComponentListBoxExt, ComponentListUpdate},
-    source::{self, Observable},
+    source::{
+        Observable,
+        dbus::{self, Bus, ObjectDescriptor, PropertyDescriptor},
+    },
     window::{self, Anchors, Edge, Layer, SurfaceMargins, WindowConfig},
 };
 
@@ -24,9 +29,23 @@ const NOTIFICATION_BACKGROUND_BLUR_RADIUS: i32 = 12;
 const NOTIFICATION_PANEL_WIDTH: i32 = 432;
 const NOTIFICATION_CONTENT_WIDTH: i32 = 400;
 const NOTIFICATION_CENTER_MAX_HEIGHT: i32 = 520;
+const EPHEMERAL_CENTER_TIMEOUT_MS: u64 = 30_000;
 
 pub(crate) fn has_notification_items() -> Observable<bool> {
-    source::once(false)
+    dbus::property_or(
+        PropertyDescriptor::new(notification_state_object(), "HasItems"),
+        false,
+    )
+}
+
+fn notification_state_object() -> ObjectDescriptor {
+    ObjectDescriptor::parse(
+        Bus::Session,
+        service::NOTIFICATIONS_BUS_NAME,
+        service::NOTIFICATIONS_OBJECT_PATH,
+        service::RSYNAPSE_NOTIFICATIONS_INTERFACE,
+    )
+    .expect("static notification state D-Bus descriptor should be valid")
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -37,7 +56,7 @@ pub struct NotificationsInit {
 pub struct NotificationsWindow {
     center_visible: bool,
     _request_server: Option<request::RequestServer>,
-    _dbus_server: Option<tokio::task::JoinHandle<()>>,
+    dbus_service: Option<service::NotificationsService>,
     generation: u64,
     notifications: Vec<NotificationView>,
     popup_notifications: Vec<NotificationView>,
@@ -51,7 +70,7 @@ pub enum NotificationsInput {
         id: u32,
         reason: NotificationClosedReason,
     },
-    Expire {
+    ExpirePopup {
         id: u32,
         generation: u64,
     },
@@ -68,7 +87,6 @@ impl SimpleAsyncComponent for NotificationsWindow {
         #[root]
         gtk::Window {
             add_css_class: "notifications-window",
-            add_css_class: BACKGROUND_BLUR_CLASS,
             #[watch]
             set_visible: model.window_visible(),
 
@@ -111,7 +129,6 @@ impl SimpleAsyncComponent for NotificationsWindow {
 
                     gtk::Box {
                         add_css_class: "notification-center",
-                        add_css_class: BACKGROUND_BLUR_CLASS,
                         set_orientation: gtk::Orientation::Vertical,
                         set_spacing: 8,
                         set_width_request: NOTIFICATION_PANEL_WIDTH,
@@ -123,6 +140,7 @@ impl SimpleAsyncComponent for NotificationsWindow {
 
                             gtk::Label {
                                 add_css_class: "notification-center-title",
+                                add_css_class: BACKGROUND_BLUR_CLASS,
                                 set_hexpand: true,
                                 set_halign: gtk::Align::Start,
                                 set_label: "Notifications",
@@ -131,6 +149,7 @@ impl SimpleAsyncComponent for NotificationsWindow {
                             #[name = "clear_button"]
                             gtk::Button {
                                 add_css_class: "notification-center-control",
+                                add_css_class: BACKGROUND_BLUR_CLASS,
                                 add_css_class: "flat",
                                 set_tooltip_text: Some("Clear notifications"),
                                 #[watch]
@@ -145,6 +164,7 @@ impl SimpleAsyncComponent for NotificationsWindow {
 
                         gtk::Label {
                             add_css_class: "notification-empty",
+                            add_css_class: BACKGROUND_BLUR_CLASS,
                             #[watch]
                             set_visible: model.notifications.is_empty(),
                             set_label: "No notifications",
@@ -196,11 +216,11 @@ impl SimpleAsyncComponent for NotificationsWindow {
                 }
             };
 
-        let dbus_server = Some(service::start(sender.input_sender().clone()));
+        let dbus_service = Some(service::start(sender.input_sender().clone()));
         let model = NotificationsWindow {
             center_visible: false,
             _request_server: request_server,
-            _dbus_server: dbus_server,
+            dbus_service,
             generation: 0,
             notifications: Vec::new(),
             popup_notifications: Vec::new(),
@@ -220,7 +240,7 @@ impl SimpleAsyncComponent for NotificationsWindow {
             NotificationsInput::Request(request) => self.handle_request(request),
             NotificationsInput::Show(request) => self.show_notification(request, &sender),
             NotificationsInput::Close { id, reason } => self.close_notification(id, reason),
-            NotificationsInput::Expire { id, generation } => {
+            NotificationsInput::ExpirePopup { id, generation } => {
                 self.expire_popup(id, generation);
             }
             NotificationsInput::Clear => self.clear_notifications(),
@@ -262,14 +282,15 @@ impl NotificationsWindow {
         let id = view.id;
         let generation = view.generation;
 
-        upsert_latest(&mut self.notifications, view.clone());
+        let stays_in_center = view.stays_in_center();
         upsert_latest(&mut self.popup_notifications, view);
 
-        if expire_timeout_ms > 0 {
+        if expire_timeout_ms > 0 || stays_in_center {
+            let timeout_ms = center_expire_timeout_ms(expire_timeout_ms);
             let input = sender.input_sender().clone();
             relm4::spawn_local(async move {
-                gtk::glib::timeout_future(Duration::from_millis(expire_timeout_ms as u64)).await;
-                input.emit(NotificationsInput::Expire { id, generation });
+                gtk::glib::timeout_future(Duration::from_millis(timeout_ms)).await;
+                input.emit(NotificationsInput::ExpirePopup { id, generation });
             });
         }
     }
@@ -277,16 +298,27 @@ impl NotificationsWindow {
     fn close_notification(&mut self, id: u32, _reason: NotificationClosedReason) {
         remove_notification(&mut self.notifications, id);
         remove_notification(&mut self.popup_notifications, id);
+        self.publish_has_items();
     }
 
     fn expire_popup(&mut self, id: u32, generation: u64) {
-        self.popup_notifications
-            .retain(|notification| notification.id != id || notification.generation != generation);
+        let notification = remove_generation(&mut self.popup_notifications, id, generation);
+        if let Some(notification) = notification.filter(NotificationView::stays_in_center) {
+            upsert_latest(&mut self.notifications, notification);
+            self.publish_has_items();
+        }
     }
 
     fn clear_notifications(&mut self) {
         self.notifications.clear();
         self.popup_notifications.clear();
+        self.publish_has_items();
+    }
+
+    fn publish_has_items(&self) {
+        if let Some(service) = &self.dbus_service {
+            service.set_has_items(!self.notifications.is_empty());
+        }
     }
 }
 
@@ -297,6 +329,28 @@ fn upsert_latest(notifications: &mut Vec<NotificationView>, notification: Notifi
 
 fn remove_notification(notifications: &mut Vec<NotificationView>, id: u32) {
     notifications.retain(|notification| notification.id != id);
+}
+
+fn remove_generation(
+    notifications: &mut Vec<NotificationView>,
+    id: u32,
+    generation: u64,
+) -> Option<NotificationView> {
+    let removed = notifications
+        .iter()
+        .find(|notification| notification.id == id && notification.generation == generation)
+        .cloned();
+    notifications
+        .retain(|notification| notification.id != id || notification.generation != generation);
+    removed
+}
+
+fn center_expire_timeout_ms(expire_timeout_ms: i32) -> u64 {
+    if expire_timeout_ms > 0 {
+        expire_timeout_ms as u64
+    } else {
+        EPHEMERAL_CENTER_TIMEOUT_MS
+    }
 }
 
 const fn notifications_window_config() -> WindowConfig {

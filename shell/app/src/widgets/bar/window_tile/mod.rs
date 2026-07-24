@@ -8,7 +8,11 @@ use self::{
     agent::{Agent, State as AgentState},
     source::{Kind, ViewModel, window_tile_vm},
 };
-use super::{WindowNode, bzbus};
+use super::{
+    WindowNode, build_indicator,
+    build_indicator::{BuildIndicatorImageExt, BuildIndicatorState},
+    bzbus,
+};
 use crate::widgets::{
     BACKGROUND_BLUR_CLASS,
     level_indicator::{self, LevelRenderStyle, LevelStage, LineStyle},
@@ -39,15 +43,6 @@ const CONTEXT_STAGES: &[LevelStage] = &[
     },
 ];
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-enum BuildIndicatorState {
-    #[default]
-    None,
-    Running,
-    Failed,
-    Finished,
-}
-
 #[derive(Debug)]
 #[shell_macros::model(module = window_tile_sources)]
 pub(super) struct WindowTile {
@@ -72,8 +67,8 @@ impl SimpleComponent for WindowTile {
             #[watch]
             set_visible: model.vm.is_some(),
 
-            add_css_class: "workspace-window-frame",
-            add_css_class: BACKGROUND_BLUR_CLASS,
+            #[watch]
+            set_css_classes: &window_frame_classes(&model.vm),
 
             set_halign: gtk::Align::Center,
             set_valign: gtk::Align::Fill,
@@ -101,6 +96,8 @@ impl SimpleComponent for WindowTile {
                     add_css_class: "agent-inner",
                     set_valign: gtk::Align::Fill,
                     set_vexpand: true,
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 1,
 
                     #[watch]
                     set_visible: is_agent(&model.vm),
@@ -140,6 +137,12 @@ impl SimpleComponent for WindowTile {
                                 CONTEXT_STYLE,
                             ),
                         }
+                    },
+
+                    #[local_ref]
+                    build_indicator -> gtk::Image {
+                        #[watch]
+                        set_build_indicator_state: agent_build_indicator_state(&model.vm),
                     }
                 }
             },
@@ -155,22 +158,6 @@ impl SimpleComponent for WindowTile {
 
                 #[watch]
                 set_visible: agent_unseen_visible(&model.vm),
-            },
-
-            add_overlay = &gtk::Image {
-                #[watch]
-                set_css_classes: &agent_build_indicator_classes(&model.vm),
-
-                #[watch]
-                set_icon_name: Some(agent_build_indicator_icon(&model.vm).as_str()),
-
-                #[watch]
-                set_visible: agent_build_indicator_visible(&model.vm),
-
-                set_can_target: false,
-                set_pixel_size: 12,
-                set_halign: gtk::Align::End,
-                set_valign: gtk::Align::End,
             },
 
             add_overlay = &gtk::DrawingArea {
@@ -207,10 +194,26 @@ impl SimpleComponent for WindowTile {
         _sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
         let model = WindowTile::new(init);
+        let build_indicator = build_indicator::image();
+        build_indicator.set_build_indicator_state(agent_build_indicator_state(&model.vm));
         let widgets = view_output!();
 
         ComponentParts { model, widgets }
     }
+}
+
+fn window_frame_classes(vm: &Option<ViewModel>) -> Vec<&'static str> {
+    let mut classes = vec!["workspace-window-frame", BACKGROUND_BLUR_CLASS];
+    if vm.as_ref().is_some_and(|vm| vm.active) {
+        classes.push("active");
+    }
+    if vm.as_ref().is_some_and(|vm| vm.urgent) {
+        classes.push("urgent");
+    }
+    if build_progress_visible(vm) {
+        classes.push("build-progress");
+    }
+    classes
 }
 
 fn traced_window_tile_classes(vm: &Option<ViewModel>) -> Vec<&'static str> {
@@ -343,35 +346,6 @@ fn build_indicator_state(build: &bzbus::BzBusView) -> BuildIndicatorState {
     } else {
         BuildIndicatorState::None
     }
-}
-
-fn agent_build_indicator_classes(vm: &Option<ViewModel>) -> Vec<&'static str> {
-    let mut classes = vec![
-        "materialicon",
-        "workspace-build-indicator",
-        "agent-build-indicator",
-    ];
-    match agent_build_indicator_state(vm) {
-        BuildIndicatorState::None => {}
-        BuildIndicatorState::Running => classes.push("workspace-build-running"),
-        BuildIndicatorState::Failed => classes.push("workspace-build-failed"),
-        BuildIndicatorState::Finished => classes.push("workspace-build-finished"),
-    }
-    classes
-}
-
-fn agent_build_indicator_icon(vm: &Option<ViewModel>) -> String {
-    let icon = match agent_build_indicator_state(vm) {
-        BuildIndicatorState::None => "",
-        BuildIndicatorState::Running => "build",
-        BuildIndicatorState::Failed => "priority_high",
-        BuildIndicatorState::Finished => "check",
-    };
-    material_icon::icon_name(icon)
-}
-
-fn agent_build_indicator_visible(vm: &Option<ViewModel>) -> bool {
-    agent_build_indicator_state(vm) != BuildIndicatorState::None
 }
 
 fn build_state_classes(build: &bzbus::BzBusView) -> impl Iterator<Item = &'static str> + '_ {

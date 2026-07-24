@@ -5,7 +5,10 @@ use shell_core::gtk::{self, prelude::*};
 
 use self::source::{ProjectLabelVm, WorkspaceBuildState, project_label_vm};
 
-use super::WorkspaceNode;
+use super::{
+    WorkspaceNode,
+    build_indicator::{self, BuildIndicatorImageExt, BuildIndicatorState},
+};
 use crate::{
     hints::hints_active,
     widgets::{BACKGROUND_BLUR_CLASS, material_icon},
@@ -71,6 +74,8 @@ impl SimpleComponent for ProjectLabel {
 
                         #[local_ref]
                         icon -> gtk::Image {
+                            add_css_class: "workspace-project-icon",
+
                             #[watch]
                             set_css_classes: project_icon_classes(&model.vm),
 
@@ -78,17 +83,10 @@ impl SimpleComponent for ProjectLabel {
                             set_icon_name: Some(project_icon_name(&model.vm).as_str()),
                         },
 
-                        gtk::Image {
+                        #[local_ref]
+                        build_indicator -> gtk::Image {
                             #[watch]
-                            set_css_classes: &workspace_build_indicator_classes(model.vm.build),
-
-                            #[watch]
-                            set_icon_name: Some(workspace_build_indicator_icon(model.vm.build).as_str()),
-
-                            #[watch]
-                            set_visible: model.vm.build != WorkspaceBuildState::None,
-
-                            set_pixel_size: 12,
+                            set_build_indicator_state: workspace_build_indicator_state(model.vm.build),
                         }
                     }
                 },
@@ -183,6 +181,8 @@ impl SimpleComponent for ProjectLabel {
         let icon = gtk::Image::new();
         icon.set_css_classes(project_icon_classes(&model.vm));
         icon.set_icon_name(Some(project_icon_name(&model.vm).as_str()));
+        let build_indicator = build_indicator::image();
+        build_indicator.set_build_indicator_state(workspace_build_indicator_state(model.vm.build));
         let widgets = view_output!();
 
         ComponentParts { model, widgets }
@@ -273,25 +273,13 @@ fn project_icon_classes(model: &ProjectLabelVm) -> &'static [&'static str] {
     }
 }
 
-fn workspace_build_indicator_classes(state: WorkspaceBuildState) -> Vec<&'static str> {
-    let mut classes = vec!["materialicon", "workspace-build-indicator"];
+fn workspace_build_indicator_state(state: WorkspaceBuildState) -> BuildIndicatorState {
     match state {
-        WorkspaceBuildState::None => {}
-        WorkspaceBuildState::Running => classes.push("workspace-build-running"),
-        WorkspaceBuildState::Failed => classes.push("workspace-build-failed"),
-        WorkspaceBuildState::Finished => classes.push("workspace-build-finished"),
+        WorkspaceBuildState::None => BuildIndicatorState::None,
+        WorkspaceBuildState::Running => BuildIndicatorState::Running,
+        WorkspaceBuildState::Failed => BuildIndicatorState::Failed,
+        WorkspaceBuildState::Finished => BuildIndicatorState::Finished,
     }
-    classes
-}
-
-fn workspace_build_indicator_icon(state: WorkspaceBuildState) -> String {
-    let icon = match state {
-        WorkspaceBuildState::None => "",
-        WorkspaceBuildState::Running => "build",
-        WorkspaceBuildState::Failed => "priority_high",
-        WorkspaceBuildState::Finished => "check",
-    };
-    material_icon::icon_name(icon)
 }
 
 fn project_primary(model: &ProjectLabelVm, _workspace: &WorkspaceNode) -> String {

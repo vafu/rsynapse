@@ -8,8 +8,11 @@ use zbus::zvariant::OwnedObjectPath;
 const BUS_NAME: &str = "org.rsynapse.Niri";
 const ROOT_PATH: &str = "/org/rsynapse/Niri";
 const ROOT_INTERFACE: &str = "org.rsynapse.Niri1";
+const OUTPUT_INTERFACE: &str = "org.rsynapse.Niri1.Output";
 const WORKSPACE_INTERFACE: &str = "org.rsynapse.Niri1.Workspace";
 const WINDOW_INTERFACE: &str = "org.rsynapse.Niri1.Window";
+const WORKSPACE_PATH_PREFIX: &str = "/org/rsynapse/Niri/Workspaces/workspace_";
+const WINDOW_PATH_PREFIX: &str = "/org/rsynapse/Niri/Windows/window_";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct NiriWorkspace {
@@ -23,6 +26,10 @@ impl NiriWorkspace {
 
     pub(super) fn path_key(&self) -> &str {
         self.path.as_str()
+    }
+
+    pub(super) fn path_id(&self) -> Option<u64> {
+        id_from_path(&self.path, WORKSPACE_PATH_PREFIX)
     }
 
     pub(super) fn id(&self) -> Observable<u64> {
@@ -77,6 +84,10 @@ pub(super) struct NiriWindow {
 impl NiriWindow {
     pub(super) fn path_key(&self) -> &str {
         self.path.as_str()
+    }
+
+    pub(super) fn path_id(&self) -> Option<u64> {
+        id_from_path(&self.path, WINDOW_PATH_PREFIX)
     }
 
     pub(super) fn id(&self) -> Observable<u64> {
@@ -138,6 +149,23 @@ pub(super) fn focused_workspace() -> Observable<Option<NiriWorkspace>> {
         .box_it()
 }
 
+pub(super) fn current_workspace(output_name: Option<String>) -> Observable<Option<NiriWorkspace>> {
+    let Some(output_name) = output_name else {
+        return focused_workspace();
+    };
+
+    model_optional(
+        property(
+            output_path_for_name(&output_name).as_str(),
+            OUTPUT_INTERFACE,
+            "CurrentWorkspace",
+        ),
+        NiriWorkspace::at,
+    )
+    .distinct_until_changed()
+    .box_it()
+}
+
 fn required<T>(descriptor: PropertyDescriptor, default: T) -> Observable<T>
 where
     T: TryFrom<zbus::zvariant::OwnedValue> + Clone + PartialEq + Send + 'static,
@@ -197,6 +225,10 @@ fn object(path: &str, interface: &str) -> ObjectDescriptor {
         .expect("static niri D-Bus descriptor should be valid")
 }
 
+fn id_from_path(path: &OwnedObjectPath, prefix: &str) -> Option<u64> {
+    path.as_str().strip_prefix(prefix)?.parse().ok()
+}
+
 #[cfg(test)]
 mod tests {
     use shell_core::source::dbus::ObjectModel;
@@ -213,5 +245,20 @@ mod tests {
             <NiriWindow as ObjectModel>::at(path)
         );
         let _ = std::any::type_name::<NiriWorkspace>();
+    }
+
+    #[test]
+    fn model_ids_are_derived_from_paths() {
+        let workspace = <NiriWorkspace as ObjectModel>::at(
+            zbus::zvariant::OwnedObjectPath::try_from("/org/rsynapse/Niri/Workspaces/workspace_42")
+                .unwrap(),
+        );
+        let window = <NiriWindow as ObjectModel>::at(
+            zbus::zvariant::OwnedObjectPath::try_from("/org/rsynapse/Niri/Windows/window_7")
+                .unwrap(),
+        );
+
+        assert_eq!(workspace.path_id(), Some(42));
+        assert_eq!(window.path_id(), Some(7));
     }
 }

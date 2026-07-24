@@ -2,6 +2,7 @@ mod audio;
 mod battery;
 mod bluetooth;
 mod brightness;
+mod build_indicator;
 mod bzbus;
 mod mpris;
 mod network;
@@ -12,6 +13,7 @@ mod source_errors;
 mod system_stats;
 mod systray;
 mod time;
+mod window_column;
 mod window_source;
 mod window_tile;
 mod workspaces;
@@ -50,8 +52,8 @@ use self::source_errors::{SourceErrorRow, source_error_count, source_error_items
 use self::system_stats::{ArcSide, SysStatsView, sys_stats};
 use self::systray::{TrayItem, systray_items};
 use self::time::{ClockView, clock};
-use self::window_tile::WindowTile;
-use self::workspaces::{WorkspaceNode, selected_workspace_windows, workspaces};
+use self::window_column::{WindowColumn, WindowColumnNode};
+use self::workspaces::{WorkspaceNode, selected_workspace_window_columns, workspaces};
 use super::{
     OsdAudioView, OsdBrightnessView, OsdInit, OsdInput, OsdWindow, has_notification_items,
 };
@@ -133,8 +135,8 @@ pub struct MainBar {
     #[source(workspaces(output_name.clone()))]
     project_labels: Vec<WorkspaceNode>,
 
-    #[source(selected_workspace_windows(output_name.clone()))]
-    window_tiles: Vec<WindowNode>,
+    #[source(selected_workspace_window_columns(output_name.clone()))]
+    window_columns: Vec<WindowColumnNode>,
 
     #[source(battery_status())]
     battery: BatteryView,
@@ -215,8 +217,8 @@ impl SimpleAsyncComponent for MainBar {
                     set_halign: gtk::Align::Center,
                     set_orientation: gtk::Orientation::Horizontal,
 
-                    #[bind_list(window_tiles, row = WindowTile)]
-                    window_tiles -> gtk::Box {
+                    #[bind_list(window_columns, row = WindowColumn)]
+                    window_columns -> gtk::Box {
                         set_widget_name: "workspace-window-list",
                         add_css_class: "workspace-window-list",
                         set_halign: gtk::Align::Center,

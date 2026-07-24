@@ -54,27 +54,57 @@ $outline-offset: $label-margin * 0.5;
   outline: solid 1px color-mix(in srgb, #{$sys_critical} 72%, #{$accent_color});
 }
 
+.bar-build-indicator {
+  -gtk-icon-size: 12px;
+  min-width: 12px;
+  min-height: 12px;
+  opacity: 0.96;
+  text-shadow: 0 0 2px color-mix(in srgb, #{$bg} 88%, transparent);
+
+  &.build-running {
+    color: color-mix(in srgb, #{$accent_color} 86%, #{$fg});
+    animation: bzbus-spin 1.2s linear infinite;
+  }
+
+  &.build-failed {
+    color: color-mix(in srgb, #{$ws_urgent} 86%, #{$fg});
+  }
+
+  &.build-finished {
+    color: color-mix(in srgb, #{$sys_ok} 82%, #{$fg});
+  }
+}
+
+.workspace-window-column {
+  &.stacked {
+    margin-top: 4px;
+    padding-left: 2px;
+    border-left: 1px solid color-mix(in srgb, #{$accent_color} 48%, transparent);
+
+    .workspace-window-frame {
+      margin-top: 0;
+    }
+
+    .workspace-window-tile {
+      padding: 0 6px;
+      border-radius: 8px;
+    }
+  }
+}
+
 .workspace-window-frame {
   margin-top: 4px;
 
-  .agent-build-indicator {
-    margin-bottom: -4px;
-    margin-right: -4px;
-    opacity: 0.96;
-    text-shadow: 0 0 2px color-mix(in srgb, #{$bg} 88%, transparent);
+  &.build-progress.active {
+    outline: 1px solid #{$rsx-selected-outline};
+    outline-offset: 1px;
+    border-radius: 13px;
+  }
 
-    &.workspace-build-running {
-      color: color-mix(in srgb, #{$accent_color} 86%, #{$fg});
-      animation: bzbus-spin 1.2s linear infinite;
-    }
-
-    &.workspace-build-failed {
-      color: color-mix(in srgb, #{$ws_urgent} 86%, #{$fg});
-    }
-
-    &.workspace-build-finished {
-      color: color-mix(in srgb, #{$sys_ok} 82%, #{$fg});
-    }
+  &.build-progress.urgent {
+    outline: 1px solid #{$rsx-error-outline};
+    outline-offset: 1px;
+    border-radius: 13px;
   }
 
   >.track,
@@ -549,24 +579,6 @@ $outline-offset: $label-margin * 0.5;
   .projects-collapsed-icon {
     padding: 0 6px;
     border-radius: 12px 0 0 12px;
-  }
-
-  .workspace-build-indicator {
-    margin-left: 1px;
-    opacity: 0.96;
-
-    &.workspace-build-running {
-      color: color-mix(in srgb, #{$accent_color} 86%, #{$fg});
-      animation: bzbus-spin 1.2s linear infinite;
-    }
-
-    &.workspace-build-failed {
-      color: color-mix(in srgb, #{$ws_urgent} 86%, #{$fg});
-    }
-
-    &.workspace-build-finished {
-      color: color-mix(in srgb, #{$sys_ok} 82%, #{$fg});
-    }
   }
 
   .button-subgroup-main,

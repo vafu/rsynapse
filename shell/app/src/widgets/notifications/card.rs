@@ -191,6 +191,10 @@ fn request_action_invoked(id: u32, action_key: String) {
     relm4::spawn_local(async move {
         if let Err(error) = action_invoked(id, action_key.as_str()).await {
             eprintln!("[notifications] failed to invoke notification action {id}: {error}");
+            return;
+        }
+        if let Err(error) = close_notification(id).await {
+            eprintln!("[notifications] failed to close notification {id}: {error}");
         }
     });
 }
