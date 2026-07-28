@@ -1,10 +1,13 @@
 mod card;
 mod model;
+mod policy;
 mod service;
 #[cfg(test)]
 mod test;
 
 use std::time::Duration;
+
+use futures_util::StreamExt;
 
 use relm4::prelude::*;
 use shell_core::{
@@ -13,16 +16,18 @@ use shell_core::{
     source::{
         Observable,
         dbus::{self, Bus, ObjectDescriptor, PropertyDescriptor},
+        rx::Observable as _,
     },
     window::{self, Anchors, Edge, Layer, SurfaceMargins, WindowConfig},
 };
 
-use crate::request;
+use crate::{request, session};
 
 use super::BACKGROUND_BLUR_CLASS;
 use card::NotificationCard;
 use model::NotificationView;
 pub use model::{NotificationClosedReason, NotificationRequest};
+use policy::{NotificationCenterContext, NotificationCenterPolicy};
 
 const NOTIFICATION_BACKGROUND_BLUR_CLASSES: &[&str] = &[BACKGROUND_BLUR_CLASS];
 const NOTIFICATION_BACKGROUND_BLUR_RADIUS: i32 = 12;
@@ -56,7 +61,10 @@ pub struct NotificationsInit {
 pub struct NotificationsWindow {
     center_visible: bool,
     _request_server: Option<request::RequestServer>,
+    center_policy: NotificationCenterPolicy,
     dbus_service: Option<service::NotificationsService>,
+    session_locked: bool,
+    _session_lock_task: Option<tokio::task::JoinHandle<()>>,
     generation: u64,
     notifications: Vec<NotificationView>,
     popup_notifications: Vec<NotificationView>,
@@ -74,7 +82,15 @@ pub enum NotificationsInput {
         id: u32,
         generation: u64,
     },
+    SessionLocked(bool),
     Clear,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct PopupExpiry {
+    id: u32,
+    generation: u64,
+    timeout_ms: u64,
 }
 
 #[relm4::component(pub, async)]
@@ -217,10 +233,16 @@ impl SimpleAsyncComponent for NotificationsWindow {
             };
 
         let dbus_service = Some(service::start(sender.input_sender().clone()));
+        let session_lock_task = Some(spawn_session_lock_subscription(
+            sender.input_sender().clone(),
+        ));
         let model = NotificationsWindow {
             center_visible: false,
             _request_server: request_server,
+            center_policy: NotificationCenterPolicy::load(),
             dbus_service,
+            session_locked: true,
+            _session_lock_task: session_lock_task,
             generation: 0,
             notifications: Vec::new(),
             popup_notifications: Vec::new(),
@@ -243,6 +265,7 @@ impl SimpleAsyncComponent for NotificationsWindow {
             NotificationsInput::ExpirePopup { id, generation } => {
                 self.expire_popup(id, generation);
             }
+            NotificationsInput::SessionLocked(locked) => self.set_session_locked(locked),
             NotificationsInput::Clear => self.clear_notifications(),
         }
     }
@@ -276,23 +299,40 @@ impl NotificationsWindow {
         request: NotificationRequest,
         sender: &AsyncComponentSender<Self>,
     ) {
+        let Some(expiry) = self.apply_notification(request) else {
+            return;
+        };
+
+        let input = sender.input_sender().clone();
+        relm4::spawn_local(async move {
+            gtk::glib::timeout_future(Duration::from_millis(expiry.timeout_ms)).await;
+            input.emit(NotificationsInput::ExpirePopup {
+                id: expiry.id,
+                generation: expiry.generation,
+            });
+        });
+    }
+
+    fn apply_notification(&mut self, request: NotificationRequest) -> Option<PopupExpiry> {
         self.generation = self.generation.wrapping_add(1);
         let expire_timeout_ms = request.expire_timeout_ms;
         let view = request.into_view(self.generation);
-        let id = view.id;
-        let generation = view.generation;
 
-        let stays_in_center = view.stays_in_center();
-        upsert_latest(&mut self.popup_notifications, view);
-
-        if expire_timeout_ms > 0 || stays_in_center {
-            let timeout_ms = center_expire_timeout_ms(expire_timeout_ms);
-            let input = sender.input_sender().clone();
-            relm4::spawn_local(async move {
-                gtk::glib::timeout_future(Duration::from_millis(timeout_ms)).await;
-                input.emit(NotificationsInput::ExpirePopup { id, generation });
-            });
+        if self.session_locked {
+            self.store_notification(view);
+            return None;
         }
+
+        let stays_in_center = self
+            .center_policy
+            .should_store(&view, self.center_context());
+        let expiry = (expire_timeout_ms > 0 || stays_in_center).then_some(PopupExpiry {
+            id: view.id,
+            generation: view.generation,
+            timeout_ms: center_expire_timeout_ms(expire_timeout_ms),
+        });
+        upsert_latest(&mut self.popup_notifications, view);
+        expiry
     }
 
     fn close_notification(&mut self, id: u32, _reason: NotificationClosedReason) {
@@ -303,9 +343,44 @@ impl NotificationsWindow {
 
     fn expire_popup(&mut self, id: u32, generation: u64) {
         let notification = remove_generation(&mut self.popup_notifications, id, generation);
-        if let Some(notification) = notification.filter(NotificationView::stays_in_center) {
-            upsert_latest(&mut self.notifications, notification);
-            self.publish_has_items();
+        if let Some(notification) = notification {
+            self.store_notification(notification);
+        }
+    }
+
+    fn set_session_locked(&mut self, locked: bool) {
+        if self.session_locked == locked {
+            return;
+        }
+
+        self.session_locked = locked;
+        if locked {
+            self.store_popup_notifications();
+        }
+    }
+
+    fn store_popup_notifications(&mut self) {
+        let notifications = std::mem::take(&mut self.popup_notifications);
+        for notification in notifications.into_iter().rev() {
+            self.store_notification(notification);
+        }
+    }
+
+    fn store_notification(&mut self, notification: NotificationView) {
+        if !self
+            .center_policy
+            .should_store(&notification, self.center_context())
+        {
+            return;
+        }
+
+        upsert_latest(&mut self.notifications, notification);
+        self.publish_has_items();
+    }
+
+    fn center_context(&self) -> NotificationCenterContext {
+        NotificationCenterContext {
+            session_locked: self.session_locked,
         }
     }
 
@@ -320,6 +395,29 @@ impl NotificationsWindow {
             service.set_has_items(!self.notifications.is_empty());
         }
     }
+}
+
+fn spawn_session_lock_subscription(
+    input_sender: relm4::Sender<NotificationsInput>,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        let mut stream = session::locked().into_stream();
+        while let Some(item) = stream.next().await {
+            let locked = match item {
+                Ok(locked) => locked,
+                Err(error) => {
+                    eprintln!("[notifications/session] lock source failed: {error}");
+                    return;
+                }
+            };
+            if input_sender
+                .send(NotificationsInput::SessionLocked(locked))
+                .is_err()
+            {
+                return;
+            }
+        }
+    })
 }
 
 fn upsert_latest(notifications: &mut Vec<NotificationView>, notification: NotificationView) {

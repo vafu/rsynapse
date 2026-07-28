@@ -1,6 +1,7 @@
 mod desktop_icon;
 mod hints;
 pub mod request;
+pub mod session;
 mod theme;
 pub mod widgets;
 

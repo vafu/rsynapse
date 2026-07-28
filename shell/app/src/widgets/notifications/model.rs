@@ -113,10 +113,6 @@ impl NotificationView {
         self.image_path.is_some()
     }
 
-    pub(crate) fn stays_in_center(&self) -> bool {
-        self.urgency == NotificationUrgency::Critical || self.has_actions()
-    }
-
     pub(crate) fn display_app_name(&self) -> &str {
         if self.has_app_name() {
             self.app_name.as_str()
