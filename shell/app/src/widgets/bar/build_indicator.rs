@@ -18,6 +18,8 @@ pub(in crate::widgets::bar) trait BuildIndicatorImageExt {
 pub(in crate::widgets::bar) fn image() -> gtk::Image {
     let image = gtk::Image::new();
     image.set_can_target(false);
+    image.set_halign(gtk::Align::Center);
+    image.set_valign(gtk::Align::Center);
     image.set_pixel_size(12);
     image.set_build_indicator_state(BuildIndicatorState::None);
     image

@@ -53,7 +53,6 @@ fn agent(state: State, attention: bool, unseen: bool) -> Agent {
         title: String::new(),
         attention,
         state,
-        context_pct: 0,
         unseen,
     }
 }

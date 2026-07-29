@@ -7,16 +7,18 @@ fn selected_project_displays_project_secondary() {
 
     assert!(view.visible);
     assert_eq!(view.title, "android");
-    assert_eq!(view.label.as_deref(), Some("core-isol"));
+    assert_eq!(view.label.as_deref(), Some("android · core-isol"));
     assert_eq!(view.branch.as_deref(), Some("codex/android-core-isol"));
+    assert_eq!(view.icon.as_deref(), Some("developer_board"));
 }
 
 #[test]
-fn selected_project_hides_without_secondary() {
+fn selected_project_displays_workspace_without_project_secondary() {
     let view = selected_project_view(3, "workspace", ProjectDetails::default());
 
-    assert!(!view.visible);
-    assert_eq!(view.label, None);
+    assert!(view.visible);
+    assert_eq!(view.label.as_deref(), Some("workspace"));
+    assert_eq!(view.icon, None);
 }
 
 fn split_project() -> ProjectDetails {

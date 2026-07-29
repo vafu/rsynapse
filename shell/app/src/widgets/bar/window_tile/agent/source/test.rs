@@ -125,7 +125,6 @@ fn make_agent(state: State) -> Agent {
         title: String::new(),
         attention: false,
         state,
-        context_pct: 0,
         unseen: false,
     }
 }

@@ -1,18 +1,15 @@
 mod source;
 
+#[cfg(test)]
+mod test;
+
 use relm4::prelude::*;
 use shell_core::gtk::{self, prelude::*};
 
-use self::source::{ProjectLabelVm, WorkspaceBuildState, project_label_vm};
+use self::source::{ProjectLabelVm, project_label_vm};
 
-use super::{
-    WorkspaceNode,
-    build_indicator::{BuildIndicatorImageExt, BuildIndicatorState},
-};
-use crate::{
-    hints::hints_active,
-    widgets::{BACKGROUND_BLUR_CLASS, material_icon},
-};
+use super::{PANEL_ICON_SIZE, WorkspaceNode, app_icon};
+use crate::{hints::hints_active, widgets::material_icon};
 
 #[derive(Debug)]
 #[shell_macros::model(module = project_label_sources)]
@@ -40,98 +37,73 @@ impl SimpleComponent for ProjectLabel {
     type Output = ();
 
     view! {
-        gtk::Overlay {
-            set_halign: gtk::Align::Start,
+        gtk::Box {
+            #[watch]
+            set_visible: workspace_visible(&model.vm, model.selected),
+
+            #[watch]
+            set_css_classes: &project_group_classes(&model.vm, model.selected),
+
+            #[watch]
+            set_tooltip_text: Some(project_tooltip(&model.vm, &model.workspace).as_str()),
+
+            set_halign: gtk::Align::Center,
+            set_valign: gtk::Align::Center,
             set_hexpand: false,
+            set_orientation: gtk::Orientation::Horizontal,
+            set_spacing: 1,
 
-            #[name = "group"]
-            gtk::Box {
+            #[local_ref]
+            icon -> gtk::Image {
+                set_halign: gtk::Align::Center,
+                set_valign: gtk::Align::Center,
+                set_hexpand: true,
+                set_pixel_size: PANEL_ICON_SIZE,
+
                 #[watch]
-                set_css_classes: &project_group_classes(&model.vm, model.selected),
+                set_css_classes: project_icon_classes(&model.vm),
 
+                #[watch]
+                set_icon_name: Some(project_icon_name(&model.vm).as_str()),
+            },
+
+            // Build status icon rendering is paused while the status is moved to a new surface.
+            // gtk::Image {
+            //     set_can_target: false,
+            //     set_halign: gtk::Align::Center,
+            //     set_valign: gtk::Align::Center,
+            //     set_pixel_size: 12,
+            //     #[watch]
+            //     set_build_indicator_state: workspace_build_indicator_state(model.vm.build),
+            // }
+
+            #[name = "title_revealer"]
+            gtk::Revealer {
+                set_reveal_child: false,
                 set_halign: gtk::Align::Start,
                 set_hexpand: false,
-                set_orientation: gtk::Orientation::Horizontal,
+                set_transition_type: gtk::RevealerTransitionType::SlideRight,
 
-                #[name = "root_button"]
-                gtk::Button {
-                    #[watch]
-                    set_css_classes: root_button_classes(model.selected),
-
-                    #[watch]
-                    set_tooltip_text: Some(project_tooltip(&model.vm, &model.workspace).as_str()),
-
+                gtk::Box {
+                    add_css_class: "bar-indicator-title",
                     set_halign: gtk::Align::Start,
                     set_hexpand: false,
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 4,
 
-                    gtk::Overlay {
-                        add_css_class: "projects-collapsed-icon",
-                        add_css_class: "workspaces-collapsed-icon",
-                        set_halign: gtk::Align::Center,
-                        set_hexpand: false,
+                    gtk::Label {
+                        set_ellipsize: gtk::pango::EllipsizeMode::End,
 
-                        #[local_ref]
-                        icon -> gtk::Image {
-                            add_css_class: "workspace-project-icon",
+                        #[watch]
+                        set_label: project_primary(&model.vm, &model.workspace).as_str(),
 
-                            #[watch]
-                            set_css_classes: project_icon_classes(&model.vm),
-
-                            #[watch]
-                            set_icon_name: Some(project_icon_name(&model.vm).as_str()),
-                        },
-
-                        add_overlay = &gtk::Image {
-                            set_can_target: false,
-                            set_pixel_size: 12,
-                            set_halign: gtk::Align::End,
-                            set_valign: gtk::Align::End,
-                            #[watch]
-                            set_build_indicator_state: workspace_build_indicator_state(model.vm.build),
-                        }
-                    }
-                },
-
-                #[name = "title_revealer"]
-                gtk::Revealer {
-                    set_reveal_child: false,
-
-                    set_halign: gtk::Align::Start,
-                    set_hexpand: false,
-                    set_transition_type: gtk::RevealerTransitionType::SlideRight,
-
-                    gtk::Box {
-                        add_css_class: "button-subgroup",
-                        set_halign: gtk::Align::Start,
-                        set_hexpand: false,
-                        set_orientation: gtk::Orientation::Horizontal,
-
-                        gtk::Box {
-                            add_css_class: "projects-title",
-                            add_css_class: "workspaces-title",
-                            set_halign: gtk::Align::Start,
-                            set_hexpand: false,
-                            set_orientation: gtk::Orientation::Horizontal,
-                            set_spacing: 4,
-
-                            gtk::Label {
-                                add_css_class: "projects-primary",
-                                add_css_class: "workspaces-primary",
-                                set_ellipsize: gtk::pango::EllipsizeMode::End,
-
-                                #[watch]
-                                set_label: project_primary(&model.vm, &model.workspace).as_str(),
-
-                                set_max_width_chars: 18,
-                                set_xalign: 0.0,
-                            },
-
-                        }
-                    }
+                        set_max_width_chars: 18,
+                        set_xalign: 0.0,
+                    },
                 }
             },
 
-            add_overlay = &gtk::Label {
+            gtk::Label {
                 add_css_class: "barblock-badge",
                 add_css_class: "workspace-number-badge",
 
@@ -141,8 +113,8 @@ impl SimpleComponent for ProjectLabel {
                 #[watch]
                 set_visible: model.hints_active,
 
-                set_halign: gtk::Align::End,
-                set_valign: gtk::Align::Start,
+                set_halign: gtk::Align::Center,
+                set_valign: gtk::Align::Center,
             },
         }
     }
@@ -154,6 +126,9 @@ impl SimpleComponent for ProjectLabel {
     ) -> ComponentParts<Self> {
         let model = ProjectLabel::new(init);
         let icon = gtk::Image::new();
+        icon.set_halign(gtk::Align::Center);
+        icon.set_valign(gtk::Align::Center);
+        icon.set_pixel_size(PANEL_ICON_SIZE);
         icon.set_css_classes(project_icon_classes(&model.vm));
         icon.set_icon_name(Some(project_icon_name(&model.vm).as_str()));
         let widgets = view_output!();
@@ -162,31 +137,8 @@ impl SimpleComponent for ProjectLabel {
     }
 }
 
-const ROOT_BUTTON_CLASSES: &[&str] = &[
-    "projects-root-button",
-    "workspaces-root-button",
-    "flat",
-    "circular",
-    "panel-widget",
-    "button-subgroup-main",
-];
-const ROOT_BUTTON_OPEN_CLASSES: &[&str] = &[
-    "projects-root-button",
-    "workspaces-root-button",
-    "flat",
-    "circular",
-    "panel-widget",
-    "button-subgroup-main",
-    "opened",
-];
-
 fn project_group_classes(vm: &ProjectLabelVm, selected: bool) -> Vec<&'static str> {
-    let mut classes = vec![
-        "projects-project",
-        BACKGROUND_BLUR_CLASS,
-        "workspaces-workspace",
-        "button-subgroup-expand-right",
-    ];
+    let mut classes = vec!["bar-indicator"];
 
     if selected {
         classes.push("selected-workspace");
@@ -205,19 +157,11 @@ fn project_group_classes(vm: &ProjectLabelVm, selected: bool) -> Vec<&'static st
     if workspace_agent_unseen_visible(vm) {
         classes.push("has-unseen");
     }
-    if vm.empty {
-        classes.push("is-empty");
-    }
-
     classes
 }
 
-fn root_button_classes(active: bool) -> &'static [&'static str] {
-    if active {
-        ROOT_BUTTON_OPEN_CLASSES
-    } else {
-        ROOT_BUTTON_CLASSES
-    }
+fn workspace_visible(vm: &ProjectLabelVm, selected: bool) -> bool {
+    selected || !vm.empty
 }
 
 fn project_icon(model: &ProjectLabelVm) -> String {
@@ -232,7 +176,7 @@ fn project_icon(model: &ProjectLabelVm) -> String {
 fn project_icon_name(model: &ProjectLabelVm) -> String {
     let icon = project_icon(model);
     if model.project_icon_is_app {
-        icon
+        app_icon::icon_name(&icon)
     } else {
         material_icon::icon_name(&icon)
     }
@@ -240,20 +184,21 @@ fn project_icon_name(model: &ProjectLabelVm) -> String {
 
 fn project_icon_classes(model: &ProjectLabelVm) -> &'static [&'static str] {
     if model.project_icon_is_app {
-        &["workspace-app-icon", "workspace-project-icon"]
+        &["bar-indicator-icon"]
     } else {
-        &["materialicon", "workspace-project-icon"]
+        &["bar-indicator-icon", "materialicon"]
     }
 }
 
-fn workspace_build_indicator_state(state: WorkspaceBuildState) -> BuildIndicatorState {
-    match state {
-        WorkspaceBuildState::None => BuildIndicatorState::None,
-        WorkspaceBuildState::Running => BuildIndicatorState::Running,
-        WorkspaceBuildState::Failed => BuildIndicatorState::Failed,
-        WorkspaceBuildState::Finished => BuildIndicatorState::Finished,
-    }
-}
+// Build status icon rendering is paused while the status is moved to a new surface.
+// fn workspace_build_indicator_state(state: WorkspaceBuildState) -> BuildIndicatorState {
+//     match state {
+//         WorkspaceBuildState::None => BuildIndicatorState::None,
+//         WorkspaceBuildState::Running => BuildIndicatorState::Running,
+//         WorkspaceBuildState::Failed => BuildIndicatorState::Failed,
+//         WorkspaceBuildState::Finished => BuildIndicatorState::Finished,
+//     }
+// }
 
 fn project_primary(model: &ProjectLabelVm, _workspace: &WorkspaceNode) -> String {
     model

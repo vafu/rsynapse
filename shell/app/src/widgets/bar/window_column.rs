@@ -34,16 +34,16 @@ impl SimpleComponent for WindowColumn {
         gtk::Box {
             set_css_classes: &window_column_classes(&model.node),
             set_halign: gtk::Align::Center,
-            set_valign: gtk::Align::Fill,
-            set_vexpand: true,
+            set_valign: gtk::Align::Center,
+            set_vexpand: false,
             set_orientation: gtk::Orientation::Vertical,
             set_spacing: 3,
 
             #[name = "window_tiles"]
             gtk::Box {
                 set_halign: gtk::Align::Center,
-                set_valign: gtk::Align::Fill,
-                set_vexpand: true,
+                set_valign: gtk::Align::Center,
+                set_vexpand: false,
                 set_orientation: gtk::Orientation::Vertical,
                 set_spacing: 3,
             }
@@ -69,8 +69,6 @@ fn window_column_classes(column: &WindowColumnNode) -> Vec<&'static str> {
     let mut classes = vec!["workspace-window-column"];
     if column.windows.len() > 1 {
         classes.push("stacked");
-    } else {
-        classes.push("single");
     }
     classes
 }

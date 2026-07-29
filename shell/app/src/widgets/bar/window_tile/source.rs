@@ -14,7 +14,8 @@ pub(in crate::widgets::bar) enum Kind {
     Plain,
     Neovim,
     Agent(Agent),
-    Build(BzBusView),
+    // Build status icon rendering is paused while the status is moved to a new surface.
+    // Build(BzBusView),
 }
 
 impl Default for Kind {
@@ -73,13 +74,14 @@ pub(super) fn window_tile_vm(window: WindowNode) -> Observable<Option<ViewModel>
     .box_it()
 }
 
-fn window_kind(app_id: &str, agent: Option<Agent>, build: Option<BzBusView>) -> Kind {
+fn window_kind(app_id: &str, agent: Option<Agent>, _build: Option<BzBusView>) -> Kind {
     if let Some(agent) = agent {
         return Kind::Agent(agent);
     }
-    if let Some(build) = build {
-        return Kind::Build(build);
-    }
+    // Build status icon rendering is paused while the status is moved to a new surface.
+    // if let Some(build) = _build {
+    //     return Kind::Build(build);
+    // }
 
     let app_id = app_id.to_ascii_lowercase();
     if app_id.contains("nvim") || app_id.contains("neovim") {
@@ -93,9 +95,6 @@ fn window_tooltip(app_id: &str, agent: Option<&Agent>, build: Option<&BzBusView>
     let label = if app_id.is_empty() { "Window" } else { app_id };
     if let Some(agent) = agent {
         let mut lines = vec![label.to_owned(), format!("Agent: {:?}", agent.state)];
-        if agent.context_pct > 0 {
-            lines.push(format!("Context: {}%", agent.context_pct));
-        }
         if let Some(build) = build {
             lines.push("Build:".to_owned());
             lines.extend(build.tooltip.lines().map(str::to_owned));

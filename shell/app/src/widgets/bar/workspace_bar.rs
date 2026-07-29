@@ -49,21 +49,18 @@ impl SimpleComponent for WorkspaceBar {
                 set_vexpand: true,
 
                 #[wrap(Some)]
-                set_center_widget = &gtk::Box {
+                set_end_widget = &gtk::Box {
                     set_halign: gtk::Align::Center,
-                    set_valign: gtk::Align::Center,
+                    set_valign: gtk::Align::End,
                     set_orientation: gtk::Orientation::Vertical,
 
                     #[bind_list(project_labels, row = ProjectLabel)]
                     project_labels -> gtk::Box {
                         set_widget_name: "workspace-rail-list",
-                        add_css_class: "projects-widget",
-                        add_css_class: "workspaces-widget",
-                        add_css_class: "projects-list",
-                        add_css_class: "workspaces-list",
-                        add_css_class: "workspace-rail-list",
+                        add_css_class: "bar-indicator-list",
+                        add_css_class: "bar-indicator-list-vertical",
                         set_halign: gtk::Align::Center,
-                        set_valign: gtk::Align::Center,
+                        set_valign: gtk::Align::End,
                         set_orientation: gtk::Orientation::Vertical,
                         set_spacing: 4,
                     },

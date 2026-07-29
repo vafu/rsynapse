@@ -181,10 +181,9 @@ fn agent_session(session: AgentSession) -> Observable<Option<Agent>> {
         session.agent_role(),
         session.state(),
         session.requires_attention(),
-        session.context_pct(),
         session.cwd(),
         session.session_title()
-            => |(agent_name, nickname, role, state, attention, context_pct, cwd, title)| {
+            => |(agent_name, nickname, role, state, attention, cwd, title)| {
                 Some(Agent {
                     name: agent_name.clone(),
                     icon: agent_icon(&agent_name, &nickname, &role),
@@ -192,7 +191,6 @@ fn agent_session(session: AgentSession) -> Observable<Option<Agent>> {
                     title,
                     attention,
                     state: session_state(&state),
-                    context_pct: context_pct_percent(context_pct),
                     unseen: false,
                 })
             },
@@ -220,10 +218,6 @@ impl AgentSession {
 
     fn requires_attention(&self) -> Observable<bool> {
         required(self.property("RequiresAttention"), false)
-    }
-
-    fn context_pct(&self) -> Observable<f64> {
-        required(self.property("ContextPct"), 0.0)
     }
 
     fn cwd(&self) -> Observable<String> {
@@ -264,11 +258,4 @@ pub(super) fn session_state(state: &str) -> State {
         "compacting" => State::Compacting,
         _ => State::None,
     }
-}
-
-fn context_pct_percent(value: f64) -> u32 {
-    if !value.is_finite() {
-        return 0;
-    }
-    value.round().clamp(0.0, 100.0) as u32
 }

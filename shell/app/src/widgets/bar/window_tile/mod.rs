@@ -8,40 +8,8 @@ use self::{
     agent::{Agent, State as AgentState},
     source::{Kind, ViewModel, window_tile_vm},
 };
-use super::{
-    WindowNode, build_indicator,
-    build_indicator::{BuildIndicatorImageExt, BuildIndicatorState},
-    bzbus,
-};
-use crate::widgets::{
-    BACKGROUND_BLUR_CLASS,
-    level_indicator::{self, LevelRenderStyle, LevelStage, LineStyle},
-    material_icon,
-};
-
-const CONTEXT_STYLE: LevelRenderStyle = LevelRenderStyle::Line(LineStyle::vertical(3.0));
-const CONTEXT_STAGES: &[LevelStage] = &[
-    LevelStage {
-        level: 0.0,
-        class: "normal",
-    },
-    LevelStage {
-        level: 50.0,
-        class: "warn",
-    },
-    LevelStage {
-        level: 75.0,
-        class: "high",
-    },
-    LevelStage {
-        level: 90.0,
-        class: "danger",
-    },
-    LevelStage {
-        level: 95.0,
-        class: "critical",
-    },
-];
+use super::{PANEL_ICON_SIZE, WindowNode, app_icon, bzbus};
+use crate::widgets::material_icon;
 
 #[derive(Debug)]
 #[shell_macros::model(module = window_tile_sources)]
@@ -68,23 +36,29 @@ impl SimpleComponent for WindowTile {
             set_visible: model.vm.is_some(),
 
             #[watch]
-            set_css_classes: &window_frame_classes(&model.vm),
+            set_css_classes: &traced_window_tile_classes(&model.vm),
 
             set_halign: gtk::Align::Center,
-            set_valign: gtk::Align::Fill,
-            set_vexpand: true,
+            set_valign: gtk::Align::Center,
+            set_vexpand: false,
 
             #[watch]
             set_tooltip_text: model.vm.as_ref().map(|vm| vm.tooltip.as_str()),
 
             gtk::Box {
-                #[watch]
-                set_css_classes: &traced_window_tile_classes(&model.vm),
                 set_halign: gtk::Align::Center,
-                set_valign: gtk::Align::Fill,
-                set_vexpand: true,
+                set_valign: gtk::Align::Center,
+                set_vexpand: false,
+                set_orientation: gtk::Orientation::Horizontal,
+                set_spacing: 1,
 
                 gtk::Image {
+                    add_css_class: "bar-indicator-icon",
+                    set_halign: gtk::Align::Center,
+                    set_valign: gtk::Align::Center,
+                    set_hexpand: true,
+                    set_pixel_size: PANEL_ICON_SIZE,
+
                     #[watch]
                     set_visible: !is_agent(&model.vm),
 
@@ -94,8 +68,9 @@ impl SimpleComponent for WindowTile {
 
                 gtk::Box {
                     add_css_class: "agent-inner",
-                    set_valign: gtk::Align::Fill,
-                    set_vexpand: true,
+                    set_halign: gtk::Align::Center,
+                    set_valign: gtk::Align::Center,
+                    set_vexpand: false,
                     set_orientation: gtk::Orientation::Horizontal,
                     set_spacing: 1,
 
@@ -104,46 +79,21 @@ impl SimpleComponent for WindowTile {
 
                     gtk::Image {
                         add_css_class: "materialicon",
+                        add_css_class: "bar-indicator-icon",
+                        set_halign: gtk::Align::Center,
+                        set_valign: gtk::Align::Center,
+                        set_pixel_size: PANEL_ICON_SIZE,
 
                         #[watch]
                         set_icon_name: window_icon_name(&model.vm).as_deref(),
                     },
 
-                    gtk::Overlay {
-                        #[watch]
-                        set_css_classes: &context_indicator_root_classes(),
-                        set_valign: gtk::Align::Fill,
-                        set_vexpand: true,
-
-                        add_overlay = &gtk::DrawingArea {
-                            set_css_classes: level_indicator::TRACK_CLASSES,
-                            set_content_width: 8,
-                            set_vexpand: true,
-                            set_valign: gtk::Align::Fill,
-                            set_draw_func: level_indicator::track_draw_func(CONTEXT_STYLE),
-                        },
-
-                        add_overlay = &gtk::DrawingArea {
-                            #[watch]
-                            set_css_classes: &context_indicator_level_classes(context_pct(&model.vm)),
-                            set_content_width: 8,
-                            set_vexpand: true,
-                            set_valign: gtk::Align::Fill,
-                            #[watch]
-                            set_draw_func: level_indicator::level_draw_func(
-                                f64::from(context_pct(&model.vm)),
-                                0.0,
-                                100.0,
-                                CONTEXT_STYLE,
-                            ),
-                        }
-                    },
-
-                    #[local_ref]
-                    build_indicator -> gtk::Image {
-                        #[watch]
-                        set_build_indicator_state: agent_build_indicator_state(&model.vm),
-                    }
+                    // Build status icon rendering is paused while the status is moved to a new surface.
+                    // #[local_ref]
+                    // build_indicator -> gtk::Image {
+                    //     #[watch]
+                    //     set_build_indicator_state: agent_build_indicator_state(&model.vm),
+                    // }
                 }
             },
 
@@ -194,26 +144,13 @@ impl SimpleComponent for WindowTile {
         _sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
         let model = WindowTile::new(init);
-        let build_indicator = build_indicator::image();
-        build_indicator.set_build_indicator_state(agent_build_indicator_state(&model.vm));
+        // Build status icon rendering is paused while the status is moved to a new surface.
+        // let build_indicator = build_indicator::image();
+        // build_indicator.set_build_indicator_state(agent_build_indicator_state(&model.vm));
         let widgets = view_output!();
 
         ComponentParts { model, widgets }
     }
-}
-
-fn window_frame_classes(vm: &Option<ViewModel>) -> Vec<&'static str> {
-    let mut classes = vec!["workspace-window-frame", BACKGROUND_BLUR_CLASS];
-    if vm.as_ref().is_some_and(|vm| vm.active) {
-        classes.push("active");
-    }
-    if vm.as_ref().is_some_and(|vm| vm.urgent) {
-        classes.push("urgent");
-    }
-    if build_progress_visible(vm) {
-        classes.push("build-progress");
-    }
-    classes
 }
 
 fn traced_window_tile_classes(vm: &Option<ViewModel>) -> Vec<&'static str> {
@@ -231,25 +168,18 @@ fn traced_window_tile_classes(vm: &Option<ViewModel>) -> Vec<&'static str> {
 }
 
 fn window_tile_classes(vm: &Option<ViewModel>) -> Vec<&'static str> {
-    let Some(vm) = vm else {
-        return vec![
-            "workspace-window-content",
-            "workspace-window-tile",
-            "workspace-window-plain",
-        ];
-    };
+    let mut classes = vec!["bar-indicator"];
+    if build_progress_visible(vm) {
+        classes.push("build-progress");
+    }
 
-    let mut classes = vec!["workspace-window-content", "workspace-window-tile"];
-    classes.push(match vm.kind {
-        Kind::Plain => "workspace-window-plain",
-        Kind::Neovim => "workspace-window-neovim",
-        Kind::Agent(_) => "workspace-window-agent",
-        Kind::Build(_) => "workspace-window-build",
-    });
+    let Some(vm) = vm else {
+        return classes;
+    };
 
     match &vm.kind {
         Kind::Agent(agent) => {
-            classes.push("agent-window");
+            classes.push("workspace-window-agent");
             if agent.attention {
                 classes.push("attention");
             }
@@ -261,10 +191,11 @@ fn window_tile_classes(vm: &Option<ViewModel>) -> Vec<&'static str> {
                 AgentState::Compacting => classes.push("compacting"),
             }
         }
-        Kind::Build(build) => {
-            classes.push("build-window");
-            classes.extend(build_state_classes(build));
-        }
+        // Build status icon rendering is paused while the status is moved to a new surface.
+        // Kind::Build(build) => {
+        //     classes.push("workspace-window-build");
+        //     classes.extend(build_state_classes(build));
+        // }
         Kind::Plain | Kind::Neovim => {}
     }
 
@@ -281,14 +212,15 @@ fn window_tile_classes(vm: &Option<ViewModel>) -> Vec<&'static str> {
 fn window_icon_name(vm: &Option<ViewModel>) -> Option<String> {
     vm.as_ref().map(|vm| match &vm.kind {
         Kind::Agent(agent) => agent_icon(agent, &vm.icon),
-        Kind::Build(build) => material_icon::icon_name(build.icon),
-        Kind::Plain | Kind::Neovim => vm.icon.clone(),
+        // Build status icon rendering is paused while the status is moved to a new surface.
+        // Kind::Build(build) => material_icon::icon_name(build.icon),
+        Kind::Plain | Kind::Neovim => app_icon::icon_name(&vm.icon),
     })
 }
 
 fn agent_icon(agent: &Agent, fallback: &str) -> String {
     if agent.icon.is_empty() {
-        fallback.to_owned()
+        app_icon::icon_name(fallback)
     } else {
         material_icon::icon_name(&agent.icon)
     }
@@ -302,86 +234,77 @@ fn is_agent(vm: &Option<ViewModel>) -> bool {
 fn agent_unseen_visible(vm: &Option<ViewModel>) -> bool {
     vm.as_ref().is_some_and(|vm| match &vm.kind {
         Kind::Agent(agent) => agent.unseen,
-        Kind::Build(_) | Kind::Plain | Kind::Neovim => false,
+        Kind::Plain | Kind::Neovim => false,
     })
 }
 
-fn context_pct(vm: &Option<ViewModel>) -> u32 {
-    vm.as_ref()
-        .and_then(|vm| match &vm.kind {
-            Kind::Agent(agent) => Some(agent.context_pct),
-            Kind::Build(_) | Kind::Plain | Kind::Neovim => None,
-        })
-        .unwrap_or(0)
+// Build status icon rendering is paused while the status is moved to a new surface.
+// fn agent_build_indicator_state(vm: &Option<ViewModel>) -> BuildIndicatorState {
+//     let Some(vm) = vm else {
+//         return BuildIndicatorState::None;
+//     };
+//     if !matches!(vm.kind, Kind::Agent(_)) {
+//         return BuildIndicatorState::None;
+//     }
+//     vm.build
+//         .as_ref()
+//         .map(build_indicator_state)
+//         .unwrap_or_default()
+// }
+//
+// fn build_indicator_state(build: &bzbus::BzBusView) -> BuildIndicatorState {
+//     if build_has_state(build, "failed") {
+//         BuildIndicatorState::Failed
+//     } else if build_has_state(build, "running") {
+//         BuildIndicatorState::Running
+//     } else if build_has_state(build, "finished") {
+//         BuildIndicatorState::Finished
+//     } else {
+//         BuildIndicatorState::None
+//     }
+// }
+
+// Build status icon rendering is paused while the status is moved to a new surface.
+// fn build_state_classes(build: &bzbus::BzBusView) -> impl Iterator<Item = &'static str> + '_ {
+//     build.classes.iter().copied().filter(|class| {
+//         matches!(
+//             *class,
+//             "idle" | "offline" | "running" | "failed" | "finished"
+//         )
+//     })
+// }
+//
+// fn build_has_state(build: &bzbus::BzBusView, state: &str) -> bool {
+//     build.classes.iter().any(|class| class == &state)
+// }
+
+fn build_progress_visible(_vm: &Option<ViewModel>) -> bool {
+    // Build status icon rendering is paused while the status is moved to a new surface.
+    // _vm.as_ref().is_some_and(|vm| match &vm.kind {
+    //     Kind::Build(build) => build.progress_visible,
+    //     Kind::Agent(_) | Kind::Plain | Kind::Neovim => false,
+    // })
+    false
 }
 
-fn context_indicator_root_classes() -> Vec<&'static str> {
-    level_indicator::root_classes(["line", "agent-context-indicator"])
+fn build_progress_percent(_vm: &Option<ViewModel>) -> u8 {
+    // Build status icon rendering is paused while the status is moved to a new surface.
+    // _vm.as_ref()
+    //     .and_then(|vm| match &vm.kind {
+    //         Kind::Build(build) => Some(build.progress_percent),
+    //         Kind::Agent(_) | Kind::Plain | Kind::Neovim => None,
+    //     })
+    //     .unwrap_or(0)
+    0
 }
 
-fn context_indicator_level_classes(context_pct: u32) -> Vec<&'static str> {
-    level_indicator::level_classes(f64::from(context_pct), 0.0, CONTEXT_STAGES)
-}
-
-fn agent_build_indicator_state(vm: &Option<ViewModel>) -> BuildIndicatorState {
-    let Some(vm) = vm else {
-        return BuildIndicatorState::None;
-    };
-    if !matches!(vm.kind, Kind::Agent(_)) {
-        return BuildIndicatorState::None;
-    }
-    vm.build
-        .as_ref()
-        .map(build_indicator_state)
-        .unwrap_or_default()
-}
-
-fn build_indicator_state(build: &bzbus::BzBusView) -> BuildIndicatorState {
-    if build_has_state(build, "failed") {
-        BuildIndicatorState::Failed
-    } else if build_has_state(build, "running") {
-        BuildIndicatorState::Running
-    } else if build_has_state(build, "finished") {
-        BuildIndicatorState::Finished
-    } else {
-        BuildIndicatorState::None
-    }
-}
-
-fn build_state_classes(build: &bzbus::BzBusView) -> impl Iterator<Item = &'static str> + '_ {
-    build.classes.iter().copied().filter(|class| {
-        matches!(
-            *class,
-            "idle" | "offline" | "running" | "failed" | "finished"
-        )
-    })
-}
-
-fn build_has_state(build: &bzbus::BzBusView, state: &str) -> bool {
-    build.classes.iter().any(|class| class == &state)
-}
-
-fn build_progress_visible(vm: &Option<ViewModel>) -> bool {
-    vm.as_ref().is_some_and(|vm| match &vm.kind {
-        Kind::Build(build) => build.progress_visible,
-        Kind::Agent(_) | Kind::Plain | Kind::Neovim => false,
-    })
-}
-
-fn build_progress_percent(vm: &Option<ViewModel>) -> u8 {
-    vm.as_ref()
-        .and_then(|vm| match &vm.kind {
-            Kind::Build(build) => Some(build.progress_percent),
-            Kind::Agent(_) | Kind::Plain | Kind::Neovim => None,
-        })
-        .unwrap_or(0)
-}
-
-fn build_progress_level_classes(vm: &Option<ViewModel>) -> Vec<&'static str> {
-    vm.as_ref()
-        .and_then(|vm| match &vm.kind {
-            Kind::Build(build) => Some(build.progress_level_classes.clone()),
-            Kind::Agent(_) | Kind::Plain | Kind::Neovim => None,
-        })
-        .unwrap_or_else(|| vec!["level", "idle"])
+fn build_progress_level_classes(_vm: &Option<ViewModel>) -> Vec<&'static str> {
+    // Build status icon rendering is paused while the status is moved to a new surface.
+    // _vm.as_ref()
+    //     .and_then(|vm| match &vm.kind {
+    //         Kind::Build(build) => Some(build.progress_level_classes.clone()),
+    //         Kind::Agent(_) | Kind::Plain | Kind::Neovim => None,
+    //     })
+    //     .unwrap_or_else(|| vec!["level", "idle"])
+    vec!["level", "idle"]
 }

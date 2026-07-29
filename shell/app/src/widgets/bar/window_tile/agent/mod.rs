@@ -10,7 +10,6 @@ pub(in crate::widgets::bar) struct Agent {
     pub(in crate::widgets::bar) title: String,
     pub(in crate::widgets::bar) attention: bool,
     pub(in crate::widgets::bar) state: State,
-    pub(in crate::widgets::bar) context_pct: u32,
     pub(in crate::widgets::bar) unseen: bool,
 }
 

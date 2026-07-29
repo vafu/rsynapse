@@ -1,8 +1,10 @@
+mod app_icon;
 mod audio;
 mod battery;
 mod bluetooth;
 mod brightness;
-mod build_indicator;
+// Build status icon rendering is paused while the status is moved to a new surface.
+// mod build_indicator;
 mod bzbus;
 mod mpris;
 mod network;
@@ -65,6 +67,7 @@ use crate::{hints, request, theme};
 
 type WindowNode = niri::NiriWindow;
 pub(super) const WORKSPACE_RAIL_WIDTH: i32 = 36;
+pub(super) const PANEL_ICON_SIZE: i32 = 16;
 
 #[derive(Clone)]
 pub struct MainBarInit {
@@ -203,7 +206,57 @@ impl SimpleAsyncComponent for MainBar {
 
                 #[wrap(Some)]
                 set_start_widget = &gtk::Box {
+                    add_css_class: "bar-zone",
+                    add_css_class: "bar-zone-start",
+                    add_css_class: "bar-zone-windows",
+                    add_css_class: "bar-indicator-list",
+                    add_css_class: "bar-indicator-list-horizontal",
+                    set_halign: gtk::Align::Start,
                     set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 4,
+                    set_valign: gtk::Align::Center,
+                    set_vexpand: false,
+
+                    gtk::Box {
+                        add_css_class: "bar-indicator",
+                        add_css_class: "bar-corner-indicator",
+                        #[watch]
+                        set_tooltip_text: Some(selected_project::tooltip(&model.selected_project).as_str()),
+                        set_width_request: WORKSPACE_RAIL_WIDTH,
+                        set_halign: gtk::Align::Start,
+                        set_valign: gtk::Align::Center,
+                        set_orientation: gtk::Orientation::Horizontal,
+
+                        gtk::Image {
+                            add_css_class: "materialicon",
+                            add_css_class: "bar-corner-icon",
+                            set_halign: gtk::Align::Center,
+                            set_valign: gtk::Align::Center,
+                            set_hexpand: true,
+                            set_pixel_size: PANEL_ICON_SIZE,
+                            set_icon_name: Some(material_icon::icon_name("open_with").as_str()),
+                        }
+                    },
+
+                    #[bind_list(window_columns, row = WindowColumn)]
+                    window_columns -> gtk::Box {
+                        set_widget_name: "workspace-window-list",
+                        set_halign: gtk::Align::Start,
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 4,
+                        set_valign: gtk::Align::Center,
+                        set_vexpand: false,
+                    }
+                },
+
+                #[wrap(Some)]
+                set_center_widget = &gtk::Box {
+                    add_css_class: "bar-zone",
+                    add_css_class: "bar-zone-title",
+                    set_halign: gtk::Align::Center,
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_valign: gtk::Align::Fill,
+                    set_vexpand: true,
 
                     gtk::Box {
                         #[watch]
@@ -212,50 +265,41 @@ impl SimpleAsyncComponent for MainBar {
                         set_visible: selected_project::visible(&model.selected_project),
                         #[watch]
                         set_tooltip_text: Some(selected_project::tooltip(&model.selected_project).as_str()),
-                        set_halign: gtk::Align::Start,
+                        set_halign: gtk::Align::Center,
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 4,
 
                         gtk::Image {
                             add_css_class: "materialicon",
                             add_css_class: "selected-project-icon",
-                            set_icon_name: Some(material_icon::icon_name(selected_project::icon_name()).as_str()),
+                            set_halign: gtk::Align::Center,
+                            set_valign: gtk::Align::Center,
+                            set_pixel_size: PANEL_ICON_SIZE,
+                            #[watch]
+                            set_icon_name: Some(selected_project::icon_name(&model.selected_project).as_str()),
                         },
 
                         gtk::Label {
                             add_css_class: "selected-project-label",
                             set_ellipsize: gtk::pango::EllipsizeMode::End,
-                            set_max_width_chars: 28,
-                            set_xalign: 0.0,
+                            set_max_width_chars: 42,
+                            set_xalign: 0.5,
                             #[watch]
                             set_label: selected_project::label(&model.selected_project),
                         }
-                    },
-
-                },
-
-                #[wrap(Some)]
-                set_center_widget = &gtk::Box {
-                    set_halign: gtk::Align::Center,
-                    set_orientation: gtk::Orientation::Horizontal,
-
-                    #[bind_list(window_columns, row = WindowColumn)]
-                    window_columns -> gtk::Box {
-                        set_widget_name: "workspace-window-list",
-                        add_css_class: "workspace-window-list",
-                        set_halign: gtk::Align::Center,
-                        set_orientation: gtk::Orientation::Horizontal,
-                        set_spacing: 4,
-                        set_valign: gtk::Align::Fill,
-                        set_vexpand: true,
                     }
                 },
 
                 #[wrap(Some)]
                 set_end_widget = &gtk::Box {
+                    add_css_class: "bar-zone",
+                    add_css_class: "bar-zone-status",
                     add_css_class: "system-cluster",
                     set_halign: gtk::Align::End,
                     set_orientation: gtk::Orientation::Horizontal,
+                    set_spacing: 2,
+                    set_valign: gtk::Align::Fill,
+                    set_vexpand: true,
 
                     #[name = "mpris_group"]
                     gtk::Box {
@@ -1114,7 +1158,7 @@ fn bar_window_config() -> WindowConfig {
     WindowConfig::new(Layer::Top)
         .with_anchors(
             Anchors::NONE
-                .with_edge(Edge::Top)
+                .with_edge(Edge::Bottom)
                 .with_edge(Edge::Right)
                 .with_edge(Edge::Left),
         )
