@@ -7,7 +7,7 @@ use self::source::{ProjectLabelVm, WorkspaceBuildState, project_label_vm};
 
 use super::{
     WorkspaceNode,
-    build_indicator::{self, BuildIndicatorImageExt, BuildIndicatorState},
+    build_indicator::{BuildIndicatorImageExt, BuildIndicatorState},
 };
 use crate::{
     hints::hints_active,
@@ -64,13 +64,11 @@ impl SimpleComponent for ProjectLabel {
                     set_halign: gtk::Align::Start,
                     set_hexpand: false,
 
-                    gtk::Box {
+                    gtk::Overlay {
                         add_css_class: "projects-collapsed-icon",
                         add_css_class: "workspaces-collapsed-icon",
                         set_halign: gtk::Align::Center,
                         set_hexpand: false,
-                        set_orientation: gtk::Orientation::Horizontal,
-                        set_spacing: 2,
 
                         #[local_ref]
                         icon -> gtk::Image {
@@ -83,8 +81,11 @@ impl SimpleComponent for ProjectLabel {
                             set_icon_name: Some(project_icon_name(&model.vm).as_str()),
                         },
 
-                        #[local_ref]
-                        build_indicator -> gtk::Image {
+                        add_overlay = &gtk::Image {
+                            set_can_target: false,
+                            set_pixel_size: 12,
+                            set_halign: gtk::Align::End,
+                            set_valign: gtk::Align::End,
                             #[watch]
                             set_build_indicator_state: workspace_build_indicator_state(model.vm.build),
                         }
@@ -93,8 +94,7 @@ impl SimpleComponent for ProjectLabel {
 
                 #[name = "title_revealer"]
                 gtk::Revealer {
-                    #[watch]
-                    set_reveal_child: model.selected,
+                    set_reveal_child: false,
 
                     set_halign: gtk::Align::Start,
                     set_hexpand: false,
@@ -126,31 +126,6 @@ impl SimpleComponent for ProjectLabel {
                                 set_xalign: 0.0,
                             },
 
-                            gtk::Label {
-                                add_css_class: "projects-delimiter",
-                                add_css_class: "workspaces-delimiter",
-
-                                #[watch]
-                                set_visible: project_secondary(&model.vm).is_some(),
-
-                                set_label: "·",
-                                set_xalign: 0.0,
-                            },
-
-                            gtk::Label {
-                                add_css_class: "projects-secondary",
-                                add_css_class: "workspaces-secondary",
-                                set_ellipsize: gtk::pango::EllipsizeMode::End,
-
-                                #[watch]
-                                set_label: project_secondary(&model.vm).unwrap_or_default().as_str(),
-
-                                #[watch]
-                                set_visible: project_secondary(&model.vm).is_some(),
-
-                                set_max_width_chars: 18,
-                                set_xalign: 0.0,
-                            }
                         }
                     }
                 }
@@ -181,8 +156,6 @@ impl SimpleComponent for ProjectLabel {
         let icon = gtk::Image::new();
         icon.set_css_classes(project_icon_classes(&model.vm));
         icon.set_icon_name(Some(project_icon_name(&model.vm).as_str()));
-        let build_indicator = build_indicator::image();
-        build_indicator.set_build_indicator_state(workspace_build_indicator_state(model.vm.build));
         let widgets = view_output!();
 
         ComponentParts { model, widgets }

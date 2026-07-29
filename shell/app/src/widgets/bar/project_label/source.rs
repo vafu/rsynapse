@@ -1,6 +1,5 @@
 mod agent;
 mod build;
-mod project;
 mod workspace_fallback;
 
 #[cfg(test)]
@@ -13,10 +12,9 @@ pub(super) use self::build::WorkspaceBuildState;
 use self::{
     agent::{WorkspaceAgentState, workspace_agent_state},
     build::workspace_build_state,
-    project::project_details,
     workspace_fallback::workspace_window_fallback_source,
 };
-use crate::widgets::bar::niri::NiriWorkspace;
+use crate::widgets::bar::{niri::NiriWorkspace, project::project_details};
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(in crate::widgets::bar) struct ProjectLabelVm {
@@ -31,14 +29,6 @@ pub(in crate::widgets::bar) struct ProjectLabelVm {
     pub(super) empty: bool,
     pub(super) agent: WorkspaceAgentState,
     pub(super) build: WorkspaceBuildState,
-}
-
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-struct ProjectDetails {
-    has_project: bool,
-    name: Option<String>,
-    branch: Option<String>,
-    icon: Option<String>,
 }
 
 pub(super) fn project_label_vm(workspace: NiriWorkspace) -> Observable<ProjectLabelVm> {
@@ -65,8 +55,8 @@ pub(super) fn project_label_vm(workspace: NiriWorkspace) -> Observable<ProjectLa
                     workspace_name,
                     urgent,
                     active,
-                    project_name: project.name,
-                    project_branch: project.branch,
+                    project_name: project.display_main,
+                    project_branch: project.display_secondary,
                     project_icon,
                     project_icon_is_app,
                     empty: !project.has_project && fallback.empty,

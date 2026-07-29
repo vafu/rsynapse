@@ -47,7 +47,10 @@ fn workspace_build_state_uses_failed_running_finished_precedence() {
 
 fn agent(state: State, attention: bool, unseen: bool) -> Agent {
     Agent {
+        name: "codex".to_owned(),
         icon: "cognition".to_owned(),
+        cwd: String::new(),
+        title: String::new(),
         attention,
         state,
         context_pct: 0,

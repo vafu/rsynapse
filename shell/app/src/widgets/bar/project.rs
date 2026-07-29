@@ -5,12 +5,22 @@ use locus::{RelationEndpoint, RelationRecord, keys};
 use shell_core::source::{self, Observable, rx::Observable as _};
 use zbus::{Connection, Proxy};
 
-use super::{ProjectDetails, non_empty};
-use crate::widgets::bar::niri::NiriWorkspace;
+use super::niri::NiriWorkspace;
 
 const WORKSPACE_PROJECT_RELATION: &str = "org.rsynapse.workspace.project";
 
-pub(super) fn project_details(workspace: NiriWorkspace) -> Observable<ProjectDetails> {
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub(in crate::widgets::bar) struct ProjectDetails {
+    pub(in crate::widgets::bar) has_project: bool,
+    pub(in crate::widgets::bar) display_main: Option<String>,
+    pub(in crate::widgets::bar) display_secondary: Option<String>,
+    pub(in crate::widgets::bar) icon: Option<String>,
+    pub(in crate::widgets::bar) branch: Option<String>,
+}
+
+pub(in crate::widgets::bar) fn project_details(
+    workspace: NiriWorkspace,
+) -> Observable<ProjectDetails> {
     source::switch_map(workspace.id().map(workspace_subject).box_it(), |subject| {
         locus_workspace_project(subject)
     })
@@ -163,9 +173,10 @@ impl From<RelationRecord> for ProjectDetails {
     fn from(record: RelationRecord) -> Self {
         Self {
             has_project: true,
-            name: metadata_value(&record.metadata, &["display-main"]),
-            branch: metadata_value(&record.metadata, &["display-secondary"]),
+            display_main: metadata_value(&record.metadata, &["display-main"]),
+            display_secondary: metadata_value(&record.metadata, &["display-secondary"]),
             icon: metadata_value(&record.metadata, &["display-icon", "icon"]),
+            branch: metadata_value(&record.metadata, &["branch"]),
         }
     }
 }
@@ -177,6 +188,13 @@ fn metadata_value(metadata: &HashMap<String, String>, keys: &[&str]) -> Option<S
 
 fn workspace_subject(id: u64) -> RelationEndpoint {
     RelationEndpoint::stable_key(keys::NIRI_WORKSPACE_ID, id.to_string())
+}
+
+fn non_empty(value: Option<String>) -> Option<String> {
+    value.and_then(|value| {
+        let value = value.trim().to_owned();
+        (!value.is_empty()).then_some(value)
+    })
 }
 
 fn to_string(error: zbus::Error) -> String {

@@ -119,7 +119,10 @@ fn clears_unseen_agent_when_state_is_unknown() {
 
 fn make_agent(state: State) -> Agent {
     Agent {
+        name: "codex".to_owned(),
         icon: "cognition".to_owned(),
+        cwd: String::new(),
+        title: String::new(),
         attention: false,
         state,
         context_pct: 0,

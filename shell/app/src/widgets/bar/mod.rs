@@ -8,7 +8,9 @@ mod mpris;
 mod network;
 mod niri;
 mod power_profile;
+mod project;
 mod project_label;
+mod selected_project;
 mod source_errors;
 mod system_stats;
 mod systray;
@@ -16,6 +18,7 @@ mod time;
 mod window_column;
 mod window_source;
 mod window_tile;
+mod workspace_bar;
 mod workspaces;
 
 use std::{
@@ -32,7 +35,7 @@ use shell_core::{
     gtk4_layer_shell::LayerShell,
     list::ComponentListBoxExt,
     source::SourceError,
-    window::{self, Anchors, Edge, Layer, WindowConfig},
+    window::{self, Anchors, Edge, Layer, SurfaceMargins, WindowConfig},
 };
 
 use crate::widgets::{BACKGROUND_BLUR_CLASS, level_indicator, material_icon};
@@ -47,19 +50,21 @@ use self::brightness::{BrightnessView, brightness_status};
 use self::mpris::{MprisView, mpris_status};
 use self::network::{NetworkView, network_status};
 use self::power_profile::{PowerProfileView, power_profile_status};
-use self::project_label::ProjectLabel;
+use self::selected_project::{SelectedProjectView, selected_project_status};
 use self::source_errors::{SourceErrorRow, source_error_count, source_error_items};
 use self::system_stats::{ArcSide, SysStatsView, sys_stats};
 use self::systray::{TrayItem, systray_items};
 use self::time::{ClockView, clock};
 use self::window_column::{WindowColumn, WindowColumnNode};
-use self::workspaces::{WorkspaceNode, selected_workspace_window_columns, workspaces};
+use self::workspace_bar::{WorkspaceBar, WorkspaceBarInit};
+use self::workspaces::{WorkspaceNode, selected_workspace_window_columns};
 use super::{
     OsdAudioView, OsdBrightnessView, OsdInit, OsdInput, OsdWindow, has_notification_items,
 };
 use crate::{hints, request, theme};
 
 type WindowNode = niri::NiriWindow;
+pub(super) const WORKSPACE_RAIL_WIDTH: i32 = 36;
 
 #[derive(Clone)]
 pub struct MainBarInit {
@@ -127,16 +132,17 @@ pub enum MediaAction {
 pub struct MainBar {
     _osd: Option<AsyncController<OsdWindow>>,
     _request_server: Option<request::RequestServer>,
+    _workspace_bar: Option<Controller<WorkspaceBar>>,
     _child_bars: Vec<AsyncController<MainBar>>,
     _audio_osd_ready: bool,
     _brightness_osd_ready: bool,
     output_name: Option<String>,
 
-    #[source(workspaces(output_name.clone()))]
-    project_labels: Vec<WorkspaceNode>,
-
     #[source(selected_workspace_window_columns(output_name.clone()))]
     window_columns: Vec<WindowColumnNode>,
+
+    #[source(selected_project_status(output_name.clone()))]
+    selected_project: SelectedProjectView,
 
     #[source(battery_status())]
     battery: BatteryView,
@@ -199,17 +205,33 @@ impl SimpleAsyncComponent for MainBar {
                 set_start_widget = &gtk::Box {
                     set_orientation: gtk::Orientation::Horizontal,
 
-                    #[bind_list(project_labels, row = ProjectLabel)]
-                    project_labels -> gtk::Box {
-                        set_widget_name: "project-labels",
-                        add_css_class: "projects-widget",
-                        add_css_class: "workspaces-widget",
-                        add_css_class: "projects-list",
-                        add_css_class: "workspaces-list",
-                        set_halign: gtk::Align::Center,
+                    gtk::Box {
+                        #[watch]
+                        set_css_classes: selected_project::classes(&model.selected_project),
+                        #[watch]
+                        set_visible: selected_project::visible(&model.selected_project),
+                        #[watch]
+                        set_tooltip_text: Some(selected_project::tooltip(&model.selected_project).as_str()),
+                        set_halign: gtk::Align::Start,
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 4,
+
+                        gtk::Image {
+                            add_css_class: "materialicon",
+                            add_css_class: "selected-project-icon",
+                            set_icon_name: Some(material_icon::icon_name(selected_project::icon_name()).as_str()),
+                        },
+
+                        gtk::Label {
+                            add_css_class: "selected-project-label",
+                            set_ellipsize: gtk::pango::EllipsizeMode::End,
+                            set_max_width_chars: 28,
+                            set_xalign: 0.0,
+                            #[watch]
+                            set_label: selected_project::label(&model.selected_project),
+                        }
                     },
+
                 },
 
                 #[wrap(Some)]
@@ -773,13 +795,26 @@ impl SimpleAsyncComponent for MainBar {
             None
         };
 
+        let workspace_bar = launch_workspace_bar(
+            "Rsynapse Workspace Rail",
+            monitor.clone(),
+            output_name.clone(),
+        );
         let child_bars = if init.primary {
             launch_secondary_bars(init.title, monitors.into_iter().skip(1))
         } else {
             Vec::new()
         };
 
-        let model = MainBar::new(osd, request_server, child_bars, false, false, output_name);
+        let model = MainBar::new(
+            osd,
+            request_server,
+            workspace_bar,
+            child_bars,
+            false,
+            false,
+            output_name,
+        );
         let widgets = view_output!();
         let input_sender = sender.input_sender().clone();
         widgets.clock_button.connect_clicked(move |_| {
@@ -1015,6 +1050,25 @@ fn available_monitors() -> Vec<gtk::gdk::Monitor> {
         .collect()
 }
 
+fn launch_workspace_bar(
+    title: &'static str,
+    monitor: Option<gtk::gdk::Monitor>,
+    output_name: Option<String>,
+) -> Option<Controller<WorkspaceBar>> {
+    let builder = WorkspaceBar::builder();
+    let root = builder.root.clone();
+    relm4::main_application().add_window(&root);
+    let controller = builder
+        .launch(WorkspaceBarInit {
+            title,
+            monitor,
+            output_name,
+        })
+        .detach();
+    root.present();
+    Some(controller)
+}
+
 fn launch_secondary_bars(
     title: &'static str,
     monitors: impl Iterator<Item = gtk::gdk::Monitor>,
@@ -1064,6 +1118,10 @@ fn bar_window_config() -> WindowConfig {
                 .with_edge(Edge::Right)
                 .with_edge(Edge::Left),
         )
+        .with_surface_margins(SurfaceMargins {
+            left: WORKSPACE_RAIL_WIDTH,
+            ..SurfaceMargins::ZERO
+        })
         .with_auto_exclusive_zone()
         .with_namespace("rsynapse-bar")
 }

@@ -181,10 +181,15 @@ fn agent_session(session: AgentSession) -> Observable<Option<Agent>> {
         session.agent_role(),
         session.state(),
         session.requires_attention(),
-        session.context_pct()
-            => |(agent_name, nickname, role, state, attention, context_pct)| {
+        session.context_pct(),
+        session.cwd(),
+        session.session_title()
+            => |(agent_name, nickname, role, state, attention, context_pct, cwd, title)| {
                 Some(Agent {
+                    name: agent_name.clone(),
                     icon: agent_icon(&agent_name, &nickname, &role),
+                    cwd,
+                    title,
                     attention,
                     state: session_state(&state),
                     context_pct: context_pct_percent(context_pct),
@@ -219,6 +224,14 @@ impl AgentSession {
 
     fn context_pct(&self) -> Observable<f64> {
         required(self.property("ContextPct"), 0.0)
+    }
+
+    fn cwd(&self) -> Observable<String> {
+        required(self.property("Cwd"), String::new())
+    }
+
+    fn session_title(&self) -> Observable<String> {
+        required(self.property("SessionTitle"), String::new())
     }
 
     fn property(&self, name: &'static str) -> PropertyDescriptor {
