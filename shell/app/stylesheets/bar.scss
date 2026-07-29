@@ -3,12 +3,12 @@ $outline-width: $label-margin * 0.4;
 $outline-offset: $label-margin * 0.5;
 
 .bar-window {
-  background-color: transparent;
+  background-color: #000;
 }
 
 .bar {
-  background-color: transparent;
-  padding: 0px 0px 8px 0px;
+  background-color: #000;
+  padding: 0;
 
   transition: 100ms;
   min-height: 32px;
@@ -20,7 +20,7 @@ $outline-offset: $label-margin * 0.5;
       background-color 100ms,
       border-color 100ms;
     padding: 0 8px;
-    margin-top: 4px;
+    margin-top: 0;
     margin-left: 8px;
     margin-right: 8px;
   }
@@ -112,8 +112,12 @@ $outline-offset: $label-margin * 0.5;
   }
 }
 
+.bar .barblock.selected-project {
+  margin-left: 0;
+}
+
 .workspace-window-frame {
-  margin-top: 4px;
+  margin-top: 0;
 
   &.build-progress.active {
     outline: 1px solid #{$rsx-selected-outline};

@@ -35,7 +35,7 @@ use shell_core::{
     gtk4_layer_shell::LayerShell,
     list::ComponentListBoxExt,
     source::SourceError,
-    window::{self, Anchors, Edge, Layer, SurfaceMargins, WindowConfig},
+    window::{self, Anchors, Edge, Layer, WindowConfig},
 };
 
 use crate::widgets::{BACKGROUND_BLUR_CLASS, level_indicator, material_icon};
@@ -1114,14 +1114,10 @@ fn bar_window_config() -> WindowConfig {
     WindowConfig::new(Layer::Top)
         .with_anchors(
             Anchors::NONE
-                .with_edge(Edge::Bottom)
+                .with_edge(Edge::Top)
                 .with_edge(Edge::Right)
                 .with_edge(Edge::Left),
         )
-        .with_surface_margins(SurfaceMargins {
-            left: WORKSPACE_RAIL_WIDTH,
-            ..SurfaceMargins::ZERO
-        })
         .with_auto_exclusive_zone()
         .with_namespace("rsynapse-bar")
 }
