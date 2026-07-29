@@ -31,19 +31,25 @@ impl SimpleComponent for WindowTile {
     type Output = ();
 
     view! {
-        gtk::Overlay {
+        gtk::Revealer {
             #[watch]
-            set_visible: model.vm.is_some(),
-
-            #[watch]
-            set_css_classes: &traced_window_tile_classes(&model.vm),
-
+            set_reveal_child: window_visible(&model.vm),
+            set_transition_type: gtk::RevealerTransitionType::FadeSlideRight,
+            set_transition_duration: 140,
             set_halign: gtk::Align::Center,
             set_valign: gtk::Align::Center,
             set_vexpand: false,
 
-            #[watch]
-            set_tooltip_text: model.vm.as_ref().map(|vm| vm.tooltip.as_str()),
+            gtk::Overlay {
+                #[watch]
+                set_css_classes: &traced_window_tile_classes(&model.vm),
+
+                set_halign: gtk::Align::Center,
+                set_valign: gtk::Align::Center,
+                set_vexpand: false,
+
+                #[watch]
+                set_tooltip_text: model.vm.as_ref().map(|vm| vm.tooltip.as_str()),
 
             gtk::Box {
                 set_halign: gtk::Align::Center,
@@ -135,6 +141,7 @@ impl SimpleComponent for WindowTile {
                 #[watch]
                 set_draw_func: bzbus::progress_level_draw_func(build_progress_percent(&model.vm)),
             }
+            }
         }
     }
 
@@ -207,6 +214,10 @@ fn window_tile_classes(vm: &Option<ViewModel>) -> Vec<&'static str> {
     }
 
     classes
+}
+
+fn window_visible(vm: &Option<ViewModel>) -> bool {
+    vm.is_some()
 }
 
 fn window_icon_name(vm: &Option<ViewModel>) -> Option<String> {

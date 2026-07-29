@@ -37,10 +37,15 @@ impl SimpleComponent for ProjectLabel {
     type Output = ();
 
     view! {
-        gtk::Box {
+        gtk::Revealer {
             #[watch]
-            set_visible: workspace_visible(&model.vm, model.selected),
+            set_reveal_child: workspace_visible(&model.vm, model.selected),
+            set_transition_type: gtk::RevealerTransitionType::FadeSlideDown,
+            set_transition_duration: 150,
+            set_halign: gtk::Align::Center,
+            set_valign: gtk::Align::Center,
 
+            gtk::Box {
             #[watch]
             set_css_classes: &project_group_classes(&model.vm, model.selected),
 
@@ -116,6 +121,7 @@ impl SimpleComponent for ProjectLabel {
                 set_halign: gtk::Align::Center,
                 set_valign: gtk::Align::Center,
             },
+            }
         }
     }
 
