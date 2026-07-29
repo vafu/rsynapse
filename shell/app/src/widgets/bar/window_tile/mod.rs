@@ -1,4 +1,5 @@
 pub(in crate::widgets::bar) mod agent;
+mod app_instance;
 mod source;
 
 use relm4::prelude::*;
