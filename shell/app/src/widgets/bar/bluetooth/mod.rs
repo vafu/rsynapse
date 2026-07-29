@@ -12,6 +12,8 @@ use crate::widgets::level_indicator::{
 };
 use crate::widgets::material_icon;
 
+use super::bar_item;
+
 const BATTERY_STAGES: &[LevelStage] = &[LevelStage {
     level: 5.0,
     class: "ok",
@@ -201,12 +203,16 @@ pub(super) fn status_tooltip(status: &BluetoothStatusView) -> String {
     }
 }
 
-pub(super) fn group_classes(group: &DeviceGroupView) -> Vec<&'static str> {
-    let mut classes = vec!["flat", "circular", "panel-widget", "bt-device-button"];
+pub(super) fn group_item_classes(group: &DeviceGroupView) -> Vec<&'static str> {
+    let mut classes = bar_item::classes(&[bar_item::SQUARE_CLASS, "bt-device-item"]);
     if group.tinted {
-        classes.push("tinted");
+        classes.push("muted");
     }
     classes
+}
+
+pub(super) fn group_button_classes() -> Vec<&'static str> {
+    bar_item::action_classes(&["bt-device-button"])
 }
 
 pub(super) fn battery_root_classes() -> Vec<&'static str> {

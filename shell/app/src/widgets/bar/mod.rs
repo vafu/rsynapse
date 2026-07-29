@@ -1,5 +1,6 @@
 mod app_icon;
 mod audio;
+mod bar_item;
 mod battery;
 mod bluetooth;
 mod brightness;
@@ -40,7 +41,7 @@ use shell_core::{
     window::{self, Anchors, Edge, Layer, WindowConfig},
 };
 
-use crate::widgets::{BACKGROUND_BLUR_CLASS, level_indicator, material_icon};
+use crate::widgets::{BACKGROUND_BLUR_CLASS, material_icon};
 
 use self::audio::{AudioRoutePopover, AudioView, audio_status};
 use self::battery::BatteryView;
@@ -67,7 +68,11 @@ use crate::{hints, request, theme};
 
 type WindowNode = niri::NiriWindow;
 pub(super) const WORKSPACE_RAIL_WIDTH: i32 = 36;
-pub(super) const PANEL_ICON_SIZE: i32 = 16;
+pub(super) const PANEL_ICON_SIZE: i32 = 18;
+const BT_BATTERY_INDICATOR_WIDTH: i32 = 4;
+const BT_BATTERY_INDICATOR_HEIGHT: i32 = 18;
+const SYSTEM_STATS_ARC_WIDTH: i32 = 10;
+const SYSTEM_STATS_ARC_HEIGHT: i32 = 18;
 
 #[derive(Clone)]
 pub struct MainBarInit {
@@ -217,7 +222,7 @@ impl SimpleAsyncComponent for MainBar {
                     set_valign: gtk::Align::Center,
                     set_vexpand: false,
 
-                    gtk::Box {
+                    gtk::CenterBox {
                         add_css_class: "bar-indicator",
                         add_css_class: "bar-corner-indicator",
                         #[watch]
@@ -227,12 +232,12 @@ impl SimpleAsyncComponent for MainBar {
                         set_valign: gtk::Align::Center,
                         set_orientation: gtk::Orientation::Horizontal,
 
-                        gtk::Image {
+                        #[wrap(Some)]
+                        set_center_widget = &gtk::Image {
                             add_css_class: "materialicon",
                             add_css_class: "bar-corner-icon",
                             set_halign: gtk::Align::Center,
                             set_valign: gtk::Align::Center,
-                            set_hexpand: true,
                             set_pixel_size: PANEL_ICON_SIZE,
                             set_icon_name: Some(material_icon::icon_name("open_with").as_str()),
                         }
@@ -347,7 +352,7 @@ impl SimpleAsyncComponent for MainBar {
                     add_css_class: "system-cluster",
                     set_halign: gtk::Align::End,
                     set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 2,
+                    set_spacing: 0,
                     set_valign: gtk::Align::Fill,
                     set_vexpand: true,
 
@@ -380,7 +385,7 @@ impl SimpleAsyncComponent for MainBar {
                         #[name = "mpris_previous_button"]
                         gtk::Button {
                             add_css_class: "flat",
-                            add_css_class: "circular",
+                            add_css_class: bar_item::ACTION_CLASS,
                             add_css_class: "mpris-control",
                             #[watch]
                             set_sensitive: model.mpris.can_go_previous,
@@ -394,7 +399,7 @@ impl SimpleAsyncComponent for MainBar {
                         #[name = "mpris_play_pause_button"]
                         gtk::Button {
                             add_css_class: "flat",
-                            add_css_class: "circular",
+                            add_css_class: bar_item::ACTION_CLASS,
                             add_css_class: "mpris-control",
                             #[watch]
                             set_sensitive: model.mpris.can_play_pause,
@@ -409,7 +414,7 @@ impl SimpleAsyncComponent for MainBar {
                         #[name = "mpris_next_button"]
                         gtk::Button {
                             add_css_class: "flat",
-                            add_css_class: "circular",
+                            add_css_class: bar_item::ACTION_CLASS,
                             add_css_class: "mpris-control",
                             #[watch]
                             set_sensitive: model.mpris.can_go_next,
@@ -421,85 +426,98 @@ impl SimpleAsyncComponent for MainBar {
                         }
                     },
 
-                    gtk::Box {
-                        add_css_class: "barblock",
-                        add_css_class: BACKGROUND_BLUR_CLASS,
-                        add_css_class: "panel-widget",
+                    #[local_ref]
+                    system_stats_item -> gtk::Box {
                         set_halign: gtk::Align::End,
                         set_orientation: gtk::Orientation::Horizontal,
                         #[watch]
                         set_tooltip_text: Some(system_stats::tooltip(&model.system_stats).as_str()),
                         set_spacing: 4,
 
-                        gtk::Box {
-                            set_orientation: gtk::Orientation::Horizontal,
-                            set_spacing: 0,
+                        #[name = "power_profile_button"]
+                        gtk::Button {
+                            set_css_classes: &bar_item::action_classes(&[
+                                "system-stats-button",
+                                "power-profile-button",
+                            ]),
+                            #[watch]
+                            set_visible: model.power_profile.visible,
+                            #[watch]
+                            set_tooltip_text: Some(model.power_profile.tooltip.as_str()),
 
-                            gtk::Overlay {
-                                #[watch]
-                                set_css_classes: &system_stats::arc_root_classes(),
+                            gtk::Box {
+                                add_css_class: "system-stats-content",
+                                set_halign: gtk::Align::Center,
+                                set_valign: gtk::Align::Center,
+                                set_orientation: gtk::Orientation::Horizontal,
+                                set_spacing: 0,
 
-                                add_overlay = &gtk::DrawingArea {
-                                    set_css_classes: level_indicator::TRACK_CLASSES,
-                                    set_content_width: 8,
-                                    set_content_height: 8,
-                                    set_draw_func: system_stats::track_draw_func(ArcSide::End),
+                                gtk::Overlay {
+                                    #[watch]
+                                    set_css_classes: &system_stats::arc_root_classes(),
+                                    set_halign: gtk::Align::Center,
+                                    set_valign: gtk::Align::Center,
+                                    set_width_request: SYSTEM_STATS_ARC_WIDTH,
+                                    set_height_request: SYSTEM_STATS_ARC_HEIGHT,
+
+                                    add_overlay = &gtk::DrawingArea {
+                                        set_css_classes: system_stats::track_classes(),
+                                        set_can_target: false,
+                                        set_content_width: SYSTEM_STATS_ARC_WIDTH,
+                                        set_content_height: SYSTEM_STATS_ARC_HEIGHT,
+                                        set_draw_func: system_stats::track_draw_func(ArcSide::End),
+                                    },
+
+                                    add_overlay = &gtk::DrawingArea {
+                                        #[watch]
+                                        set_css_classes: &system_stats::level_classes(model.system_stats.cpu),
+                                        set_can_target: false,
+                                        set_content_width: SYSTEM_STATS_ARC_WIDTH,
+                                        set_content_height: SYSTEM_STATS_ARC_HEIGHT,
+                                        #[watch]
+                                        set_draw_func: system_stats::level_draw_func(model.system_stats.cpu, ArcSide::End),
+                                    }
                                 },
-
-                                add_overlay = &gtk::DrawingArea {
-                                    #[watch]
-                                    set_css_classes: &system_stats::level_classes(model.system_stats.cpu),
-                                    set_content_width: 8,
-                                    set_content_height: 8,
-                                    #[watch]
-                                    set_draw_func: system_stats::level_draw_func(model.system_stats.cpu, ArcSide::End),
-                                }
-                            },
-
-                            #[name = "power_profile_button"]
-                            gtk::Button {
-                                add_css_class: "flat",
-                                add_css_class: "circular",
-                                add_css_class: "power-profile-button",
-                                #[watch]
-                                set_visible: model.power_profile.visible,
-                                #[watch]
-                                set_tooltip_text: Some(model.power_profile.tooltip.as_str()),
 
                                 gtk::Image {
                                     add_css_class: "materialicon",
+                                    add_css_class: bar_item::ICON_CLASS,
                                     add_css_class: "power-profile-icon",
                                     #[watch]
                                     set_icon_name: Some(material_icon::icon_name(model.power_profile.icon).as_str()),
-                                }
-                            },
-
-                            gtk::Overlay {
-                                #[watch]
-                                set_css_classes: &system_stats::arc_root_classes(),
-
-                                add_overlay = &gtk::DrawingArea {
-                                    set_css_classes: level_indicator::TRACK_CLASSES,
-                                    set_content_width: 8,
-                                    set_content_height: 8,
-                                    set_draw_func: system_stats::track_draw_func(ArcSide::Start),
                                 },
 
-                                add_overlay = &gtk::DrawingArea {
+                                gtk::Overlay {
                                     #[watch]
-                                    set_css_classes: &system_stats::level_classes(model.system_stats.ram),
-                                    set_content_width: 8,
-                                    set_content_height: 8,
-                                    #[watch]
-                                    set_draw_func: system_stats::level_draw_func(model.system_stats.ram, ArcSide::Start),
+                                    set_css_classes: &system_stats::arc_root_classes(),
+                                    set_halign: gtk::Align::Center,
+                                    set_valign: gtk::Align::Center,
+                                    set_width_request: SYSTEM_STATS_ARC_WIDTH,
+                                    set_height_request: SYSTEM_STATS_ARC_HEIGHT,
+
+                                    add_overlay = &gtk::DrawingArea {
+                                        set_css_classes: system_stats::track_classes(),
+                                        set_can_target: false,
+                                        set_content_width: SYSTEM_STATS_ARC_WIDTH,
+                                        set_content_height: SYSTEM_STATS_ARC_HEIGHT,
+                                        set_draw_func: system_stats::track_draw_func(ArcSide::Start),
+                                    },
+
+                                    add_overlay = &gtk::DrawingArea {
+                                        #[watch]
+                                        set_css_classes: &system_stats::level_classes(model.system_stats.ram),
+                                        set_can_target: false,
+                                        set_content_width: SYSTEM_STATS_ARC_WIDTH,
+                                        set_content_height: SYSTEM_STATS_ARC_HEIGHT,
+                                        #[watch]
+                                        set_draw_func: system_stats::level_draw_func(model.system_stats.ram, ArcSide::Start),
+                                    }
                                 }
                             }
                         }
                     },
 
                     gtk::Box {
-                        add_css_class: "barblock",
-                        add_css_class: BACKGROUND_BLUR_CLASS,
                         add_css_class: "system-indicators",
                         set_halign: gtk::Align::End,
                         set_orientation: gtk::Orientation::Horizontal,
@@ -531,14 +549,17 @@ impl SimpleAsyncComponent for MainBar {
                                     add_css_class: "button-subgroup",
                                     set_orientation: gtk::Orientation::Horizontal,
 
-                                    #[name = "bluetooth_keyboard_button"]
-                                    gtk::MenuButton {
+                                    gtk::Box {
                                         #[watch]
-                                        set_css_classes: &bluetooth::group_classes(&model.bluetooth.keyboard),
+                                        set_css_classes: &bluetooth::group_item_classes(&model.bluetooth.keyboard),
                                         #[watch]
                                         set_visible: model.bluetooth.keyboard.visible,
                                         #[watch]
                                         set_tooltip_text: Some(model.bluetooth.keyboard.tooltip.as_str()),
+
+                                        #[name = "bluetooth_keyboard_button"]
+                                        gtk::MenuButton {
+                                            set_css_classes: &bluetooth::group_button_classes(),
 
                                         #[wrap(Some)]
                                         set_popover = &gtk::Popover {
@@ -551,6 +572,7 @@ impl SimpleAsyncComponent for MainBar {
 
                                             gtk::Image {
                                                 add_css_class: "materialicon",
+                                                add_css_class: bar_item::ICON_CLASS,
                                                 #[watch]
                                                 set_icon_name: Some(material_icon::icon_name(model.bluetooth.keyboard.icon.as_str()).as_str()),
                                             },
@@ -562,31 +584,35 @@ impl SimpleAsyncComponent for MainBar {
 
                                                 add_overlay = &gtk::DrawingArea {
                                                     set_css_classes: bluetooth::battery_track_classes(),
-                                                    set_content_width: 8,
-                                                    set_content_height: 8,
+                                                    set_content_width: BT_BATTERY_INDICATOR_WIDTH,
+                                                    set_content_height: BT_BATTERY_INDICATOR_HEIGHT,
                                                     set_draw_func: bluetooth::battery_track_draw_func(),
                                                 },
 
                                                 add_overlay = &gtk::DrawingArea {
                                                     #[watch]
                                                     set_css_classes: &bluetooth::battery_level_classes(&model.bluetooth.keyboard),
-                                                    set_content_width: 8,
-                                                    set_content_height: 8,
+                                                    set_content_width: BT_BATTERY_INDICATOR_WIDTH,
+                                                    set_content_height: BT_BATTERY_INDICATOR_HEIGHT,
                                                     #[watch]
                                                     set_draw_func: bluetooth::battery_level_draw_func(&model.bluetooth.keyboard),
                                                 }
                                             }
                                         }
+                                    }
                                     },
 
-                                    #[name = "bluetooth_audio_button"]
-                                    gtk::MenuButton {
+                                    gtk::Box {
                                         #[watch]
-                                        set_css_classes: &bluetooth::group_classes(&model.bluetooth.audio),
+                                        set_css_classes: &bluetooth::group_item_classes(&model.bluetooth.audio),
                                         #[watch]
                                         set_visible: model.bluetooth.audio.visible,
                                         #[watch]
                                         set_tooltip_text: Some(model.bluetooth.audio.tooltip.as_str()),
+
+                                        #[name = "bluetooth_audio_button"]
+                                        gtk::MenuButton {
+                                            set_css_classes: &bluetooth::group_button_classes(),
 
                                         #[wrap(Some)]
                                         set_popover = &gtk::Popover {
@@ -599,6 +625,7 @@ impl SimpleAsyncComponent for MainBar {
 
                                             gtk::Image {
                                                 add_css_class: "materialicon",
+                                                add_css_class: bar_item::ICON_CLASS,
                                                 #[watch]
                                                 set_icon_name: Some(material_icon::icon_name(model.bluetooth.audio.icon.as_str()).as_str()),
                                             },
@@ -610,31 +637,35 @@ impl SimpleAsyncComponent for MainBar {
 
                                                 add_overlay = &gtk::DrawingArea {
                                                     set_css_classes: bluetooth::battery_track_classes(),
-                                                    set_content_width: 8,
-                                                    set_content_height: 8,
+                                                    set_content_width: BT_BATTERY_INDICATOR_WIDTH,
+                                                    set_content_height: BT_BATTERY_INDICATOR_HEIGHT,
                                                     set_draw_func: bluetooth::battery_track_draw_func(),
                                                 },
 
                                                 add_overlay = &gtk::DrawingArea {
                                                     #[watch]
                                                     set_css_classes: &bluetooth::battery_level_classes(&model.bluetooth.audio),
-                                                    set_content_width: 8,
-                                                    set_content_height: 8,
+                                                    set_content_width: BT_BATTERY_INDICATOR_WIDTH,
+                                                    set_content_height: BT_BATTERY_INDICATOR_HEIGHT,
                                                     #[watch]
                                                     set_draw_func: bluetooth::battery_level_draw_func(&model.bluetooth.audio),
                                                 }
                                             }
                                         }
+                                    }
                                     },
 
-                                    #[name = "bluetooth_pointer_button"]
-                                    gtk::MenuButton {
+                                    gtk::Box {
                                         #[watch]
-                                        set_css_classes: &bluetooth::group_classes(&model.bluetooth.pointer),
+                                        set_css_classes: &bluetooth::group_item_classes(&model.bluetooth.pointer),
                                         #[watch]
                                         set_visible: model.bluetooth.pointer.visible,
                                         #[watch]
                                         set_tooltip_text: Some(model.bluetooth.pointer.tooltip.as_str()),
+
+                                        #[name = "bluetooth_pointer_button"]
+                                        gtk::MenuButton {
+                                            set_css_classes: &bluetooth::group_button_classes(),
 
                                         #[wrap(Some)]
                                         set_popover = &gtk::Popover {
@@ -647,6 +678,7 @@ impl SimpleAsyncComponent for MainBar {
 
                                             gtk::Image {
                                                 add_css_class: "materialicon",
+                                                add_css_class: bar_item::ICON_CLASS,
                                                 #[watch]
                                                 set_icon_name: Some(material_icon::icon_name(model.bluetooth.pointer.icon.as_str()).as_str()),
                                             },
@@ -658,37 +690,45 @@ impl SimpleAsyncComponent for MainBar {
 
                                                 add_overlay = &gtk::DrawingArea {
                                                     set_css_classes: bluetooth::battery_track_classes(),
-                                                    set_content_width: 8,
-                                                    set_content_height: 8,
+                                                    set_content_width: BT_BATTERY_INDICATOR_WIDTH,
+                                                    set_content_height: BT_BATTERY_INDICATOR_HEIGHT,
                                                     set_draw_func: bluetooth::battery_track_draw_func(),
                                                 },
 
                                                 add_overlay = &gtk::DrawingArea {
                                                     #[watch]
                                                     set_css_classes: &bluetooth::battery_level_classes(&model.bluetooth.pointer),
-                                                    set_content_width: 8,
-                                                    set_content_height: 8,
+                                                    set_content_width: BT_BATTERY_INDICATOR_WIDTH,
+                                                    set_content_height: BT_BATTERY_INDICATOR_HEIGHT,
                                                     #[watch]
                                                     set_draw_func: bluetooth::battery_level_draw_func(&model.bluetooth.pointer),
                                                 }
                                             }
                                         }
                                     }
+                                    }
                                 }
                             },
 
-                            #[name = "bluetooth_power_button"]
-                            gtk::Button {
-                                add_css_class: "flat",
-                                add_css_class: "circular",
-                                add_css_class: "panel-widget",
-                                add_css_class: "button-subgroup-main",
+                            gtk::Box {
+                                set_css_classes: &bar_item::classes(&[
+                                    bar_item::SQUARE_CLASS,
+                                    "bt-power-item",
+                                ]),
+
+                                #[name = "bluetooth_power_button"]
+                                gtk::Button {
+                                    set_css_classes: &bar_item::action_classes(&[
+                                        "button-subgroup-main",
+                                        "bt-power-button",
+                                    ]),
                                 #[watch]
                                 set_tooltip_text: Some(bluetooth::status_tooltip(&model.bluetooth.status).as_str()),
 
                                 gtk::Overlay {
                                     gtk::Image {
                                         add_css_class: "materialicon",
+                                        add_css_class: bar_item::ICON_CLASS,
                                         #[watch]
                                         set_icon_name: Some(material_icon::icon_name(model.bluetooth.status.icon.as_str()).as_str()),
                                     },
@@ -702,72 +742,93 @@ impl SimpleAsyncComponent for MainBar {
                                     }
                                 }
                             }
+                            }
                         },
 
-                        #[name = "audio_route_button"]
-                        gtk::MenuButton {
-                            add_css_class: "flat",
-                            add_css_class: "circular",
-                            add_css_class: "panel-widget",
+                        gtk::Box {
+                            set_css_classes: &bar_item::classes(&[
+                                bar_item::SQUARE_CLASS,
+                                "audio-route-item",
+                            ]),
                             #[watch]
                             set_visible: model.audio.visible,
                             #[watch]
                             set_tooltip_text: Some(audio::route_popover_tooltip(&model.audio)),
 
+                            #[name = "audio_route_button"]
+                            gtk::MenuButton {
+                                set_css_classes: &bar_item::action_classes(&["audio-route-button"]),
+
                             #[wrap(Some)]
                             set_child = &gtk::Image {
+                                add_css_class: bar_item::ICON_CLASS,
                                 add_css_class: "audio-icon",
                                 #[watch]
                                 set_icon_name: Some(model.audio.icon.as_str()),
                             }
+                        }
                         },
 
-                        gtk::Image {
-                            add_css_class: "panel-widget",
-                            add_css_class: "network-icon",
-                            add_css_class: "ethernet-icon",
+                        #[local_ref]
+                        ethernet_item -> gtk::Box {
                             #[watch]
                             set_visible: model.network.ethernet.visible,
                             #[watch]
                             set_tooltip_text: Some(model.network.ethernet.tooltip.as_str()),
-                            #[watch]
-                            set_icon_name: Some(model.network.ethernet.icon.as_str()),
+
+                            gtk::Image {
+                                set_css_classes: &[
+                                    bar_item::ICON_CLASS,
+                                    "network-icon",
+                                    "ethernet-icon",
+                                ],
+                                #[watch]
+                                set_icon_name: Some(model.network.ethernet.icon.as_str()),
+                            }
                         },
 
-                        gtk::Image {
-                            add_css_class: "panel-widget",
-                            add_css_class: "network-icon",
-                            add_css_class: "wifi-icon",
+                        #[local_ref]
+                        wifi_item -> gtk::Box {
                             #[watch]
                             set_visible: model.network.wifi.visible,
                             #[watch]
                             set_tooltip_text: Some(model.network.wifi.tooltip.as_str()),
-                            #[watch]
-                            set_icon_name: Some(model.network.wifi.icon.as_str()),
+
+                            gtk::Image {
+                                set_css_classes: &[
+                                    bar_item::ICON_CLASS,
+                                    "network-icon",
+                                    "wifi-icon",
+                                ],
+                                #[watch]
+                                set_icon_name: Some(model.network.wifi.icon.as_str()),
+                            }
                         },
 
-                        gtk::Image {
-                            add_css_class: "panel-widget",
-                            add_css_class: "battery-icon",
+                        #[local_ref]
+                        battery_item -> gtk::Box {
                             #[watch]
                             set_visible: model.battery.present,
                             #[watch]
                             set_tooltip_text: Some(battery_tooltip(&model.battery).as_str()),
-                            #[watch]
-                            set_icon_name: Some(battery_icon_name(&model.battery).as_str()),
+
+                            gtk::Image {
+                                set_css_classes: &[bar_item::ICON_CLASS, "battery-icon"],
+                                #[watch]
+                                set_icon_name: Some(battery_icon_name(&model.battery).as_str()),
+                            }
                         }
                     },
 
-                    gtk::MenuButton {
-                        add_css_class: "barblock",
-                        add_css_class: BACKGROUND_BLUR_CLASS,
-                        add_css_class: "flat",
-                        add_css_class: "circular",
-                        add_css_class: "source-error-widget",
+                    gtk::Box {
+                        set_css_classes: &bar_item::classes(&["source-error-widget"]),
                         #[watch]
                         set_visible: model.source_error_count > 0,
                         #[watch]
                         set_tooltip_text: Some(source_error_tooltip(model.source_error_count).as_str()),
+
+                        gtk::MenuButton {
+                            set_css_classes: &bar_item::action_classes(&["source-error-button"]),
 
                         #[wrap(Some)]
                         set_child = &gtk::Box {
@@ -776,6 +837,7 @@ impl SimpleAsyncComponent for MainBar {
 
                             gtk::Image {
                                 add_css_class: "materialicon",
+                                add_css_class: bar_item::ICON_CLASS,
                                 add_css_class: "source-error-icon",
                                 set_icon_name: Some(material_icon::icon_name("error").as_str()),
                             },
@@ -803,18 +865,17 @@ impl SimpleAsyncComponent for MainBar {
                                 }
                             }
                         }
+                    }
                     },
 
-                    #[name = "clock_button"]
-                    gtk::Button {
-                        add_css_class: "barblock",
-                        add_css_class: BACKGROUND_BLUR_CLASS,
-                        add_css_class: "panel-button",
-                        add_css_class: "flat",
-                        add_css_class: "circular",
-                        add_css_class: "clock-widget",
+                    gtk::Box {
+                        set_css_classes: &bar_item::classes(&["clock-widget"]),
                         #[watch]
                         set_tooltip_text: Some(model.clock.date.as_str()),
+
+                        #[name = "clock_button"]
+                        gtk::Button {
+                            set_css_classes: &bar_item::action_classes(&["clock-button"]),
 
                         gtk::Overlay {
                             gtk::Label {
@@ -831,6 +892,7 @@ impl SimpleAsyncComponent for MainBar {
                                 set_valign: gtk::Align::Start,
                             }
                         }
+                    }
                     }
                 }
             }
@@ -909,6 +971,12 @@ impl SimpleAsyncComponent for MainBar {
             false,
             output_name,
         );
+        let system_stats_item = bar_item::container(&["system-stats-widget"]);
+        let ethernet_item =
+            bar_item::container(&[bar_item::SQUARE_CLASS, "network-item", "ethernet-item"]);
+        let wifi_item = bar_item::container(&[bar_item::SQUARE_CLASS, "network-item", "wifi-item"]);
+        let battery_item = bar_item::container(&[bar_item::SQUARE_CLASS, "battery-item"]);
+
         let widgets = view_output!();
         let input_sender = sender.input_sender().clone();
         widgets.clock_button.connect_clicked(move |_| {
@@ -1291,7 +1359,7 @@ fn source_error_count_label(count: u64) -> String {
 }
 
 fn mpris_classes(mpris: &MprisView) -> Vec<&'static str> {
-    let mut classes = vec!["barblock", BACKGROUND_BLUR_CLASS, "mpris-widget"];
+    let mut classes = bar_item::classes(&["mpris-widget"]);
     if !mpris.state_class.is_empty() {
         classes.push(mpris.state_class);
     }

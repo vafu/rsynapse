@@ -59,7 +59,7 @@ fn agent(state: State, attention: bool, unseen: bool) -> Agent {
 
 fn build(state: &'static str) -> BzBusView {
     BzBusView {
-        classes: vec!["barblock", "bzbus-widget", state],
+        classes: vec!["bar-item", "bzbus-widget", state],
         tooltip: String::new(),
         icon: "",
         progress_level_classes: vec![],

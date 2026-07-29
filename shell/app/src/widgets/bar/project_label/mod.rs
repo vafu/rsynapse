@@ -109,7 +109,7 @@ impl SimpleComponent for ProjectLabel {
             },
 
             gtk::Label {
-                add_css_class: "barblock-badge",
+                add_css_class: "bar-badge",
                 add_css_class: "workspace-number-badge",
 
                 #[watch]

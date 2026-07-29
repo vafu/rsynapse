@@ -4,7 +4,7 @@ $panel-surface-hover: color-mix(in srgb, #{$fg} 10%, #000);
 $panel-border: color-mix(in srgb, #{$fg} 9%, transparent);
 $panel-border-strong: color-mix(in srgb, #{$fg} 18%, transparent);
 $panel-muted: color-mix(in srgb, #{$fg} 62%, transparent);
-$panel-icon-size: 16px;
+$panel-icon-size: 18px;
 $panel-meta-icon-size: 14px;
 $panel-item-size: 28px;
 $workspace-rail-width: 36px;
@@ -41,22 +41,50 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
     min-width: 0;
   }
 
-  .barblock {
+  .bar-item {
     background-color: transparent;
     color: #{$fg};
     border: 1px solid transparent;
     border-radius: 0;
     box-shadow: none;
+    min-height: #{$panel-item-size};
+    margin: 0;
+    padding: 0 6px;
     transition:
       background-color 100ms,
       border-color 100ms,
       opacity 100ms;
-    padding: 0 6px;
-    margin: 0 2px;
   }
 
-  menubutton.circular > button {
-    border-radius: 999px;
+  button.bar-action,
+  menubutton.bar-action > button {
+    color: inherit;
+    min-height: #{$panel-item-size};
+    min-width: #{$panel-item-size};
+    margin: 0;
+    padding: 0 6px;
+  }
+
+  menubutton.bar-action {
+    margin: 0;
+    padding: 0;
+  }
+
+  .bar-item-square {
+    min-width: #{$panel-item-size};
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  .bar-item-square button.bar-action,
+  .bar-item-square menubutton.bar-action > button {
+    min-width: #{$panel-item-size};
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  .bar-item-icon {
+    -gtk-icon-size: #{$panel-icon-size};
   }
 }
 
@@ -74,15 +102,24 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
   padding: 0 12px;
 }
 
-.bar-zone-status .barblock,
-.bar-zone-status .panel-widget {
-  color: #{$panel-muted};
+.bar-zone-status .bar-item,
+.bar-zone-status .bar-item button {
+  color: #{$fg};
 }
 
-.bar-zone-status .barblock:hover,
-.bar-zone-status button:hover,
-.bar-zone-status menubutton:hover {
-  color: #{$fg};
+
+.bar-zone-status .bar-item.disabled,
+.bar-zone-status .bar-item.inactive,
+.bar-zone-status .bar-item.muted,
+.bar-zone-status button.bar-action:disabled,
+.bar-zone-status menubutton.bar-action:disabled > button {
+  color: #{$panel-muted};
+  opacity: 0.72;
+}
+
+.bar-zone-status .bar-item image,
+.bar-zone-status .bar-item .materialicon {
+  color: inherit;
 }
 
 .bar-corner-indicator {
@@ -132,13 +169,6 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
   }
 }
 
-.bar .barblock.selected-project {
-  background-color: transparent;
-  border-color: transparent;
-  margin: 0;
-  padding: 0 12px;
-}
-
 .bar-indicator {
   background-color: transparent;
   color: #{$fg};
@@ -151,7 +181,10 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
     border-color 160ms,
     opacity 160ms;
 
-  &:not(.active):not(.urgent):not(.current-workspace):not(.selected-workspace):not(.inactive-selected-workspace):not(.has-unseen):not(.has-attention):not(.attention):not(.failed) {
+  &.inactive,
+  &.disabled,
+  &.muted {
+    color: #{$panel-muted};
     opacity: 0.72;
   }
 
@@ -201,17 +234,17 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
 }
 
 .bar-indicator-list-horizontal .bar-indicator.active {
-  border-bottom-color: #{$indicator-accent};
+  border-top-color: #{$indicator-accent};
 }
 
 .bar-indicator-list-horizontal .bar-indicator.urgent,
 .bar-indicator-list-horizontal .bar-indicator.failed,
 .bar-indicator-list-horizontal .bar-indicator.attention {
-  border-bottom-color: #{$indicator-danger};
+  border-top-color: #{$indicator-danger};
 }
 
 .bar-indicator-list-horizontal .bar-indicator:hover {
-  border-bottom-color: #{$panel-border-strong};
+  border-top-color: #{$panel-border-strong};
 }
 
 .workspace-window-column {
@@ -296,7 +329,7 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
 
 .workspace-rail {
   background-color: #{$panel-bg};
-  padding: 0 0 5px 0;
+  padding: 0;
 }
 
 .bar-indicator-list-vertical .bar-indicator.current-workspace,
@@ -357,7 +390,7 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
   }
 }
 
-.barblock-badge {
+.bar-badge {
   min-width: 12px;
   margin-top: 2px;
   margin-right: -4px;
@@ -369,12 +402,12 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
   font-weight: 700;
 }
 
-.barblock-badge.workspace-number-badge {
+.bar-badge.workspace-number-badge {
   background-color: color-mix(in srgb, #{$fg} 16%, #{$bg});
   color: color-mix(in srgb, #{$fg} 72%, transparent);
 }
 
-.barblock-badge.agent-unseen-badge {
+.bar-badge.agent-unseen-badge {
   min-width: 8px;
   min-height: 8px;
   margin-top: 4px;
@@ -416,26 +449,23 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
   }
 }
 
-.panel-widget {
-  margin: 0 1px;
-}
+.system-stats-widget {
+  padding-left: 0;
+  padding-right: 0;
 
-.system-cluster {
-  margin-right: 0;
-}
+  .system-stats-button {
+    min-width: 0;
+    padding-left: 1px;
+    padding-right: 1px;
+  }
 
-.network-icon,
-.audio-icon,
-.power-profile-icon,
-.tray-icon,
-.battery-icon {
-  opacity: 0.78;
-}
+  .system-stats-content {
+    margin: 0;
+  }
 
-.power-profile-button {
-  margin: 0;
-  min-width: 0;
-  padding: 0;
+  .levelindicator.arc {
+    padding: 0;
+  }
 }
 
 .bzbus-progress-frame {
@@ -612,7 +642,8 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
 .levelindicator {
   min-width: 8px;
 
-  >.track {
+  >.track,
+  &.track {
     color: #{$bat_track};
   }
 
@@ -626,7 +657,8 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
     padding-bottom: 6px;
   }
 
-  >.level {
+  >.level,
+  &.level {
     &.normal {
       color: #{$fg};
     }
@@ -682,11 +714,9 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
 }
 
 .bt-battery-indicator {
-  margin-left: 2px;
-}
-
-.bar .barblock.clock-widget {
-  margin-right: 0;
+  min-width: 4px;
+  margin-left: 1px;
+  padding: 0;
 }
 
 .clock-widget {

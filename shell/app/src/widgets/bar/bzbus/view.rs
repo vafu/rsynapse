@@ -198,7 +198,7 @@ fn icon_for(active: bool, invocation: Option<&Invocation>) -> &'static str {
 }
 
 fn classes_for(active: bool, invocation: Option<&Invocation>) -> Vec<&'static str> {
-    let mut classes = vec!["barblock", BACKGROUND_BLUR_CLASS, "bzbus-widget"];
+    let mut classes = vec!["bar-item", BACKGROUND_BLUR_CLASS, "bzbus-widget"];
     classes.push(state_class_for(active, invocation));
     classes
 }
