@@ -12,9 +12,7 @@ use super::{
 pub(super) struct SelectedProjectView {
     pub(super) visible: bool,
     pub(super) title: String,
-    pub(super) label: Option<String>,
     pub(super) branch: Option<String>,
-    pub(super) icon: Option<String>,
 }
 
 pub(super) fn selected_project_status(
@@ -48,26 +46,18 @@ fn selected_project_view(
     project: ProjectDetails,
 ) -> SelectedProjectView {
     let title = project
-        .display_main
+        .cwd_label
         .as_deref()
         .and_then(non_empty)
         .map(str::to_owned)
         .unwrap_or_else(|| workspace_title(workspace_name, index));
-    let secondary = project
-        .display_secondary
-        .and_then(|value| distinct_from(&value, &title).then_some(value));
-    let label = Some(match secondary.as_deref() {
-        Some(secondary) => format!("{title} · {secondary}"),
-        None => title.clone(),
-    });
+    let branch = optional_text(project.branch).filter(|branch| distinct_from(branch, &title));
     let visible = non_empty(&title).is_some();
 
     SelectedProjectView {
         visible,
         title,
-        label,
-        branch: project.branch,
-        icon: optional_text(project.icon),
+        branch,
     }
 }
 
@@ -97,29 +87,32 @@ pub(super) fn visible(view: &SelectedProjectView) -> bool {
     view.visible
 }
 
-pub(super) fn icon_name(view: &SelectedProjectView) -> String {
-    material_icon::icon_name(
-        view.icon
-            .as_deref()
-            .and_then(non_empty)
-            .unwrap_or("account_tree"),
-    )
+pub(super) fn icon_name(_view: &SelectedProjectView) -> String {
+    material_icon::icon_name("folder")
 }
 
-pub(super) fn label(view: &SelectedProjectView) -> &str {
-    view.label.as_deref().unwrap_or_default()
+pub(super) fn title_label(view: &SelectedProjectView) -> &str {
+    view.title.as_str()
+}
+
+pub(super) fn branch_visible(view: &SelectedProjectView) -> bool {
+    view.branch.as_deref().and_then(non_empty).is_some()
+}
+
+pub(super) fn branch_label(view: &SelectedProjectView) -> &str {
+    view.branch.as_deref().unwrap_or_default()
+}
+
+pub(super) fn first_separator_visible(view: &SelectedProjectView) -> bool {
+    branch_visible(view)
+}
+
+pub(super) fn branch_icon_name() -> String {
+    material_icon::icon_name("account_tree")
 }
 
 pub(super) fn tooltip(view: &SelectedProjectView) -> String {
-    let mut lines = vec![view.title.clone()];
-    if let Some(label) = view
-        .label
-        .as_deref()
-        .and_then(non_empty)
-        .filter(|label| *label != view.title.as_str())
-    {
-        lines.push(format!("display: {label}"));
-    }
+    let mut lines = vec![format!("cwd: {}", view.title)];
     if let Some(branch) = view.branch.as_deref().and_then(non_empty) {
         lines.push(format!("branch: {branch}"));
     }

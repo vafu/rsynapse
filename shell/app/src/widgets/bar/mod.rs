@@ -255,8 +255,8 @@ impl SimpleAsyncComponent for MainBar {
                     add_css_class: "bar-zone-title",
                     set_halign: gtk::Align::Center,
                     set_orientation: gtk::Orientation::Horizontal,
-                    set_valign: gtk::Align::Fill,
-                    set_vexpand: true,
+                    set_valign: gtk::Align::Center,
+                    set_vexpand: false,
 
                     gtk::Box {
                         #[watch]
@@ -266,27 +266,77 @@ impl SimpleAsyncComponent for MainBar {
                         #[watch]
                         set_tooltip_text: Some(selected_project::tooltip(&model.selected_project).as_str()),
                         set_halign: gtk::Align::Center,
+                        set_valign: gtk::Align::Center,
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 4,
 
-                        gtk::Image {
-                            add_css_class: "materialicon",
-                            add_css_class: "selected-project-icon",
+                        gtk::Box {
+                            add_css_class: "selected-project-segment",
+                            add_css_class: "selected-project-main",
                             set_halign: gtk::Align::Center,
                             set_valign: gtk::Align::Center,
-                            set_pixel_size: PANEL_ICON_SIZE,
-                            #[watch]
-                            set_icon_name: Some(selected_project::icon_name(&model.selected_project).as_str()),
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 4,
+
+                            gtk::Image {
+                                add_css_class: "materialicon",
+                                add_css_class: "selected-project-icon",
+                                set_halign: gtk::Align::Center,
+                                set_valign: gtk::Align::Center,
+                                set_pixel_size: PANEL_ICON_SIZE,
+                                #[watch]
+                                set_icon_name: Some(selected_project::icon_name(&model.selected_project).as_str()),
+                            },
+
+                            gtk::Label {
+                                add_css_class: "selected-project-text",
+                                add_css_class: "selected-project-title",
+                                set_ellipsize: gtk::pango::EllipsizeMode::End,
+                                set_valign: gtk::Align::Center,
+                                set_xalign: 0.0,
+                                #[watch]
+                                set_label: selected_project::title_label(&model.selected_project),
+                            }
                         },
 
                         gtk::Label {
-                            add_css_class: "selected-project-label",
-                            set_ellipsize: gtk::pango::EllipsizeMode::End,
-                            set_max_width_chars: 42,
-                            set_xalign: 0.5,
+                            add_css_class: "selected-project-separator",
+                            set_label: "·",
                             #[watch]
-                            set_label: selected_project::label(&model.selected_project),
-                        }
+                            set_visible: selected_project::first_separator_visible(&model.selected_project),
+                        },
+
+                        gtk::Box {
+                            add_css_class: "selected-project-segment",
+                            add_css_class: "selected-project-branch",
+                            #[watch]
+                            set_visible: selected_project::branch_visible(&model.selected_project),
+                            set_halign: gtk::Align::Center,
+                            set_valign: gtk::Align::Center,
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 4,
+
+                            gtk::Image {
+                                add_css_class: "materialicon",
+                                add_css_class: "selected-project-meta-icon",
+                                add_css_class: "selected-project-branch-icon",
+                                set_halign: gtk::Align::Center,
+                                set_valign: gtk::Align::Center,
+                                set_pixel_size: PANEL_ICON_SIZE,
+                                set_icon_name: Some(selected_project::branch_icon_name().as_str()),
+                            },
+
+                            gtk::Label {
+                                add_css_class: "selected-project-text",
+                                add_css_class: "selected-project-branch-label",
+                                set_ellipsize: gtk::pango::EllipsizeMode::End,
+                                set_valign: gtk::Align::Center,
+                                set_xalign: 0.0,
+                                #[watch]
+                                set_label: selected_project::branch_label(&model.selected_project),
+                            }
+                        },
+
                     }
                 },
 

@@ -24,6 +24,7 @@ commands:
   root [path]
   metadata [--json] [key] [path]
   update [path]
+  refresh-current [path]
   set-current [path]
   set_current [path]
   publish [path]
@@ -145,14 +146,25 @@ selected_workspace_id() {
   printf '%s\n' "$path"
 }
 
+relative_cwd_for_path() {
+  local root="$1"
+  local path="${2:-$root}"
+  local cwd
+  cwd="$(absolute_dir "$path")" || return 0
+  realpath --relative-to="$root" "$cwd" 2>/dev/null || true
+}
+
 build_snapshot() {
   local root="$1"
-  local name branch worktree worktree_name fields display_main display_secondary icon
+  local path="${2:-$root}"
+  local name branch worktree worktree_name fields display_main display_secondary icon cwd cwd_path
   name="$(project_name "$root")"
   branch="$(git_output "$root" branch --show-current)"
   worktree="$(git_output "$root" rev-parse --show-toplevel)"
   worktree_name=""
   [[ -n "$worktree" ]] && worktree_name="$(basename "$worktree")"
+  cwd="$(relative_cwd_for_path "$root" "$path")"
+  cwd_path="$(absolute_dir "$path")"
   fields="$(split_branch "$branch")"
   display_main="$(display_main_for_project "$name" "$fields")"
   display_secondary="$(display_secondary_for_project "$branch" "$fields")"
@@ -166,6 +178,8 @@ build_snapshot() {
     --arg display_main "$display_main" \
     --arg display_secondary "$display_secondary" \
     --arg branch "$branch" \
+    --arg cwd "$cwd" \
+    --arg cwd_path "$cwd_path" \
     --arg worktree "$worktree_name" \
     --arg worktree_path "$worktree" \
     --argjson fields "$fields" '
@@ -178,6 +192,9 @@ build_snapshot() {
         "display-main": $display_main,
         "display-secondary": (if $display_secondary == "" then null else $display_secondary end),
         branch: (if $branch == "" then null else $branch end),
+        cwd: (if $cwd == "" or $cwd == "." then null else $cwd end),
+        "relative-cwd": (if $cwd == "" or $cwd == "." then null else $cwd end),
+        "cwd-path": (if $cwd_path == "" then null else $cwd_path end),
         worktree: (if $worktree == "" then null else $worktree end),
         "worktree-path": (if $worktree_path == "" then null else $worktree_path end),
         subproj: $fields.subproj,
@@ -340,6 +357,62 @@ locus_targets() {
     | jq -r ".data[0][]? | $endpoint_json_to_ref_filter"
 }
 
+locus_records_json() {
+  local relation="$1"
+  locus_call_json List 's' "$relation"
+}
+
+workspace_project_metadata_for() {
+  local records_json="$1"
+  local subject="$2"
+  local target="$3"
+  jq -c \
+    --arg subject "$subject" \
+    --arg target "$target" \
+    --arg workspace_kind "$niri_workspace_kind" \
+    --arg project_kind "$project_path_kind" '
+      .data[0][]?
+      | select(.[0].type == "stable-key")
+      | select(.[0].kind == $workspace_kind)
+      | select(("niri-workspace:" + .[0].id) == $subject)
+      | select(.[2].type == "stable-key")
+      | select(.[2].kind == $project_kind)
+      | select(("project:" + .[2].id) == $target)
+      | .[3]
+    ' <<<"$records_json" | head -n 1
+}
+
+workspace_has_project_target() {
+  local subject="$1"
+  local target="$2"
+  local candidate
+  while IFS= read -r candidate; do
+    [[ "$candidate" == "$target" ]] && return 0
+  done < <(locus_targets "$subject" "$workspace_project_relation")
+  return 1
+}
+
+workspace_snapshot_for_update() {
+  local snapshot="$1"
+  local existing="${2:-}"
+  if [[ -z "$existing" ]]; then
+    printf '%s\n' "$snapshot"
+    return 0
+  fi
+
+  jq -cn --argjson snapshot "$snapshot" --argjson existing "$existing" '
+    def put_nonempty($key; $value):
+      if $value == null or $value == "" or $value == "." then . else .[$key] = $value end;
+
+    ($existing["relative-cwd"] // $existing.cwd // null) as $relative_cwd
+    | ($existing["cwd-path"] // null) as $cwd_path
+    | $snapshot
+    | put_nonempty("cwd"; $relative_cwd)
+    | put_nonempty("relative-cwd"; $relative_cwd)
+    | put_nonempty("cwd-path"; $cwd_path)
+  '
+}
+
 # Niri transport boundary.
 niri_get_property() {
   local property="$1"
@@ -366,36 +439,54 @@ cmd_metadata() {
   local root
   root="$(project_root_for_path "$path")" || die "project root not found"
   if [[ "$json" == true ]]; then
-    build_snapshot "$root" | jq '.'
+    build_snapshot "$root" "$path" | jq '.'
   else
-    build_snapshot "$root" | jq -r --arg key "$key" '.[$key] // empty'
+    build_snapshot "$root" "$path" | jq -r --arg key "$key" '.[$key] // empty'
   fi
 }
 
 cmd_update() {
-  local root snapshot target subject
+  local root snapshot target records subject existing subject_snapshot
   root="$(project_root_for_path "${1:-.}")" || return 0
-  snapshot="$(build_snapshot "$root")"
+  snapshot="$(build_snapshot "$root" "${1:-.}")"
   target="$(project_ref "$root")"
+  records="$(locus_records_json "$workspace_project_relation")"
 
   locus_set "$target" "$project_metadata_relation" "$target" "$snapshot"
 
   while IFS= read -r subject; do
     [[ -n "$subject" ]] || continue
-    locus_set_one "$subject" "$workspace_project_relation" "$target" "$snapshot"
+    existing="$(workspace_project_metadata_for "$records" "$subject" "$target")"
+    subject_snapshot="$(workspace_snapshot_for_update "$snapshot" "$existing")"
+    locus_set_one "$subject" "$workspace_project_relation" "$target" "$subject_snapshot"
   done < <(locus_subjects "$workspace_project_relation" "$target")
 }
 
-cmd_set_current() {
-  local root snapshot workspace subject target
+cmd_refresh_current() {
+  local root workspace subject target project_snapshot workspace_snapshot
   root="$(project_root_for_path "${1:-.}")" || return 0
-  snapshot="$(build_snapshot "$root")"
+  workspace="$(selected_workspace_id)" || return 0
+  subject="$(workspace_ref "$workspace")"
+  target="$(project_ref "$root")"
+  workspace_has_project_target "$subject" "$target" || return 0
+
+  project_snapshot="$(build_snapshot "$root" "$root")"
+  workspace_snapshot="$(build_snapshot "$root" "${1:-.}")"
+  locus_set "$target" "$project_metadata_relation" "$target" "$project_snapshot"
+  locus_set_one "$subject" "$workspace_project_relation" "$target" "$workspace_snapshot"
+}
+
+cmd_set_current() {
+  local root project_snapshot workspace_snapshot workspace subject target
+  root="$(project_root_for_path "${1:-.}")" || return 0
+  project_snapshot="$(build_snapshot "$root" "$root")"
+  workspace_snapshot="$(build_snapshot "$root" "${1:-.}")"
   workspace="$(selected_workspace_id)" || return 0
   subject="$(workspace_ref "$workspace")"
   target="$(project_ref "$root")"
 
-  locus_set "$target" "$project_metadata_relation" "$target" "$snapshot"
-  locus_set_one "$subject" "$workspace_project_relation" "$target" "$snapshot"
+  locus_set "$target" "$project_metadata_relation" "$target" "$project_snapshot"
+  locus_set_one "$subject" "$workspace_project_relation" "$target" "$workspace_snapshot"
 }
 
 cmd_clear() {
@@ -418,6 +509,7 @@ main() {
     root) cmd_root "$@" ;;
     metadata) cmd_metadata "$@" ;;
     update) cmd_update "$@" ;;
+    refresh-current | refresh_current) cmd_refresh_current "$@" ;;
     set-current | set_current | publish) cmd_set_current "$@" ;;
     clear) cmd_clear "$@" ;;
     -h | --help | help) usage ;;

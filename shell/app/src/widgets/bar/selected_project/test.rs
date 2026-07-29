@@ -2,14 +2,12 @@ use super::selected_project_view;
 use crate::widgets::bar::project::ProjectDetails;
 
 #[test]
-fn selected_project_displays_project_secondary() {
+fn selected_project_displays_project_metadata() {
     let view = selected_project_view(3, "", split_project());
 
     assert!(view.visible);
-    assert_eq!(view.title, "android");
-    assert_eq!(view.label.as_deref(), Some("android · core-isol"));
+    assert_eq!(view.title, "platform/taskexecution");
     assert_eq!(view.branch.as_deref(), Some("codex/android-core-isol"));
-    assert_eq!(view.icon.as_deref(), Some("developer_board"));
 }
 
 #[test]
@@ -17,8 +15,29 @@ fn selected_project_displays_workspace_without_project_secondary() {
     let view = selected_project_view(3, "workspace", ProjectDetails::default());
 
     assert!(view.visible);
-    assert_eq!(view.label.as_deref(), Some("workspace"));
-    assert_eq!(view.icon, None);
+    assert_eq!(view.title, "workspace");
+    assert_eq!(view.branch, None);
+}
+
+#[test]
+fn selected_project_uses_root_cwd_name_without_relative_cwd() {
+    let view = selected_project_view(
+        3,
+        "",
+        ProjectDetails {
+            has_project: true,
+            cwd_label: Some("uiq-worktree".to_owned()),
+            branch: Some("vafu/coroutines/rescue-scheduler".to_owned()),
+            ..ProjectDetails::default()
+        },
+    );
+
+    assert!(view.visible);
+    assert_eq!(view.title, "uiq-worktree");
+    assert_eq!(
+        view.branch.as_deref(),
+        Some("vafu/coroutines/rescue-scheduler")
+    );
 }
 
 fn split_project() -> ProjectDetails {
@@ -28,5 +47,7 @@ fn split_project() -> ProjectDetails {
         display_secondary: Some("core-isol".to_owned()),
         icon: Some("developer_board".to_owned()),
         branch: Some("codex/android-core-isol".to_owned()),
+        cwd_label: Some("platform/taskexecution".to_owned()),
+        ..ProjectDetails::default()
     }
 }

@@ -5,6 +5,7 @@ $panel-border: color-mix(in srgb, #{$fg} 9%, transparent);
 $panel-border-strong: color-mix(in srgb, #{$fg} 18%, transparent);
 $panel-muted: color-mix(in srgb, #{$fg} 62%, transparent);
 $panel-icon-size: 16px;
+$panel-meta-icon-size: 14px;
 $panel-item-size: 28px;
 $workspace-rail-width: 36px;
 $indicator-fill: color-mix(in srgb, #{$accent_color} 18%, #000);
@@ -65,17 +66,12 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
 }
 
 .bar-zone-title {
-  min-width: 240px;
+  min-width: 360px;
 }
 
 .bar-zone-title .selected-project {
   margin: 0;
   padding: 0 12px;
-}
-
-.bar-zone-title .selected-project-label {
-  color: color-mix(in srgb, #{$fg} 90%, transparent);
-  font-weight: 700;
 }
 
 .bar-zone-status .barblock,
@@ -100,6 +96,10 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
   -gtk-icon-size: #{$panel-icon-size};
 }
 
+.selected-project-meta-icon {
+  -gtk-icon-size: #{$panel-meta-icon-size};
+}
+
 .selected-project {
   padding: 0 9px;
   margin-left: 0;
@@ -109,12 +109,25 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
     border-color 160ms,
     opacity 160ms;
 
-  .selected-project-icon {
-    color: color-mix(in srgb, #{$accent_color} 66%, #{$fg});
+  .selected-project-segment {
+    color: color-mix(in srgb, #{$fg} 78%, transparent);
   }
 
-  .selected-project-label {
-    color: color-mix(in srgb, #{$fg} 84%, transparent);
+  .selected-project-main {
+    color: color-mix(in srgb, #{$fg} 90%, transparent);
+    font-weight: 700;
+  }
+
+  .selected-project-separator {
+    color: color-mix(in srgb, #{$fg} 48%, transparent);
+  }
+
+  .selected-project-branch-icon {
+    color: color-mix(in srgb, #{$fg} 76%, transparent);
+  }
+
+  .selected-project-branch-label {
+    color: color-mix(in srgb, #{$fg} 82%, transparent);
     font-weight: 650;
   }
 }
@@ -122,8 +135,8 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
 .bar .barblock.selected-project {
   background-color: transparent;
   border-color: transparent;
-  margin-left: 0;
-  padding-left: 4px;
+  margin: 0;
+  padding: 0 12px;
 }
 
 .bar-indicator {
