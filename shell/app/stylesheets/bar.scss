@@ -332,6 +332,15 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
   padding: 0;
 }
 
+.context-zone-revealer {
+  margin-top: 6px;
+}
+
+.context-zone-list .context-zone-item.context-zone-build.running image {
+  animation: bzbus-spin 1.2s linear infinite;
+}
+
+
 .bar-indicator-list-vertical .bar-indicator.current-workspace,
 .bar-indicator-list-vertical .bar-indicator.selected-workspace {
   border-right-color: #{$indicator-accent};

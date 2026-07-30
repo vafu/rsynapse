@@ -3,10 +3,7 @@ use shell_rx_macros::combine_latest;
 
 use crate::desktop_icon;
 
-use super::super::{
-    WindowNode,
-    bzbus::{self, BzBusView},
-};
+use super::super::WindowNode;
 use super::{
     agent::{self, Agent},
     app_instance::{AppInstance, app_instance_for_window},
@@ -17,8 +14,6 @@ pub(in crate::widgets::bar) enum Kind {
     Plain,
     Neovim,
     Agent(Agent),
-    // Build status icon rendering is paused while the status is moved to a new surface.
-    // Build(BzBusView),
 }
 
 impl Default for Kind {
@@ -30,7 +25,6 @@ impl Default for Kind {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(in crate::widgets::bar) struct ViewModel {
     pub(super) kind: Kind,
-    pub(super) build: Option<BzBusView>,
     pub(super) icon: String,
     pub(super) tooltip: String,
     pub(super) active: bool,
@@ -43,7 +37,6 @@ pub(super) fn window_tile_vm(window: WindowNode) -> Observable<Option<ViewModel>
     let active = window.focused();
     let urgent = window.urgent();
     let agent = agent::agent_for_window(window.clone());
-    let build = bzbus::bzbus_for_window(window.clone());
     let app_instance = source::switch_map(window.id().box_it(), app_instance_for_window);
 
     combine_latest!(
@@ -52,16 +45,14 @@ pub(super) fn window_tile_vm(window: WindowNode) -> Observable<Option<ViewModel>
         active,
         urgent,
         agent,
-        build,
         app_instance
-            => move |(_window_id, app_id, active, urgent, agent, build, app_instance)| {
+            => move |(window_id, app_id, active, urgent, agent, app_instance)| {
                 let _span = tracing::trace_span!(
                     "bar.window_tile_vm",
-                    window_id = _window_id,
+                    window_id,
                     active,
                     urgent,
                     has_agent = agent.is_some(),
-                    has_build = build.is_some()
                 )
                 .entered();
                 let app_id = app_id.unwrap_or_default();
@@ -70,9 +61,8 @@ pub(super) fn window_tile_vm(window: WindowNode) -> Observable<Option<ViewModel>
                     .clone()
                     .unwrap_or_else(|| app_id.clone());
                 Some(ViewModel {
-                    tooltip: window_tooltip(&app_label, agent.as_ref(), build.as_ref()),
-                    kind: window_kind(&app_label, agent, build.clone()),
-                    build,
+                    tooltip: window_tooltip(&app_label, agent.as_ref()),
+                    kind: window_kind(&app_label, agent),
                     icon: window_icon(&app_id, &app_instance),
                     active,
                     urgent,
@@ -99,14 +89,10 @@ fn window_icon(app_id: &str, app_instance: &AppInstance) -> String {
         .unwrap_or_default()
 }
 
-fn window_kind(app_id: &str, agent: Option<Agent>, _build: Option<BzBusView>) -> Kind {
+fn window_kind(app_id: &str, agent: Option<Agent>) -> Kind {
     if let Some(agent) = agent {
         return Kind::Agent(agent);
     }
-    // Build status icon rendering is paused while the status is moved to a new surface.
-    // if let Some(build) = _build {
-    //     return Kind::Build(build);
-    // }
 
     let app_id = app_id.to_ascii_lowercase();
     if app_id.contains("nvim") || app_id.contains("neovim") {
@@ -116,18 +102,10 @@ fn window_kind(app_id: &str, agent: Option<Agent>, _build: Option<BzBusView>) ->
     }
 }
 
-fn window_tooltip(app_id: &str, agent: Option<&Agent>, build: Option<&BzBusView>) -> String {
+fn window_tooltip(app_id: &str, agent: Option<&Agent>) -> String {
     let label = if app_id.is_empty() { "Window" } else { app_id };
     if let Some(agent) = agent {
-        let mut lines = vec![label.to_owned(), format!("Agent: {:?}", agent.state)];
-        if let Some(build) = build {
-            lines.push("Build:".to_owned());
-            lines.extend(build.tooltip.lines().map(str::to_owned));
-        }
-        return lines.join("\n");
-    }
-    if let Some(build) = build {
-        return format!("{label}\n{}", build.tooltip);
+        return [label.to_owned(), format!("Agent: {:?}", agent.state)].join("\n");
     }
 
     label.to_owned()

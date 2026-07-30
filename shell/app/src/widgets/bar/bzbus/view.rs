@@ -69,6 +69,19 @@ pub(super) fn view(active: bool, mut invocations: Vec<Invocation>) -> BzBusView 
     }
 }
 
+pub(super) fn ongoing_views(active: bool, mut invocations: Vec<Invocation>) -> Vec<BzBusView> {
+    if !active {
+        return Vec::new();
+    }
+
+    invocations.retain(is_active);
+    invocations.sort_by(compare_invocations);
+    invocations
+        .into_iter()
+        .map(|invocation| view(true, vec![invocation]))
+        .collect()
+}
+
 fn compare_invocations(left: &Invocation, right: &Invocation) -> std::cmp::Ordering {
     is_active(right)
         .cmp(&is_active(left))

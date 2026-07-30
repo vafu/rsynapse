@@ -4,6 +4,7 @@ mod bar_item;
 mod battery;
 mod bluetooth;
 mod brightness;
+mod context_zone;
 // Build status icon rendering is paused while the status is moved to a new surface.
 // mod build_indicator;
 mod bzbus;

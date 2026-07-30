@@ -7,7 +7,8 @@ use shell_core::{
 };
 
 use super::{
-    WORKSPACE_RAIL_WIDTH, WorkspaceNode, project_label::ProjectLabel, workspaces::workspaces,
+    WORKSPACE_RAIL_WIDTH, WorkspaceNode, context_zone::ContextZone, project_label::ProjectLabel,
+    workspaces::workspaces,
 };
 
 #[derive(Clone)]
@@ -19,6 +20,7 @@ pub(super) struct WorkspaceBarInit {
 
 #[shell_macros::model(module = workspace_bar_sources)]
 pub(super) struct WorkspaceBar {
+    _context_zone: Controller<ContextZone>,
     output_name: Option<String>,
 
     #[source(workspaces(output_name.clone()))]
@@ -47,6 +49,16 @@ impl SimpleComponent for WorkspaceBar {
                 set_width_request: WORKSPACE_RAIL_WIDTH,
                 set_orientation: gtk::Orientation::Vertical,
                 set_vexpand: true,
+
+                #[wrap(Some)]
+                set_start_widget = &gtk::Box {
+                    set_halign: gtk::Align::Center,
+                    set_valign: gtk::Align::Start,
+                    set_orientation: gtk::Orientation::Vertical,
+
+                    #[local_ref]
+                    context_zone_root -> gtk::Revealer {},
+                },
 
                 #[wrap(Some)]
                 set_end_widget = &gtk::Box {
@@ -81,7 +93,10 @@ impl SimpleComponent for WorkspaceBar {
         root.set_title(Some(init.title));
         log_workspace_bar_monitor(init.monitor.as_ref(), init.output_name.as_deref());
 
-        let model = WorkspaceBar::new(init.output_name);
+        let context_zone_builder = ContextZone::builder();
+        let context_zone_root = context_zone_builder.root.clone();
+        let context_zone = context_zone_builder.launch(()).detach();
+        let model = WorkspaceBar::new(context_zone, init.output_name);
         let widgets = view_output!();
         ComponentParts { model, widgets }
     }

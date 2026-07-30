@@ -94,6 +94,13 @@ pub(in crate::widgets::bar) fn bzbus_for_window(
     .box_it()
 }
 
+pub(in crate::widgets::bar) fn ongoing_builds() -> Observable<Vec<BzBusView>> {
+    bzbus_snapshots()
+        .map(|snapshot| view::ongoing_views(snapshot.active, snapshot.invocations))
+        .distinct_until_changed()
+        .box_it()
+}
+
 fn bzbus_snapshots() -> Observable<BzBusSnapshot> {
     source::shared_by_key("rsynapse.bzbus-snapshots", BZBUS_OBJECT_PATH, || {
         source::from_task(|sender| async move {

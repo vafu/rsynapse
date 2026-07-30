@@ -8,7 +8,7 @@ use shell_core::gtk::{self, prelude::*};
 
 use self::source::{ProjectLabelVm, project_label_vm};
 
-use super::{PANEL_ICON_SIZE, WorkspaceNode, app_icon};
+use super::{PANEL_ICON_SIZE, WorkspaceNode};
 use crate::{hints::hints_active, widgets::material_icon};
 
 #[derive(Debug)]
@@ -171,29 +171,17 @@ fn workspace_visible(vm: &ProjectLabelVm, selected: bool) -> bool {
 }
 
 fn project_icon(model: &ProjectLabelVm) -> String {
-    model
-        .project_icon
-        .as_deref()
-        .and_then(non_empty_text)
-        .unwrap_or("view_quilt")
+    non_empty_text(&model.project_icon)
+        .unwrap_or("workspaces")
         .to_owned()
 }
 
 fn project_icon_name(model: &ProjectLabelVm) -> String {
-    let icon = project_icon(model);
-    if model.project_icon_is_app {
-        app_icon::icon_name(&icon)
-    } else {
-        material_icon::icon_name(&icon)
-    }
+    material_icon::icon_name(&project_icon(model))
 }
 
-fn project_icon_classes(model: &ProjectLabelVm) -> &'static [&'static str] {
-    if model.project_icon_is_app {
-        &["bar-indicator-icon"]
-    } else {
-        &["bar-indicator-icon", "materialicon"]
-    }
+fn project_icon_classes(_model: &ProjectLabelVm) -> &'static [&'static str] {
+    &["bar-indicator-icon", "materialicon"]
 }
 
 // Build status icon rendering is paused while the status is moved to a new surface.
@@ -225,9 +213,14 @@ fn project_secondary(model: &ProjectLabelVm) -> Option<String> {
 
 fn project_tooltip(model: &ProjectLabelVm, workspace: &WorkspaceNode) -> String {
     let primary = project_primary(model, workspace);
-    match project_secondary(model) {
+    let title = match project_secondary(model) {
         Some(secondary) => format!("{primary} · {secondary}"),
         None => primary,
+    };
+    let icon = project_icon(model);
+    match non_empty_text(&model.project_icon_input) {
+        Some(input) => format!("{title}\nicon: {icon}\npick-icon input:\n{input}"),
+        None => format!("{title}\nicon: {icon}"),
     }
 }
 

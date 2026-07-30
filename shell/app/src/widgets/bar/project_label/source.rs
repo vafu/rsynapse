@@ -1,6 +1,6 @@
 mod agent;
 mod build;
-mod workspace_fallback;
+mod workspace_icon;
 
 #[cfg(test)]
 mod test;
@@ -12,7 +12,7 @@ pub(super) use self::build::WorkspaceBuildState;
 use self::{
     agent::{WorkspaceAgentState, workspace_agent_state},
     build::workspace_build_state,
-    workspace_fallback::workspace_window_fallback_source,
+    workspace_icon::workspace_icon_source,
 };
 use crate::widgets::bar::{niri::NiriWorkspace, project::project_details};
 
@@ -24,8 +24,8 @@ pub(in crate::widgets::bar) struct ProjectLabelVm {
     pub(super) active: bool,
     pub(super) project_name: Option<String>,
     pub(super) project_branch: Option<String>,
-    pub(super) project_icon: Option<String>,
-    pub(super) project_icon_is_app: bool,
+    pub(super) project_icon: String,
+    pub(super) project_icon_input: String,
     pub(super) empty: bool,
     pub(super) agent: WorkspaceAgentState,
     pub(super) build: WorkspaceBuildState,
@@ -33,7 +33,7 @@ pub(in crate::widgets::bar) struct ProjectLabelVm {
 
 pub(super) fn project_label_vm(workspace: NiriWorkspace) -> Observable<ProjectLabelVm> {
     let project = project_details(workspace.clone());
-    let workspace_fallback = workspace_window_fallback_source(workspace.clone());
+    let workspace_icon = workspace_icon_source(workspace.clone());
     let agent = workspace_agent_state(workspace.clone());
     let build = workspace_build_state(workspace.clone());
 
@@ -43,13 +43,10 @@ pub(super) fn project_label_vm(workspace: NiriWorkspace) -> Observable<ProjectLa
         workspace.urgent(),
         workspace.focused(),
         project,
-        workspace_fallback,
+        workspace_icon,
         agent,
         build
-            => |(index, workspace_name, urgent, active, project, fallback, agent, build)| {
-                let fallback_icon = (!project.has_project).then_some(fallback.icon).flatten();
-                let project_icon_is_app = fallback_icon.is_some();
-                let project_icon = project.icon.or(fallback_icon);
+            => |(index, workspace_name, urgent, active, project, workspace_icon, agent, build)| {
                 ProjectLabelVm {
                     index,
                     workspace_name,
@@ -57,9 +54,9 @@ pub(super) fn project_label_vm(workspace: NiriWorkspace) -> Observable<ProjectLa
                     active,
                     project_name: project.display_main,
                     project_branch: project.display_secondary,
-                    project_icon,
-                    project_icon_is_app,
-                    empty: !project.has_project && fallback.empty,
+                    project_icon: workspace_icon.icon,
+                    project_icon_input: workspace_icon.picker_input,
+                    empty: workspace_icon.empty,
                     agent,
                     build,
                 }
@@ -67,11 +64,4 @@ pub(super) fn project_label_vm(workspace: NiriWorkspace) -> Observable<ProjectLa
     )
     .distinct_until_changed()
     .box_it()
-}
-
-fn non_empty(value: Option<String>) -> Option<String> {
-    value.and_then(|value| {
-        let value = value.trim().to_owned();
-        (!value.is_empty()).then_some(value)
-    })
 }
