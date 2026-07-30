@@ -2,7 +2,8 @@ use super::agent::workspace_agent_state_from_agents;
 use super::build::{WorkspaceBuildState, workspace_build_state_from_builds};
 use super::workspace_icon::{
     fallback_icon_for_context, parse_pick_icon_output, picker_cache_key_for_context,
-    picker_input_for_context, picker_strings_for_context, workspace_icon_context_from_parts,
+    picker_input_for_context, picker_strings_for_context, with_icon_override_for_test,
+    workspace_icon_context_from_parts,
 };
 use crate::widgets::bar::window_tile::agent::{Agent, State};
 use crate::widgets::bar::{bzbus::BzBusView, project::ProjectDetails};
@@ -112,6 +113,33 @@ fn workspace_icon_falls_back_to_workspace_symbol() {
 }
 
 #[test]
+fn workspace_icon_uses_locus_override_without_project_icon() {
+    let context = with_icon_override_for_test(
+        workspace_icon_context_from_parts(ProjectDetails::default(), Vec::new()),
+        "communication",
+    );
+
+    assert_eq!(fallback_icon_for_context(&context), "communication");
+}
+
+#[test]
+fn workspace_icon_keeps_project_icon_before_locus_override() {
+    let context = with_icon_override_for_test(
+        workspace_icon_context_from_parts(
+            ProjectDetails {
+                has_project: true,
+                icon: Some("account_tree".to_owned()),
+                ..ProjectDetails::default()
+            },
+            Vec::new(),
+        ),
+        "communication",
+    );
+
+    assert_eq!(fallback_icon_for_context(&context), "account_tree");
+}
+
+#[test]
 fn workspace_icon_skips_low_signal_picker_context() {
     let context = workspace_icon_context_from_parts(
         ProjectDetails::default(),
@@ -123,15 +151,25 @@ fn workspace_icon_skips_low_signal_picker_context() {
 
 #[test]
 fn workspace_icon_parses_pick_icon_json() {
-    assert_eq!(
-        parse_pick_icon_output(br#"[{"icon":"communication","score":1.0}]"#),
-        Some("communication".to_owned())
+    let candidates = parse_pick_icon_output(
+        br#"[{"icon":"communication","glyph":"x","score":1.0},{"icon":"terminal","score":0.721}]"#,
     );
+
     assert_eq!(
-        parse_pick_icon_output(br#"[{"icon":"phishing","score":0.6931895017623901}]"#),
-        None
+        candidates
+            .iter()
+            .map(|candidate| (
+                candidate.icon.as_str(),
+                candidate.glyph.as_deref(),
+                candidate.score_millis,
+            ))
+            .collect::<Vec<_>>(),
+        vec![("communication", Some("x"), 1000), ("terminal", None, 721)]
     );
-    assert_eq!(parse_pick_icon_output(b"[]"), None);
+    assert!(
+        parse_pick_icon_output(br#"[{"icon":"phishing","score":0.6931895017623901}]"#).is_empty()
+    );
+    assert!(parse_pick_icon_output(b"[]").is_empty());
 }
 
 fn agent(state: State, attention: bool, unseen: bool) -> Agent {

@@ -1,4 +1,6 @@
+mod input;
 mod source;
+mod view;
 
 #[cfg(test)]
 mod test;
@@ -6,7 +8,14 @@ mod test;
 use relm4::prelude::*;
 use shell_core::gtk::{self, prelude::*};
 
-use self::source::{ProjectLabelVm, project_label_vm};
+use self::{
+    input::ProjectLabelInput,
+    source::{
+        ProjectLabelVm, WorkspaceIconChoice, clear_project_icon_override, project_label_vm,
+        set_project_icon_override,
+    },
+    view::*,
+};
 
 use super::{PANEL_ICON_SIZE, WorkspaceNode};
 use crate::{hints::hints_active, widgets::material_icon};
@@ -33,7 +42,7 @@ pub(super) struct ProjectLabel {
 #[relm4::component(pub(crate))]
 impl SimpleComponent for ProjectLabel {
     type Init = WorkspaceNode;
-    type Input = project_label_sources::Msg;
+    type Input = ProjectLabelInput;
     type Output = ();
 
     view! {
@@ -45,82 +54,184 @@ impl SimpleComponent for ProjectLabel {
             set_halign: gtk::Align::Center,
             set_valign: gtk::Align::Center,
 
-            gtk::Box {
-            #[watch]
-            set_css_classes: &project_group_classes(&model.vm, model.selected),
-
-            #[watch]
-            set_tooltip_text: Some(project_tooltip(&model.vm, &model.workspace).as_str()),
-
-            set_halign: gtk::Align::Center,
-            set_valign: gtk::Align::Center,
-            set_hexpand: false,
-            set_orientation: gtk::Orientation::Horizontal,
-            set_spacing: 1,
-
-            #[local_ref]
-            icon -> gtk::Image {
-                set_halign: gtk::Align::Center,
-                set_valign: gtk::Align::Center,
-                set_hexpand: true,
-                set_pixel_size: PANEL_ICON_SIZE,
+            gtk::MenuButton {
+                set_css_classes: &["flat", "workspace-icon-menu-button"],
+                set_has_frame: false,
 
                 #[watch]
-                set_css_classes: project_icon_classes(&model.vm),
+                set_tooltip_text: Some(project_tooltip(&model.vm, &model.workspace).as_str()),
 
-                #[watch]
-                set_icon_name: Some(project_icon_name(&model.vm).as_str()),
-            },
+                #[wrap(Some)]
+                set_popover = &gtk::Popover {
+                    add_css_class: "menu",
 
-            // Build status icon rendering is paused while the status is moved to a new surface.
-            // gtk::Image {
-            //     set_can_target: false,
-            //     set_halign: gtk::Align::Center,
-            //     set_valign: gtk::Align::Center,
-            //     set_pixel_size: 12,
-            //     #[watch]
-            //     set_build_indicator_state: workspace_build_indicator_state(model.vm.build),
-            // }
+                    gtk::Box {
+                        add_css_class: "workspace-icon-picker",
+                        set_orientation: gtk::Orientation::Horizontal,
+                        set_spacing: 2,
 
-            #[name = "title_revealer"]
-            gtk::Revealer {
-                set_reveal_child: false,
-                set_halign: gtk::Align::Start,
-                set_hexpand: false,
-                set_transition_type: gtk::RevealerTransitionType::SlideRight,
+                        #[name = "icon_auto_button"]
+                        gtk::Button {
+                            set_css_classes: &auto_icon_button_classes(&model.vm),
+                            #[watch]
+                            set_visible: auto_icon_visible(&model.vm),
+                            #[watch]
+                            set_tooltip_text: Some(auto_icon_tooltip(&model.vm).as_str()),
 
-                gtk::Box {
-                    add_css_class: "bar-indicator-title",
-                    set_halign: gtk::Align::Start,
+                            gtk::Image {
+                                set_css_classes: &["bar-indicator-icon", "materialicon"],
+                                set_pixel_size: PANEL_ICON_SIZE,
+                                set_icon_name: Some(material_icon::icon_name("auto_mode").as_str()),
+                            }
+                        },
+
+                        #[name = "icon_candidate_0"]
+                        gtk::Button {
+                            #[watch]
+                            set_visible: icon_candidate_visible(&model.vm, 0),
+                            #[watch]
+                            set_css_classes: &icon_candidate_button_classes(&model.vm, 0),
+                            #[watch]
+                            set_tooltip_text: Some(icon_candidate_tooltip(&model.vm, 0).as_str()),
+
+                            gtk::Box {
+                                set_halign: gtk::Align::Center,
+                                set_valign: gtk::Align::Center,
+                                #[watch]
+                                set_bar_icon: icon_candidate_render(&model.vm, 0),
+                            }
+                        },
+
+                        #[name = "icon_candidate_1"]
+                        gtk::Button {
+                            #[watch]
+                            set_visible: icon_candidate_visible(&model.vm, 1),
+                            #[watch]
+                            set_css_classes: &icon_candidate_button_classes(&model.vm, 1),
+                            #[watch]
+                            set_tooltip_text: Some(icon_candidate_tooltip(&model.vm, 1).as_str()),
+
+                            gtk::Box {
+                                set_halign: gtk::Align::Center,
+                                set_valign: gtk::Align::Center,
+                                #[watch]
+                                set_bar_icon: icon_candidate_render(&model.vm, 1),
+                            }
+                        },
+
+                        #[name = "icon_candidate_2"]
+                        gtk::Button {
+                            #[watch]
+                            set_visible: icon_candidate_visible(&model.vm, 2),
+                            #[watch]
+                            set_css_classes: &icon_candidate_button_classes(&model.vm, 2),
+                            #[watch]
+                            set_tooltip_text: Some(icon_candidate_tooltip(&model.vm, 2).as_str()),
+
+                            gtk::Box {
+                                set_halign: gtk::Align::Center,
+                                set_valign: gtk::Align::Center,
+                                #[watch]
+                                set_bar_icon: icon_candidate_render(&model.vm, 2),
+                            }
+                        },
+
+                        #[name = "icon_candidate_3"]
+                        gtk::Button {
+                            #[watch]
+                            set_visible: icon_candidate_visible(&model.vm, 3),
+                            #[watch]
+                            set_css_classes: &icon_candidate_button_classes(&model.vm, 3),
+                            #[watch]
+                            set_tooltip_text: Some(icon_candidate_tooltip(&model.vm, 3).as_str()),
+
+                            gtk::Box {
+                                set_halign: gtk::Align::Center,
+                                set_valign: gtk::Align::Center,
+                                #[watch]
+                                set_bar_icon: icon_candidate_render(&model.vm, 3),
+                            }
+                        },
+
+                        #[name = "icon_candidate_4"]
+                        gtk::Button {
+                            #[watch]
+                            set_visible: icon_candidate_visible(&model.vm, 4),
+                            #[watch]
+                            set_css_classes: &icon_candidate_button_classes(&model.vm, 4),
+                            #[watch]
+                            set_tooltip_text: Some(icon_candidate_tooltip(&model.vm, 4).as_str()),
+
+                            gtk::Box {
+                                set_halign: gtk::Align::Center,
+                                set_valign: gtk::Align::Center,
+                                #[watch]
+                                set_bar_icon: icon_candidate_render(&model.vm, 4),
+                            }
+                        }
+                    }
+                },
+
+                #[wrap(Some)]
+                set_child = &gtk::Box {
+                    #[watch]
+                    set_css_classes: &project_group_classes(&model.vm, model.selected),
+
+                    set_halign: gtk::Align::Center,
+                    set_valign: gtk::Align::Center,
                     set_hexpand: false,
                     set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 4,
+                    set_spacing: 1,
 
-                    gtk::Label {
-                        set_ellipsize: gtk::pango::EllipsizeMode::End,
+                    gtk::Box {
+                        set_halign: gtk::Align::Center,
+                        set_valign: gtk::Align::Center,
+                        set_hexpand: true,
 
                         #[watch]
-                        set_label: project_primary(&model.vm, &model.workspace).as_str(),
+                        set_bar_icon: project_icon_render(&model.vm),
+                    },
 
-                        set_max_width_chars: 18,
-                        set_xalign: 0.0,
+                    #[name = "title_revealer"]
+                    gtk::Revealer {
+                        set_reveal_child: false,
+                        set_halign: gtk::Align::Start,
+                        set_hexpand: false,
+                        set_transition_type: gtk::RevealerTransitionType::SlideRight,
+
+                        gtk::Box {
+                            add_css_class: "bar-indicator-title",
+                            set_halign: gtk::Align::Start,
+                            set_hexpand: false,
+                            set_orientation: gtk::Orientation::Horizontal,
+                            set_spacing: 4,
+
+                            gtk::Label {
+                                set_ellipsize: gtk::pango::EllipsizeMode::End,
+
+                                #[watch]
+                                set_label: project_primary(&model.vm, &model.workspace).as_str(),
+
+                                set_max_width_chars: 18,
+                                set_xalign: 0.0,
+                            },
+                        }
+                    },
+
+                    gtk::Label {
+                        add_css_class: "bar-badge",
+                        add_css_class: "workspace-number-badge",
+
+                        #[watch]
+                        set_label: workspace_badge_label(model.vm.index).as_str(),
+
+                        #[watch]
+                        set_visible: model.hints_active,
+
+                        set_halign: gtk::Align::Center,
+                        set_valign: gtk::Align::Center,
                     },
                 }
-            },
-
-            gtk::Label {
-                add_css_class: "bar-badge",
-                add_css_class: "workspace-number-badge",
-
-                #[watch]
-                set_label: workspace_badge_label(model.vm.index).as_str(),
-
-                #[watch]
-                set_visible: model.hints_active,
-
-                set_halign: gtk::Align::Center,
-                set_valign: gtk::Align::Center,
-            },
             }
         }
     }
@@ -128,121 +239,43 @@ impl SimpleComponent for ProjectLabel {
     fn init(
         init: Self::Init,
         root: Self::Root,
-        _sender: ComponentSender<Self>,
+        sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
         let model = ProjectLabel::new(init);
-        let icon = gtk::Image::new();
-        icon.set_halign(gtk::Align::Center);
-        icon.set_valign(gtk::Align::Center);
-        icon.set_pixel_size(PANEL_ICON_SIZE);
-        icon.set_css_classes(project_icon_classes(&model.vm));
-        icon.set_icon_name(Some(project_icon_name(&model.vm).as_str()));
         let widgets = view_output!();
+
+        let input_sender = sender.input_sender().clone();
+        let auto_button = widgets.icon_auto_button.clone();
+        let auto_button_for_signal = auto_button.clone();
+        auto_button.connect_clicked(move |_| {
+            close_button_popover(&auto_button_for_signal);
+            input_sender.emit(ProjectLabelInput::ClearIconOverride);
+        });
+        connect_icon_candidate_button(&widgets.icon_candidate_0, sender.input_sender().clone(), 0);
+        connect_icon_candidate_button(&widgets.icon_candidate_1, sender.input_sender().clone(), 1);
+        connect_icon_candidate_button(&widgets.icon_candidate_2, sender.input_sender().clone(), 2);
+        connect_icon_candidate_button(&widgets.icon_candidate_3, sender.input_sender().clone(), 3);
+        connect_icon_candidate_button(&widgets.icon_candidate_4, sender.input_sender().clone(), 4);
 
         ComponentParts { model, widgets }
     }
-}
 
-fn project_group_classes(vm: &ProjectLabelVm, selected: bool) -> Vec<&'static str> {
-    let mut classes = vec!["bar-indicator"];
-
-    if selected {
-        classes.push("selected-workspace");
+    fn update(&mut self, msg: Self::Input, _sender: ComponentSender<Self>) {
+        match msg {
+            ProjectLabelInput::Source(msg) => ProjectLabel::update(self, msg),
+            ProjectLabelInput::SetIconOverride(index) => {
+                let Some(candidate) = self.vm.project_icon_candidates.get(index) else {
+                    return;
+                };
+                set_project_icon_override(
+                    self.vm.workspace_id,
+                    WorkspaceIconChoice::from(candidate),
+                    self.vm.project_icon_input.clone(),
+                );
+            }
+            ProjectLabelInput::ClearIconOverride => {
+                clear_project_icon_override(self.vm.workspace_id)
+            }
+        }
     }
-    if vm.active {
-        classes.push("current-workspace");
-    } else if selected {
-        classes.push("inactive-selected-workspace");
-    }
-    if vm.urgent || vm.agent.has_attention {
-        classes.push("has-attention");
-    }
-    if vm.agent.has_working {
-        classes.push("has-working");
-    }
-    if workspace_agent_unseen_visible(vm) {
-        classes.push("has-unseen");
-    }
-    classes
-}
-
-fn workspace_visible(vm: &ProjectLabelVm, selected: bool) -> bool {
-    selected || !vm.empty
-}
-
-fn project_icon(model: &ProjectLabelVm) -> String {
-    non_empty_text(&model.project_icon)
-        .unwrap_or("workspaces")
-        .to_owned()
-}
-
-fn project_icon_name(model: &ProjectLabelVm) -> String {
-    material_icon::icon_name(&project_icon(model))
-}
-
-fn project_icon_classes(_model: &ProjectLabelVm) -> &'static [&'static str] {
-    &["bar-indicator-icon", "materialicon"]
-}
-
-// Build status icon rendering is paused while the status is moved to a new surface.
-// fn workspace_build_indicator_state(state: WorkspaceBuildState) -> BuildIndicatorState {
-//     match state {
-//         WorkspaceBuildState::None => BuildIndicatorState::None,
-//         WorkspaceBuildState::Running => BuildIndicatorState::Running,
-//         WorkspaceBuildState::Failed => BuildIndicatorState::Failed,
-//         WorkspaceBuildState::Finished => BuildIndicatorState::Finished,
-//     }
-// }
-
-fn project_primary(model: &ProjectLabelVm, _workspace: &WorkspaceNode) -> String {
-    model
-        .project_name
-        .as_deref()
-        .and_then(non_empty_text)
-        .map(str::to_owned)
-        .unwrap_or_else(|| workspace_title(&model.workspace_name, model.index))
-}
-
-fn project_secondary(model: &ProjectLabelVm) -> Option<String> {
-    model
-        .project_branch
-        .as_deref()
-        .and_then(non_empty_text)
-        .map(str::to_owned)
-}
-
-fn project_tooltip(model: &ProjectLabelVm, workspace: &WorkspaceNode) -> String {
-    let primary = project_primary(model, workspace);
-    let title = match project_secondary(model) {
-        Some(secondary) => format!("{primary} · {secondary}"),
-        None => primary,
-    };
-    let icon = project_icon(model);
-    match non_empty_text(&model.project_icon_input) {
-        Some(input) => format!("{title}\nicon: {icon}\npick-icon input:\n{input}"),
-        None => format!("{title}\nicon: {icon}"),
-    }
-}
-
-fn workspace_agent_unseen_visible(model: &ProjectLabelVm) -> bool {
-    model.agent.has_unseen
-}
-
-fn workspace_title(workspace_name: &str, index: u32) -> String {
-    optional_text(Some(workspace_name))
-        .map(str::to_owned)
-        .unwrap_or_else(|| format!("Workspace {}", index))
-}
-
-fn optional_text(value: Option<&str>) -> Option<&str> {
-    non_empty_text(value?)
-}
-
-fn non_empty_text(value: &str) -> Option<&str> {
-    let value = value.trim();
-    (!value.is_empty()).then_some(value)
-}
-
-fn workspace_badge_label(sort_index: u32) -> String {
-    sort_index.to_string()
 }

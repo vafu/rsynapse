@@ -15,6 +15,7 @@ pub(in crate::widgets::bar) struct ProjectDetails {
     pub(in crate::widgets::bar) display_main: Option<String>,
     pub(in crate::widgets::bar) display_secondary: Option<String>,
     pub(in crate::widgets::bar) icon: Option<String>,
+    pub(in crate::widgets::bar) icon_glyph: Option<String>,
     pub(in crate::widgets::bar) branch: Option<String>,
     pub(in crate::widgets::bar) cwd_label: Option<String>,
 }
@@ -188,6 +189,10 @@ impl From<RelationRecord> for ProjectDetails {
             display_main: metadata_value(&record.metadata, &["display-main"]),
             display_secondary: metadata_value(&record.metadata, &["display-secondary"]),
             icon: metadata_value(&record.metadata, &["display-icon", "icon"]),
+            icon_glyph: metadata_value(
+                &record.metadata,
+                &["display-icon-glyph", "icon-glyph", "glyph"],
+            ),
             branch: metadata_value(&record.metadata, &["branch"]),
             cwd_label,
         }

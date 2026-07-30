@@ -1,14 +1,24 @@
-use std::{
-    collections::{BTreeSet, HashMap},
-    path::PathBuf,
-    sync::{Mutex, OnceLock},
-    time::Duration,
-};
+use std::collections::BTreeSet;
 
-use serde::Deserialize;
 use shell_core::source::{self, Observable, rx::Observable as _};
-use tokio::{process::Command, time::timeout};
 
+#[path = "workspace_icon/icon_choice.rs"]
+mod icon_choice;
+#[path = "workspace_icon/icon_override.rs"]
+mod icon_override;
+#[path = "workspace_icon/picker.rs"]
+mod picker;
+
+pub(in crate::widgets::bar::project_label) use self::icon_choice::WorkspaceIconChoice;
+use self::icon_override::workspace_icon_override_source;
+pub(super) use self::icon_override::{clear_workspace_icon_override, set_workspace_icon_override};
+pub(in crate::widgets::bar::project_label) use self::picker::WorkspaceIconCandidate;
+use self::picker::pick_icon_candidates;
+#[cfg(test)]
+pub(super) use self::picker::{
+    parse_pick_icon_output, picker_cache_key_for_context, picker_input_for_context,
+    picker_strings_for_context,
+};
 use crate::widgets::bar::{
     niri::NiriWorkspace,
     project::{ProjectDetails, project_details},
@@ -16,45 +26,40 @@ use crate::widgets::bar::{
 };
 
 const FALLBACK_ICON: &str = "workspaces";
-const PICK_ICON_TIMEOUT: Duration = Duration::from_millis(800);
-const MAX_QUERY_STRINGS: usize = 12;
-const MIN_PICK_ICON_INPUTS: usize = 2;
-const MIN_PICK_ICON_SCORE: f64 = 0.72;
-
-type PickIconCache = HashMap<String, Option<String>>;
-
-static PICK_ICON_CACHE: OnceLock<Mutex<PickIconCache>> = OnceLock::new();
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct WorkspaceIcon {
     pub(super) icon: String,
+    pub(super) glyph: Option<String>,
     pub(super) empty: bool,
     pub(super) picker_input: String,
+    pub(super) candidates: Vec<WorkspaceIconCandidate>,
+    pub(super) overridden: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct WorkspaceIconContext {
-    project_icon: Option<String>,
+    override_icon: Option<WorkspaceIconChoice>,
+    project_icon: Option<WorkspaceIconChoice>,
     empty: bool,
     strings: Vec<String>,
 }
 
-#[derive(Debug, Deserialize)]
-struct PickIconCandidate {
-    icon: String,
-    score: Option<f64>,
-}
-
 pub(super) fn workspace_icon_source(workspace: NiriWorkspace) -> Observable<WorkspaceIcon> {
     let workspace_id = workspace.id().map(Some);
+    let project = project_details(workspace.clone());
+    let override_icon = workspace_icon_override_source(workspace.clone());
     let contexts = workspace_id
         .combine_latest(window_snapshots(), |workspace_id, windows| {
             (workspace_id, windows)
         })
+        .combine_latest(project, |(workspace_id, windows), project| {
+            (workspace_id, windows, project)
+        })
         .combine_latest(
-            project_details(workspace),
-            |(workspace_id, windows), project| {
-                workspace_icon_context(workspace_id, windows, project)
+            override_icon,
+            |(workspace_id, windows, project), override_icon| {
+                workspace_icon_context(workspace_id, windows, project, override_icon)
             },
         )
         .distinct_until_changed()
@@ -72,27 +77,38 @@ fn workspace_icon_for_context(context: WorkspaceIconContext) -> Observable<Works
         source::from_task(move |sender| {
             let context = context.clone();
             async move {
-                let fallback = fallback_icon_for_context(&context).to_owned();
-                let picker_input = picker_input_for_context(&context);
+                let fallback = fallback_icon_choice_for_context(&context);
+                let picker_input = picker::picker_input_for_context(&context);
                 let initial = WorkspaceIcon {
-                    icon: fallback.clone(),
+                    icon: fallback.icon.clone(),
+                    glyph: fallback.glyph.clone(),
                     empty: context.empty,
                     picker_input: picker_input.clone(),
+                    candidates: Vec::new(),
+                    overridden: context.override_icon.is_some() && context.project_icon.is_none(),
                 };
                 if sender.send(Ok(initial.clone())).await.is_err() {
                     return;
                 }
-                if context.project_icon.is_some() || fallback != FALLBACK_ICON {
+                if context.project_icon.is_some() {
                     return;
                 }
 
-                let Some(icon) = pick_icon(&context).await else {
+                let candidates = pick_icon_candidates(&context).await;
+                let icon = context
+                    .override_icon
+                    .clone()
+                    .or_else(|| candidates.first().map(WorkspaceIconChoice::from));
+                let Some(icon) = icon else {
                     return;
                 };
                 let resolved = WorkspaceIcon {
-                    icon,
+                    icon: icon.icon,
+                    glyph: icon.glyph,
                     empty: context.empty,
                     picker_input,
+                    candidates,
+                    overridden: context.override_icon.is_some(),
                 };
                 if resolved != initial {
                     let _ = sender.send(Ok(resolved)).await;
@@ -108,6 +124,7 @@ fn workspace_icon_context(
     workspace_id: Option<u64>,
     mut windows: Vec<WindowSnapshot>,
     project: ProjectDetails,
+    override_icon: Option<WorkspaceIconChoice>,
 ) -> WorkspaceIconContext {
     windows.retain(|window| window.workspace_id == workspace_id);
     windows.sort_by(|left, right| {
@@ -119,14 +136,26 @@ fn workspace_icon_context(
         .into_iter()
         .filter_map(|window| window.app_id)
         .collect::<Vec<_>>();
-    workspace_icon_context_from_parts(project, app_ids)
+    workspace_icon_context_from_parts_with_override(project, app_ids, override_icon)
 }
 
+#[cfg(test)]
 pub(super) fn workspace_icon_context_from_parts(
     project: ProjectDetails,
     app_ids: Vec<String>,
 ) -> WorkspaceIconContext {
-    let project_icon = project.icon.clone().and_then(non_empty);
+    workspace_icon_context_from_parts_with_override(project, app_ids, None)
+}
+
+fn workspace_icon_context_from_parts_with_override(
+    project: ProjectDetails,
+    app_ids: Vec<String>,
+    override_icon: Option<WorkspaceIconChoice>,
+) -> WorkspaceIconContext {
+    let project_icon = project
+        .icon
+        .clone()
+        .and_then(|icon| WorkspaceIconChoice::new(icon, project.icon_glyph.clone()));
     let project_strings = normalize_strings(
         [
             project.display_main,
@@ -147,6 +176,7 @@ pub(super) fn workspace_icon_context_from_parts(
     };
 
     WorkspaceIconContext {
+        override_icon,
         project_icon,
         empty: !project.has_project && strings.is_empty(),
         strings,
@@ -162,93 +192,36 @@ fn normalize_strings(strings: Vec<String>) -> Vec<String> {
         .collect()
 }
 
+#[cfg(test)]
 pub(super) fn fallback_icon_for_context(context: &WorkspaceIconContext) -> &str {
-    context.project_icon.as_deref().unwrap_or(FALLBACK_ICON)
+    context
+        .project_icon
+        .as_ref()
+        .map(|icon| icon.icon.as_str())
+        .or_else(|| {
+            context
+                .override_icon
+                .as_ref()
+                .map(|icon| icon.icon.as_str())
+        })
+        .unwrap_or(FALLBACK_ICON)
+}
+
+fn fallback_icon_choice_for_context(context: &WorkspaceIconContext) -> WorkspaceIconChoice {
+    context
+        .project_icon
+        .clone()
+        .or_else(|| context.override_icon.clone())
+        .unwrap_or_else(|| WorkspaceIconChoice::material(FALLBACK_ICON))
 }
 
 #[cfg(test)]
-pub(super) fn picker_strings_for_context(context: &WorkspaceIconContext) -> &[String] {
-    &context.strings
-}
-
-pub(super) fn picker_input_for_context(context: &WorkspaceIconContext) -> String {
-    picker_command_strings(context).join("\n")
-}
-
-async fn pick_icon(context: &WorkspaceIconContext) -> Option<String> {
-    let cache_key = picker_cache_key_for_context(context)?;
-    if let Some(icon) = cached_pick_icon(&cache_key) {
-        return icon;
-    }
-
-    let mut command = Command::new(pick_icon_executable());
-    for string in picker_command_strings(context) {
-        command.args(["--string", string.as_str()]);
-    }
-    command.args(["--top", "1", "--json"]);
-
-    let icon = timeout(PICK_ICON_TIMEOUT, command.output())
-        .await
-        .ok()
-        .and_then(Result::ok)
-        .and_then(|output| output.status.success().then_some(output))
-        .and_then(|output| parse_pick_icon_output(&output.stdout));
-    cache_pick_icon(cache_key, icon.clone());
-    icon
-}
-
-fn picker_command_strings(context: &WorkspaceIconContext) -> Vec<String> {
+pub(super) fn with_icon_override_for_test(
+    mut context: WorkspaceIconContext,
+    icon: &str,
+) -> WorkspaceIconContext {
+    context.override_icon = Some(WorkspaceIconChoice::material(icon));
     context
-        .strings
-        .iter()
-        .take(MAX_QUERY_STRINGS)
-        .cloned()
-        .collect()
-}
-
-pub(super) fn picker_cache_key_for_context(context: &WorkspaceIconContext) -> Option<String> {
-    let strings = picker_command_strings(context);
-    (strings.len() >= MIN_PICK_ICON_INPUTS).then(|| strings.join("\u{1f}"))
-}
-
-fn cached_pick_icon(key: &str) -> Option<Option<String>> {
-    pick_icon_cache().lock().ok()?.get(key).cloned()
-}
-
-fn cache_pick_icon(key: String, icon: Option<String>) {
-    if let Ok(mut cache) = pick_icon_cache().lock() {
-        cache.insert(key, icon);
-    }
-}
-
-fn pick_icon_cache() -> &'static Mutex<PickIconCache> {
-    PICK_ICON_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
-}
-
-pub(super) fn parse_pick_icon_output(output: &[u8]) -> Option<String> {
-    serde_json::from_slice::<Vec<PickIconCandidate>>(output)
-        .ok()?
-        .into_iter()
-        .find_map(pick_icon_candidate)
-}
-
-fn pick_icon_candidate(candidate: PickIconCandidate) -> Option<String> {
-    (candidate.score.unwrap_or_default() >= MIN_PICK_ICON_SCORE)
-        .then_some(candidate.icon)
-        .and_then(non_empty)
-}
-
-fn pick_icon_executable() -> PathBuf {
-    if let Some(path) = std::env::var_os("RSYNAPSE_PICK_ICON") {
-        return PathBuf::from(path);
-    }
-    if let Some(home) = std::env::var_os("HOME") {
-        let path = PathBuf::from(home).join(".cargo/bin/pick-icon");
-        if path.exists() {
-            return path;
-        }
-    }
-    PathBuf::from("pick-icon")
 }
 
 fn non_empty(value: String) -> Option<String> {
@@ -259,10 +232,34 @@ fn non_empty(value: String) -> Option<String> {
 impl WorkspaceIconContext {
     fn key(&self) -> String {
         format!(
-            "{}:{}:{}",
+            "{}:{}:{}:{}:{}:{}",
             self.empty,
-            self.project_icon.as_deref().unwrap_or_default(),
+            self.override_icon
+                .as_ref()
+                .map(|icon| icon.icon.as_str())
+                .unwrap_or_default(),
+            self.override_icon
+                .as_ref()
+                .and_then(|icon| icon.glyph.as_deref())
+                .unwrap_or_default(),
+            self.project_icon
+                .as_ref()
+                .map(|icon| icon.icon.as_str())
+                .unwrap_or_default(),
+            self.project_icon
+                .as_ref()
+                .and_then(|icon| icon.glyph.as_deref())
+                .unwrap_or_default(),
             self.strings.join("\u{1f}")
         )
+    }
+}
+
+impl From<&WorkspaceIconCandidate> for WorkspaceIconChoice {
+    fn from(candidate: &WorkspaceIconCandidate) -> Self {
+        Self {
+            icon: candidate.icon.clone(),
+            glyph: candidate.glyph.clone(),
+        }
     }
 }

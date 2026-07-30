@@ -110,7 +110,7 @@ fn workspace_bar_window_config() -> WindowConfig {
                 .with_edge(Edge::Bottom)
                 .with_edge(Edge::Left),
         )
-        .with_fixed_exclusive_zone(WORKSPACE_RAIL_WIDTH)
+        .with_auto_exclusive_zone()
         .with_namespace("rsynapse-workspace-rail")
 }
 

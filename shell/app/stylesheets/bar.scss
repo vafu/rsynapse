@@ -133,6 +133,13 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
   -gtk-icon-size: #{$panel-icon-size};
 }
 
+.nerdicon.bar-indicator-icon {
+  min-width: #{$panel-icon-size};
+  font-family: "FiraCode Nerd Font", "0xProto Nerd Font", "Symbols Nerd Font", monospace;
+  font-size: #{$panel-icon-size};
+  line-height: #{$panel-icon-size};
+}
+
 .selected-project-meta-icon {
   -gtk-icon-size: #{$panel-meta-icon-size};
 }
@@ -231,6 +238,22 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
   min-width: #{$panel-item-size};
   margin-bottom: 4px;
   padding: 0;
+}
+
+.bar-indicator-list-vertical menubutton.workspace-icon-menu-button {
+  margin: 0;
+  padding: 0;
+}
+
+.bar-indicator-list-vertical menubutton.workspace-icon-menu-button > button {
+  min-height: #{$panel-item-size};
+  min-width: #{$panel-item-size};
+  margin: 0;
+  padding: 0;
+}
+
+.bar-indicator-list-vertical menubutton.workspace-icon-menu-button .bar-indicator {
+  margin-bottom: 4px;
 }
 
 .bar-indicator-list-horizontal .bar-indicator.active {
