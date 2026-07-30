@@ -138,7 +138,7 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
   font-weight: 500;
   margin: 0;
   padding: 0;
-  font-size:18pt;
+  font-size: 18pt;
 }
 
 .nerdicon.bar-corner-icon,
@@ -155,6 +155,7 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
   min-height: #{$panel-meta-icon-size};
   min-width: #{$panel-meta-icon-size};
   line-height: 1;
+  font-size: 12pt;
 }
 
 .selected-project-meta-icon {
