@@ -3,7 +3,7 @@ use crate::widgets::bar::project::ProjectDetails;
 
 #[test]
 fn selected_project_displays_project_metadata() {
-    let view = selected_project_view(3, "", split_project());
+    let view = selected_project_view(split_project());
 
     assert!(view.visible);
     assert_eq!(view.title, "platform/taskexecution");
@@ -11,26 +11,22 @@ fn selected_project_displays_project_metadata() {
 }
 
 #[test]
-fn selected_project_displays_workspace_without_project_secondary() {
-    let view = selected_project_view(3, "workspace", ProjectDetails::default());
+fn selected_project_hides_without_project_metadata() {
+    let view = selected_project_view(ProjectDetails::default());
 
-    assert!(view.visible);
-    assert_eq!(view.title, "workspace");
+    assert!(!view.visible);
+    assert_eq!(view.title, "");
     assert_eq!(view.branch, None);
 }
 
 #[test]
 fn selected_project_uses_root_cwd_name_without_relative_cwd() {
-    let view = selected_project_view(
-        3,
-        "",
-        ProjectDetails {
-            has_project: true,
-            cwd_label: Some("uiq-worktree".to_owned()),
-            branch: Some("vafu/coroutines/rescue-scheduler".to_owned()),
-            ..ProjectDetails::default()
-        },
-    );
+    let view = selected_project_view(ProjectDetails {
+        has_project: true,
+        cwd_label: Some("uiq-worktree".to_owned()),
+        branch: Some("vafu/coroutines/rescue-scheduler".to_owned()),
+        ..ProjectDetails::default()
+    });
 
     assert!(view.visible);
     assert_eq!(view.title, "uiq-worktree");

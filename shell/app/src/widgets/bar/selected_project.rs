@@ -1,7 +1,5 @@
-use shell_core::source::{self, Observable, rx::Observable as _};
-use shell_rx_macros::combine_latest;
-
 use crate::widgets::material_icon;
+use shell_core::source::{self, Observable, rx::Observable as _};
 
 use super::{
     niri::{self, NiriWorkspace},
@@ -28,29 +26,23 @@ pub(super) fn selected_project_status(
 }
 
 fn selected_workspace_project_status(workspace: NiriWorkspace) -> Observable<SelectedProjectView> {
-    combine_latest!(
-        workspace.index().map(u32::from),
-        workspace.name().map(|name| name.unwrap_or_default()),
-        project_details(workspace.clone())
-            => |(index, workspace_name, project)| {
-                selected_project_view(index, &workspace_name, project)
-            },
-    )
-    .distinct_until_changed()
-    .box_it()
+    project_details(workspace)
+        .map(selected_project_view)
+        .distinct_until_changed()
+        .box_it()
 }
 
-fn selected_project_view(
-    index: u32,
-    workspace_name: &str,
-    project: ProjectDetails,
-) -> SelectedProjectView {
+fn selected_project_view(project: ProjectDetails) -> SelectedProjectView {
+    if !project.has_project {
+        return SelectedProjectView::default();
+    }
+
     let title = project
         .cwd_label
         .as_deref()
         .and_then(non_empty)
         .map(str::to_owned)
-        .unwrap_or_else(|| workspace_title(workspace_name, index));
+        .unwrap_or_default();
     let branch = optional_text(project.branch).filter(|branch| distinct_from(branch, &title));
     let visible = non_empty(&title).is_some();
 
@@ -59,12 +51,6 @@ fn selected_project_view(
         title,
         branch,
     }
-}
-
-fn workspace_title(workspace_name: &str, index: u32) -> String {
-    non_empty(workspace_name)
-        .map(str::to_owned)
-        .unwrap_or_else(|| format!("Workspace {index}"))
 }
 
 fn distinct_from(value: &str, other: &str) -> bool {
