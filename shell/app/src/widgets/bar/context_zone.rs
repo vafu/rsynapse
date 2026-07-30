@@ -5,8 +5,8 @@ use shell_core::{
     source::{Observable, rx::Observable as _},
 };
 
-use super::{PANEL_ICON_SIZE, bzbus};
-use crate::widgets::material_icon;
+use super::bzbus;
+use crate::widgets::nerd_icon::{NerdIcon, NerdIconLabelExt};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) enum ContextItem {
@@ -55,7 +55,7 @@ impl SimpleComponent for ContextZone {
                     set_halign: gtk::Align::Center,
                     set_valign: gtk::Align::Start,
                     set_orientation: gtk::Orientation::Vertical,
-                    set_spacing: 0,
+                    set_spacing: 4,
                 }
             }
         }
@@ -98,13 +98,11 @@ impl SimpleComponent for ContextZoneItem {
                 set_valign: gtk::Align::Center,
                 set_tooltip_text: Some(item_tooltip(&model.item).as_str()),
 
-                gtk::Image {
-                    add_css_class: "materialicon",
-                    add_css_class: "bar-indicator-icon",
+                gtk::Label {
+                    set_css_classes: &["bar-indicator-icon", "nerdicon"],
                     set_halign: gtk::Align::Center,
                     set_valign: gtk::Align::Center,
-                    set_pixel_size: PANEL_ICON_SIZE,
-                    set_icon_name: Some(item_icon_name(&model.item).as_str()),
+                    set_nerd_icon: item_icon(&model.item),
                 },
 
                 add_overlay = &gtk::DrawingArea {
@@ -179,9 +177,9 @@ fn item_tooltip(item: &ContextItem) -> String {
     }
 }
 
-fn item_icon_name(item: &ContextItem) -> String {
+fn item_icon(item: &ContextItem) -> NerdIcon {
     match item {
-        ContextItem::Build(build) => material_icon::icon_name(build.icon),
+        ContextItem::Build(build) => NerdIcon::from_name(build.icon),
     }
 }
 

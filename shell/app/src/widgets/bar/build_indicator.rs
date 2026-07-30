@@ -1,6 +1,6 @@
 use shell_core::gtk::{self, prelude::*};
 
-use crate::widgets::material_icon;
+use crate::widgets::nerd_icon::{NerdIcon, NerdIconLabelExt};
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(in crate::widgets::bar) enum BuildIndicatorState {
@@ -11,30 +11,29 @@ pub(in crate::widgets::bar) enum BuildIndicatorState {
     Finished,
 }
 
-pub(in crate::widgets::bar) trait BuildIndicatorImageExt {
+pub(in crate::widgets::bar) trait BuildIndicatorLabelExt {
     fn set_build_indicator_state(&self, state: BuildIndicatorState);
 }
 
-pub(in crate::widgets::bar) fn image() -> gtk::Image {
-    let image = gtk::Image::new();
-    image.set_can_target(false);
-    image.set_halign(gtk::Align::Center);
-    image.set_valign(gtk::Align::Center);
-    image.set_pixel_size(12);
-    image.set_build_indicator_state(BuildIndicatorState::None);
-    image
+pub(in crate::widgets::bar) fn label() -> gtk::Label {
+    let label = gtk::Label::new(None);
+    label.set_can_target(false);
+    label.set_halign(gtk::Align::Center);
+    label.set_valign(gtk::Align::Center);
+    label.set_build_indicator_state(BuildIndicatorState::None);
+    label
 }
 
-impl BuildIndicatorImageExt for gtk::Image {
+impl BuildIndicatorLabelExt for gtk::Label {
     fn set_build_indicator_state(&self, state: BuildIndicatorState) {
         self.set_css_classes(&classes(state));
-        self.set_icon_name(Some(material_icon::icon_name(icon(state)).as_str()));
+        self.set_nerd_icon(icon(state));
         self.set_visible(state != BuildIndicatorState::None);
     }
 }
 
 fn classes(state: BuildIndicatorState) -> Vec<&'static str> {
-    let mut classes = vec!["materialicon", "bar-build-indicator"];
+    let mut classes = vec!["nerdicon", "bar-build-indicator"];
     match state {
         BuildIndicatorState::None => {}
         BuildIndicatorState::Running => classes.push("build-running"),
@@ -44,11 +43,11 @@ fn classes(state: BuildIndicatorState) -> Vec<&'static str> {
     classes
 }
 
-fn icon(state: BuildIndicatorState) -> &'static str {
+fn icon(state: BuildIndicatorState) -> NerdIcon {
     match state {
-        BuildIndicatorState::None => "",
-        BuildIndicatorState::Running => "build",
-        BuildIndicatorState::Failed => "priority_high",
-        BuildIndicatorState::Finished => "check",
+        BuildIndicatorState::None => NerdIcon::application(),
+        BuildIndicatorState::Running => NerdIcon::from_name("build"),
+        BuildIndicatorState::Failed => NerdIcon::from_name("priority_high"),
+        BuildIndicatorState::Finished => NerdIcon::from_name("check"),
     }
 }

@@ -10,7 +10,7 @@ use zbus::zvariant::OwnedObjectPath;
 use crate::widgets::level_indicator::{
     self, LevelRenderStyle, LevelStage, LineStyle, TRACK_CLASSES,
 };
-use crate::widgets::material_icon;
+use crate::widgets::nerd_icon::{NerdIcon, NerdIconLabelExt};
 
 use super::bar_item;
 
@@ -120,9 +120,9 @@ impl SimpleComponent for BluetoothDeviceRow {
             set_title: model.device.name.as_str(),
             set_subtitle: &device_subtitle(&model.device),
 
-            add_prefix = &gtk::Image {
-                add_css_class: "materialicon",
-                set_icon_name: Some(material_icon::icon_name(model.device.icon.as_str()).as_str()),
+            add_prefix = &gtk::Label {
+                set_css_classes: &["nerdicon", "bt-device-icon"],
+                set_nerd_icon: NerdIcon::from_name(model.device.icon.as_str()),
             }
         }
     }

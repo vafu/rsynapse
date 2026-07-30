@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-default_icon="folder_code"
 default_branch_regex='^(?:[^/]+/)?(?P<subproj>[^/]+)/(?P<task>.+)$'
 
 locus_bus="org.rsynapse.Locus"
@@ -57,28 +56,6 @@ project_root_for_path() {
 project_name() {
   local root="$1"
   basename "$root"
-}
-
-project_icon_json() {
-  local query result icon glyph
-  local -a args
-  args=()
-  for query in "$@"; do
-    [[ -n "$query" ]] || continue
-    args+=(--string "$query")
-  done
-  if [[ "${#args[@]}" -gt 0 ]] && result="$(pick-icon "${args[@]}" --family nerd --top 1 --json 2>/dev/null)"; then
-    icon="$(jq -r '.[0].icon // empty' <<<"$result")"
-    glyph="$(jq -r '.[0].glyph // empty' <<<"$result")"
-    if [[ -n "$icon" ]]; then
-      jq -cn --arg icon "$icon" --arg glyph "$glyph" '{
-        icon: $icon,
-        glyph: (if $glyph == "" then null else $glyph end)
-      }'
-      return 0
-    fi
-  fi
-  jq -cn --arg icon "$default_icon" '{icon: $icon, glyph: null}'
 }
 
 git_output() {
@@ -164,7 +141,7 @@ relative_cwd_for_path() {
 build_snapshot() {
   local root="$1"
   local path="${2:-$root}"
-  local name branch worktree worktree_name fields display_main display_secondary icon_json icon icon_glyph cwd cwd_path
+  local name branch worktree worktree_name fields display_main display_secondary cwd cwd_path
   name="$(project_name "$root")"
   branch="$(git_output "$root" branch --show-current)"
   worktree="$(git_output "$root" rev-parse --show-toplevel)"
@@ -175,16 +152,10 @@ build_snapshot() {
   fields="$(split_branch "$branch")"
   display_main="$(display_main_for_project "$name" "$fields")"
   display_secondary="$(display_secondary_for_project "$branch" "$fields")"
-  icon_json="$(project_icon_json "$display_main" "$display_secondary")"
-  icon="$(jq -r '.icon // empty' <<<"$icon_json")"
-  icon_glyph="$(jq -r '.glyph // empty' <<<"$icon_json")"
-
   jq -cn \
     --arg subject "$(project_ref "$root")" \
     --arg path "$root" \
     --arg name "$name" \
-    --arg icon "$icon" \
-    --arg icon_glyph "$icon_glyph" \
     --arg display_main "$display_main" \
     --arg display_secondary "$display_secondary" \
     --arg branch "$branch" \
@@ -197,10 +168,6 @@ build_snapshot() {
         subject: $subject,
         path: $path,
         name: $name,
-        icon: $icon,
-        "display-icon": $icon,
-        "icon-glyph": (if $icon_glyph == "" then null else $icon_glyph end),
-        "display-icon-glyph": (if $icon_glyph == "" then null else $icon_glyph end),
         "display-main": $display_main,
         "display-secondary": (if $display_secondary == "" then null else $display_secondary end),
         branch: (if $branch == "" then null else $branch end),

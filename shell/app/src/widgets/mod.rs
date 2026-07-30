@@ -1,6 +1,6 @@
 mod bar;
 pub(crate) mod level_indicator;
-mod material_icon;
+mod nerd_icon;
 pub mod notifications;
 mod osd;
 

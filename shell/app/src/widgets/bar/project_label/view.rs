@@ -4,56 +4,9 @@ use super::{
     input::ProjectLabelInput,
     source::{ProjectLabelVm, WorkspaceIconCandidate},
 };
-use crate::widgets::{bar::WorkspaceNode, material_icon};
-
-use super::super::PANEL_ICON_SIZE;
+use crate::widgets::{bar::WorkspaceNode, nerd_icon::NerdIcon};
 
 const ICON_CANDIDATE_COUNT: usize = 5;
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) struct BarIconRender {
-    icon: String,
-    glyph: Option<String>,
-}
-
-pub(super) trait BarIconBoxExt {
-    fn set_bar_icon(&self, icon: BarIconRender);
-}
-
-impl BarIconBoxExt for gtk::Box {
-    fn set_bar_icon(&self, icon: BarIconRender) {
-        let key = format!(
-            "{}:{}",
-            icon.icon,
-            icon.glyph.as_deref().unwrap_or_default()
-        );
-        if self.widget_name().as_str() == key {
-            return;
-        }
-        self.set_widget_name(&key);
-        while let Some(child) = self.first_child() {
-            self.remove(&child);
-        }
-
-        if let Some(glyph) = icon.glyph.and_then(non_empty_owned) {
-            let label = gtk::Label::new(Some(&glyph));
-            label.set_css_classes(&["bar-indicator-icon", "nerdicon"]);
-            label.set_halign(gtk::Align::Center);
-            label.set_valign(gtk::Align::Center);
-            label.set_width_chars(1);
-            self.append(&label);
-            return;
-        }
-
-        let image = gtk::Image::new();
-        image.set_css_classes(&["bar-indicator-icon", "materialicon"]);
-        image.set_pixel_size(PANEL_ICON_SIZE);
-        image.set_halign(gtk::Align::Center);
-        image.set_valign(gtk::Align::Center);
-        image.set_icon_name(Some(material_icon::icon_name(&icon.icon).as_str()));
-        self.append(&image);
-    }
-}
 
 pub(super) fn connect_icon_candidate_button(
     button: &gtk::Button,
@@ -106,15 +59,16 @@ pub(super) fn workspace_visible(vm: &ProjectLabelVm, selected: bool) -> bool {
 
 pub(super) fn project_icon(model: &ProjectLabelVm) -> String {
     non_empty_text(&model.project_icon)
-        .unwrap_or("workspaces")
-        .to_owned()
+        .map(str::to_owned)
+        .unwrap_or_else(|| NerdIcon::workspace().key().to_owned())
 }
 
-pub(super) fn project_icon_render(model: &ProjectLabelVm) -> BarIconRender {
-    BarIconRender {
-        icon: project_icon(model),
-        glyph: model.project_icon_glyph.clone(),
-    }
+pub(super) fn project_icon_render(model: &ProjectLabelVm) -> NerdIcon {
+    NerdIcon::from_parts(
+        project_icon(model),
+        model.project_icon_glyph.clone(),
+        NerdIcon::workspace(),
+    )
 }
 
 // Build status icon rendering is paused while the status is moved to a new surface.
@@ -238,16 +192,16 @@ pub(super) fn icon_candidate_tooltip(model: &ProjectLabelVm, index: usize) -> St
         .unwrap_or_default()
 }
 
-pub(super) fn icon_candidate_render(model: &ProjectLabelVm, index: usize) -> BarIconRender {
+pub(super) fn icon_candidate_render(model: &ProjectLabelVm, index: usize) -> NerdIcon {
     icon_candidate(model, index)
-        .map(|candidate| BarIconRender {
-            icon: candidate.icon.clone(),
-            glyph: candidate.glyph.clone(),
+        .map(|candidate| {
+            NerdIcon::from_parts(
+                candidate.icon.clone(),
+                candidate.glyph.clone(),
+                NerdIcon::workspace(),
+            )
         })
-        .unwrap_or_else(|| BarIconRender {
-            icon: "workspaces".to_owned(),
-            glyph: None,
-        })
+        .unwrap_or_else(NerdIcon::workspace)
 }
 
 pub(super) fn icon_candidate(
@@ -277,11 +231,6 @@ pub(super) fn optional_text(value: Option<&str>) -> Option<&str> {
 
 pub(super) fn non_empty_text(value: &str) -> Option<&str> {
     let value = value.trim();
-    (!value.is_empty()).then_some(value)
-}
-
-fn non_empty_owned(value: String) -> Option<String> {
-    let value = value.trim().to_owned();
     (!value.is_empty()).then_some(value)
 }
 

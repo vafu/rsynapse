@@ -28,12 +28,12 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
 
 .bar {
   background-color: #{$panel-bg};
-  padding: 2px 5px 2px 0;
+  padding: 0 5px 0 0;
   transition: 100ms;
-  min-height: 29px;
+  min-height: #{$panel-item-size};
 
   .bar-zone {
-    min-height: 26px;
+    min-height: #{$panel-item-size};
   }
 
   .bar-zone-start,
@@ -62,7 +62,7 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
     min-height: #{$panel-item-size};
     min-width: #{$panel-item-size};
     margin: 0;
-    padding: 0 6px;
+    padding: 0;
   }
 
   menubutton.bar-action {
@@ -118,7 +118,7 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
 }
 
 .bar-zone-status .bar-item image,
-.bar-zone-status .bar-item .materialicon {
+.bar-zone-status .bar-item .nerdicon {
   color: inherit;
 }
 
@@ -133,11 +133,28 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
   -gtk-icon-size: #{$panel-icon-size};
 }
 
-.nerdicon.bar-indicator-icon {
+.nerdicon {
+  font-family: "FiraCode Nerd Font Mono", "0xProto Nerd Font Mono", monospace;
+  font-weight: 500;
+  margin: 0;
+  padding: 0;
+  font-size:18pt;
+}
+
+.nerdicon.bar-corner-icon,
+.nerdicon.selected-project-icon,
+.nerdicon.bar-indicator-icon,
+.nerdicon.bar-item-icon,
+.nerdicon.mpris-control-icon {
+  min-height: #{$panel-icon-size};
   min-width: #{$panel-icon-size};
-  font-family: "FiraCode Nerd Font", "0xProto Nerd Font", "Symbols Nerd Font", monospace;
-  font-size: #{$panel-icon-size};
-  line-height: #{$panel-icon-size};
+  line-height: 1;
+}
+
+.nerdicon.selected-project-meta-icon {
+  min-height: #{$panel-meta-icon-size};
+  min-width: #{$panel-meta-icon-size};
+  line-height: 1;
 }
 
 .selected-project-meta-icon {
@@ -182,6 +199,9 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
   border: 1px solid transparent;
   border-radius: 0;
   box-shadow: none;
+  min-height: #{$panel-item-size};
+  min-width: #{$panel-item-size};
+  padding: 0;
   opacity: 1;
   transition:
     background-color 160ms,
@@ -227,17 +247,11 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
 }
 
 .bar-indicator-list-horizontal .bar-indicator {
-  min-height: #{$panel-item-size};
-  min-width: #{$panel-item-size};
-  margin: 1px 0;
-  padding: 0;
+  margin: 0;
 }
 
 .bar-indicator-list-vertical .bar-indicator {
-  min-height: #{$panel-item-size};
-  min-width: #{$panel-item-size};
-  margin-bottom: 4px;
-  padding: 0;
+  margin: 0;
 }
 
 .bar-indicator-list-vertical menubutton.workspace-icon-menu-button {
@@ -252,9 +266,6 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
   padding: 0;
 }
 
-.bar-indicator-list-vertical menubutton.workspace-icon-menu-button .bar-indicator {
-  margin-bottom: 4px;
-}
 
 .bar-indicator-list-horizontal .bar-indicator.active {
   border-top-color: #{$indicator-accent};
@@ -329,10 +340,6 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
 }
 
 .bar-indicator.workspace-window-agent {
-  .agent-inner {
-    padding: 0;
-  }
-
   &.thinking .bar-indicator-icon:first-child {
     animation: agent-thinking-pulse 0.5s ease-in-out infinite;
   }
@@ -487,8 +494,7 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
 
   .system-stats-button {
     min-width: 0;
-    padding-left: 1px;
-    padding-right: 1px;
+    padding: 0;
   }
 
   .system-stats-content {
@@ -533,7 +539,7 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
 .bzbus-widget {
   padding: 0 7px;
 
-  .materialicon {
+  .nerdicon {
     margin: 0;
   }
 
@@ -545,7 +551,7 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
     color: color-mix(in srgb, #{$fg} 60%, #{$bg});
   }
 
-  &.running .materialicon {
+  &.running .nerdicon {
     animation: bzbus-spin 1.2s linear infinite;
   }
 
@@ -592,7 +598,7 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
   }
 
   .mpris-control {
-    min-width: 24px;
+    min-width: #{$panel-item-size};
     padding: 0;
     margin: 0;
 

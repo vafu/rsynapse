@@ -74,7 +74,7 @@ impl SimpleComponent for WorkspaceBar {
                         set_halign: gtk::Align::Center,
                         set_valign: gtk::Align::End,
                         set_orientation: gtk::Orientation::Vertical,
-                        set_spacing: 0,
+                        set_spacing: 4,
                     },
                 },
             }

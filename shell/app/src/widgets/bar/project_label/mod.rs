@@ -17,8 +17,11 @@ use self::{
     view::*,
 };
 
-use super::{PANEL_ICON_SIZE, WorkspaceNode};
-use crate::{hints::hints_active, widgets::material_icon};
+use super::WorkspaceNode;
+use crate::{
+    hints::hints_active,
+    widgets::nerd_icon::{NerdIcon, NerdIconLabelExt},
+};
 
 #[derive(Debug)]
 #[shell_macros::model(module = project_label_sources)]
@@ -78,10 +81,11 @@ impl SimpleComponent for ProjectLabel {
                             #[watch]
                             set_tooltip_text: Some(auto_icon_tooltip(&model.vm).as_str()),
 
-                            gtk::Image {
-                                set_css_classes: &["bar-indicator-icon", "materialicon"],
-                                set_pixel_size: PANEL_ICON_SIZE,
-                                set_icon_name: Some(material_icon::icon_name("auto_mode").as_str()),
+                            gtk::Label {
+                                set_css_classes: &["bar-indicator-icon", "nerdicon"],
+                                set_halign: gtk::Align::Center,
+                                set_valign: gtk::Align::Center,
+                                set_nerd_icon: NerdIcon::automatic(),
                             }
                         },
 
@@ -94,11 +98,12 @@ impl SimpleComponent for ProjectLabel {
                             #[watch]
                             set_tooltip_text: Some(icon_candidate_tooltip(&model.vm, 0).as_str()),
 
-                            gtk::Box {
+                            gtk::Label {
+                                set_css_classes: &["bar-indicator-icon", "nerdicon"],
                                 set_halign: gtk::Align::Center,
                                 set_valign: gtk::Align::Center,
                                 #[watch]
-                                set_bar_icon: icon_candidate_render(&model.vm, 0),
+                                set_nerd_icon: icon_candidate_render(&model.vm, 0),
                             }
                         },
 
@@ -111,11 +116,12 @@ impl SimpleComponent for ProjectLabel {
                             #[watch]
                             set_tooltip_text: Some(icon_candidate_tooltip(&model.vm, 1).as_str()),
 
-                            gtk::Box {
+                            gtk::Label {
+                                set_css_classes: &["bar-indicator-icon", "nerdicon"],
                                 set_halign: gtk::Align::Center,
                                 set_valign: gtk::Align::Center,
                                 #[watch]
-                                set_bar_icon: icon_candidate_render(&model.vm, 1),
+                                set_nerd_icon: icon_candidate_render(&model.vm, 1),
                             }
                         },
 
@@ -128,11 +134,12 @@ impl SimpleComponent for ProjectLabel {
                             #[watch]
                             set_tooltip_text: Some(icon_candidate_tooltip(&model.vm, 2).as_str()),
 
-                            gtk::Box {
+                            gtk::Label {
+                                set_css_classes: &["bar-indicator-icon", "nerdicon"],
                                 set_halign: gtk::Align::Center,
                                 set_valign: gtk::Align::Center,
                                 #[watch]
-                                set_bar_icon: icon_candidate_render(&model.vm, 2),
+                                set_nerd_icon: icon_candidate_render(&model.vm, 2),
                             }
                         },
 
@@ -145,11 +152,12 @@ impl SimpleComponent for ProjectLabel {
                             #[watch]
                             set_tooltip_text: Some(icon_candidate_tooltip(&model.vm, 3).as_str()),
 
-                            gtk::Box {
+                            gtk::Label {
+                                set_css_classes: &["bar-indicator-icon", "nerdicon"],
                                 set_halign: gtk::Align::Center,
                                 set_valign: gtk::Align::Center,
                                 #[watch]
-                                set_bar_icon: icon_candidate_render(&model.vm, 3),
+                                set_nerd_icon: icon_candidate_render(&model.vm, 3),
                             }
                         },
 
@@ -162,11 +170,12 @@ impl SimpleComponent for ProjectLabel {
                             #[watch]
                             set_tooltip_text: Some(icon_candidate_tooltip(&model.vm, 4).as_str()),
 
-                            gtk::Box {
+                            gtk::Label {
+                                set_css_classes: &["bar-indicator-icon", "nerdicon"],
                                 set_halign: gtk::Align::Center,
                                 set_valign: gtk::Align::Center,
                                 #[watch]
-                                set_bar_icon: icon_candidate_render(&model.vm, 4),
+                                set_nerd_icon: icon_candidate_render(&model.vm, 4),
                             }
                         }
                     }
@@ -183,13 +192,14 @@ impl SimpleComponent for ProjectLabel {
                     set_orientation: gtk::Orientation::Horizontal,
                     set_spacing: 1,
 
-                    gtk::Box {
+                    gtk::Label {
+                        set_css_classes: &["bar-indicator-icon", "nerdicon"],
                         set_halign: gtk::Align::Center,
                         set_valign: gtk::Align::Center,
                         set_hexpand: true,
 
                         #[watch]
-                        set_bar_icon: project_icon_render(&model.vm),
+                        set_nerd_icon: project_icon_render(&model.vm),
                     },
 
                     #[name = "title_revealer"]

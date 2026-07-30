@@ -9,8 +9,8 @@ use self::{
     agent::{Agent, State as AgentState},
     source::{Kind, ViewModel, window_tile_vm},
 };
-use super::{PANEL_ICON_SIZE, WindowNode, app_icon};
-use crate::widgets::material_icon;
+use super::WindowNode;
+use crate::widgets::nerd_icon::{NerdIcon, NerdIconLabelExt};
 
 #[derive(Debug)]
 #[shell_macros::model(module = window_tile_sources)]
@@ -52,49 +52,11 @@ impl SimpleComponent for WindowTile {
                 #[watch]
                 set_tooltip_text: model.vm.as_ref().map(|vm| vm.tooltip.as_str()),
 
-                gtk::Box {
-                    set_halign: gtk::Align::Center,
-                    set_valign: gtk::Align::Center,
-                    set_vexpand: false,
-                    set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 1,
+                gtk::Label {
+                    set_css_classes: &["bar-indicator-icon", "nerdicon"],
 
-                    gtk::Image {
-                        add_css_class: "bar-indicator-icon",
-                        set_halign: gtk::Align::Center,
-                        set_valign: gtk::Align::Center,
-                        set_hexpand: true,
-                        set_pixel_size: PANEL_ICON_SIZE,
-
-                        #[watch]
-                        set_visible: !is_agent(&model.vm),
-
-                        #[watch]
-                        set_icon_name: window_icon_name(&model.vm).as_deref(),
-                    },
-
-                    gtk::Box {
-                        add_css_class: "agent-inner",
-                        set_halign: gtk::Align::Center,
-                        set_valign: gtk::Align::Center,
-                        set_vexpand: false,
-                        set_orientation: gtk::Orientation::Horizontal,
-                        set_spacing: 1,
-
-                        #[watch]
-                        set_visible: is_agent(&model.vm),
-
-                        gtk::Image {
-                            add_css_class: "materialicon",
-                            add_css_class: "bar-indicator-icon",
-                            set_halign: gtk::Align::Center,
-                            set_valign: gtk::Align::Center,
-                            set_pixel_size: PANEL_ICON_SIZE,
-
-                            #[watch]
-                            set_icon_name: window_icon_name(&model.vm).as_deref(),
-                        },
-                    }
+                    #[watch]
+                    set_nerd_icon: window_icon(&model.vm),
                 },
 
                 add_overlay = &gtk::Box {
@@ -176,24 +138,24 @@ fn window_visible(vm: &Option<ViewModel>) -> bool {
     vm.is_some()
 }
 
-fn window_icon_name(vm: &Option<ViewModel>) -> Option<String> {
-    vm.as_ref().map(|vm| match &vm.kind {
-        Kind::Agent(agent) => agent_icon(agent, &vm.icon),
-        Kind::Plain | Kind::Neovim => app_icon::icon_name(&vm.icon),
-    })
-}
-
-fn agent_icon(agent: &Agent, fallback: &str) -> String {
-    if agent.icon.is_empty() {
-        app_icon::icon_name(fallback)
-    } else {
-        material_icon::icon_name(&agent.icon)
-    }
-}
-
-fn is_agent(vm: &Option<ViewModel>) -> bool {
+fn window_icon(vm: &Option<ViewModel>) -> NerdIcon {
     vm.as_ref()
-        .is_some_and(|vm| matches!(vm.kind, Kind::Agent(_)))
+        .map(|vm| {
+            let resolved = vm.icon.selected_nerd_icon(NerdIcon::application());
+            match &vm.kind {
+                Kind::Agent(agent) => agent_icon(agent, &resolved),
+                Kind::Plain | Kind::Neovim => resolved,
+            }
+        })
+        .unwrap_or_else(NerdIcon::application)
+}
+
+fn agent_icon(agent: &Agent, fallback: &NerdIcon) -> NerdIcon {
+    if agent.icon.is_empty() {
+        fallback.clone()
+    } else {
+        NerdIcon::for_agent_hints([agent.icon.as_str(), agent.name.as_str()])
+    }
 }
 
 fn agent_unseen_visible(vm: &Option<ViewModel>) -> bool {

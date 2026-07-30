@@ -12,10 +12,9 @@ const WORKSPACE_PROJECT_RELATION: &str = "org.rsynapse.workspace.project";
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(in crate::widgets::bar) struct ProjectDetails {
     pub(in crate::widgets::bar) has_project: bool,
+    pub(in crate::widgets::bar) name: Option<String>,
     pub(in crate::widgets::bar) display_main: Option<String>,
     pub(in crate::widgets::bar) display_secondary: Option<String>,
-    pub(in crate::widgets::bar) icon: Option<String>,
-    pub(in crate::widgets::bar) icon_glyph: Option<String>,
     pub(in crate::widgets::bar) branch: Option<String>,
     pub(in crate::widgets::bar) cwd_label: Option<String>,
 }
@@ -175,6 +174,8 @@ impl From<RelationRecord> for ProjectDetails {
     fn from(record: RelationRecord) -> Self {
         let path = project_path_from_endpoint(&record.target)
             .or_else(|| metadata_value(&record.metadata, &["path"]));
+        let name =
+            metadata_value(&record.metadata, &["name"]).or_else(|| path_basename(path.as_deref()));
         let cwd_path = metadata_value(&record.metadata, &["cwd-path"]);
         let relative_cwd = metadata_value(&record.metadata, &["relative-cwd", "cwd"])
             .or_else(|| relative_cwd_from_paths(path.as_deref(), cwd_path.as_deref()));
@@ -186,13 +187,9 @@ impl From<RelationRecord> for ProjectDetails {
 
         Self {
             has_project: true,
+            name,
             display_main: metadata_value(&record.metadata, &["display-main"]),
             display_secondary: metadata_value(&record.metadata, &["display-secondary"]),
-            icon: metadata_value(&record.metadata, &["display-icon", "icon"]),
-            icon_glyph: metadata_value(
-                &record.metadata,
-                &["display-icon-glyph", "icon-glyph", "glyph"],
-            ),
             branch: metadata_value(&record.metadata, &["branch"]),
             cwd_label,
         }

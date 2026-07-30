@@ -5,7 +5,7 @@ use locus::{RelationEndpoint, RelationRecord, keys};
 use shell_core::source::{self, Observable, rx::Observable as _};
 use zbus::{Connection, Proxy};
 
-use super::WorkspaceIconChoice;
+use super::IconChoice;
 use crate::widgets::bar::niri::NiriWorkspace;
 
 const WORKSPACE_ICON_OVERRIDE_RELATION: &str = "org.rsynapse.workspace.icon-override";
@@ -14,9 +14,9 @@ const LEGACY_MATERIAL_ICON_KIND: &str = "org.rsynapse.material-icon.name";
 const ICON_GLYPH_METADATA: &str = "icon-glyph";
 const PICKER_INPUT_METADATA: &str = "pick-icon-input";
 
-pub(super) fn workspace_icon_override_source(
+pub(in crate::widgets::bar) fn workspace_icon_override_source(
     workspace: NiriWorkspace,
-) -> Observable<Option<WorkspaceIconChoice>> {
+) -> Observable<Option<IconChoice>> {
     source::switch_map(workspace.id().map(workspace_subject).box_it(), |subject| {
         locus_workspace_icon_override(subject)
     })
@@ -24,9 +24,9 @@ pub(super) fn workspace_icon_override_source(
     .box_it()
 }
 
-pub(in crate::widgets::bar::project_label::source) fn set_workspace_icon_override(
+pub(in crate::widgets::bar) fn set_workspace_icon_override(
     workspace_id: u64,
-    icon: WorkspaceIconChoice,
+    icon: IconChoice,
     picker_input: String,
 ) {
     std::thread::spawn(move || {
@@ -50,9 +50,7 @@ pub(in crate::widgets::bar::project_label::source) fn set_workspace_icon_overrid
     });
 }
 
-pub(in crate::widgets::bar::project_label::source) fn clear_workspace_icon_override(
-    workspace_id: u64,
-) {
+pub(in crate::widgets::bar) fn clear_workspace_icon_override(workspace_id: u64) {
     std::thread::spawn(move || {
         let runtime = match tokio::runtime::Builder::new_current_thread()
             .enable_all()
@@ -70,9 +68,7 @@ pub(in crate::widgets::bar::project_label::source) fn clear_workspace_icon_overr
     });
 }
 
-fn locus_workspace_icon_override(
-    subject: RelationEndpoint,
-) -> Observable<Option<WorkspaceIconChoice>> {
+fn locus_workspace_icon_override(subject: RelationEndpoint) -> Observable<Option<IconChoice>> {
     let key = format!("{subject:?}");
     source::shared_by_key("rsynapse.workspace-icon-override", key, move || {
         let subject = subject.clone();
@@ -94,7 +90,7 @@ fn locus_workspace_icon_override(
 }
 
 async fn run_locus_workspace_icon_override(
-    sender: async_channel::Sender<Result<Option<WorkspaceIconChoice>, String>>,
+    sender: async_channel::Sender<Result<Option<IconChoice>, String>>,
     subject: RelationEndpoint,
 ) -> Result<(), String> {
     let connection = Connection::session()
@@ -147,7 +143,7 @@ async fn run_locus_workspace_icon_override(
 }
 
 async fn send_override(
-    sender: &async_channel::Sender<Result<Option<WorkspaceIconChoice>, String>>,
+    sender: &async_channel::Sender<Result<Option<IconChoice>, String>>,
     proxy: &Proxy<'_>,
     subject: &RelationEndpoint,
 ) -> Result<(), String> {
@@ -171,7 +167,7 @@ async fn send_override(
 
 async fn set_workspace_icon_override_async(
     workspace_id: u64,
-    icon: WorkspaceIconChoice,
+    icon: IconChoice,
     picker_input: String,
 ) -> Result<(), String> {
     let icon_name = non_empty(icon.icon).ok_or_else(|| "empty icon override".to_string())?;
@@ -244,13 +240,13 @@ fn clear_matches(message: &zbus::Message, subject: &RelationEndpoint) -> Result<
     Ok(cleared_subject == *subject && cleared_relation == WORKSPACE_ICON_OVERRIDE_RELATION)
 }
 
-fn icon_choice_from_record(record: &RelationRecord) -> Option<WorkspaceIconChoice> {
+fn icon_choice_from_record(record: &RelationRecord) -> Option<IconChoice> {
     let icon = icon_name_from_endpoint(&record.target)?;
     let glyph = metadata_value(
         &record.metadata,
         &[ICON_GLYPH_METADATA, "display-icon-glyph", "glyph"],
     );
-    WorkspaceIconChoice::new(icon, glyph)
+    IconChoice::new(icon, glyph)
 }
 
 fn icon_name_from_endpoint(endpoint: &RelationEndpoint) -> Option<String> {

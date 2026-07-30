@@ -1,10 +1,10 @@
-mod app_icon;
 mod audio;
 mod bar_item;
 mod battery;
 mod bluetooth;
 mod brightness;
 mod context_zone;
+mod icon_resolver;
 // Build status icon rendering is paused while the status is moved to a new surface.
 // mod build_indicator;
 mod bzbus;
@@ -42,7 +42,10 @@ use shell_core::{
     window::{self, Anchors, Edge, Layer, WindowConfig},
 };
 
-use crate::widgets::{BACKGROUND_BLUR_CLASS, material_icon};
+use crate::widgets::{
+    BACKGROUND_BLUR_CLASS,
+    nerd_icon::{NerdIcon, NerdIconLabelExt},
+};
 
 use self::audio::{AudioRoutePopover, AudioView, audio_status};
 use self::battery::BatteryView;
@@ -69,7 +72,6 @@ use crate::{hints, request, theme};
 
 type WindowNode = niri::NiriWindow;
 pub(super) const WORKSPACE_RAIL_WIDTH: i32 = 36;
-pub(super) const PANEL_ICON_SIZE: i32 = 18;
 const BT_BATTERY_INDICATOR_WIDTH: i32 = 4;
 const BT_BATTERY_INDICATOR_HEIGHT: i32 = 18;
 const SYSTEM_STATS_ARC_WIDTH: i32 = 10;
@@ -234,13 +236,11 @@ impl SimpleAsyncComponent for MainBar {
                         set_orientation: gtk::Orientation::Horizontal,
 
                         #[wrap(Some)]
-                        set_center_widget = &gtk::Image {
-                            add_css_class: "materialicon",
-                            add_css_class: "bar-corner-icon",
+                        set_center_widget = &gtk::Label {
+                            set_css_classes: &["bar-corner-icon", "nerdicon"],
                             set_halign: gtk::Align::Center,
                             set_valign: gtk::Align::Center,
-                            set_pixel_size: PANEL_ICON_SIZE,
-                            set_icon_name: Some(material_icon::icon_name("open_with").as_str()),
+                            set_nerd_icon: NerdIcon::move_handle(),
                         }
                     },
 
@@ -284,14 +284,12 @@ impl SimpleAsyncComponent for MainBar {
                             set_orientation: gtk::Orientation::Horizontal,
                             set_spacing: 4,
 
-                            gtk::Image {
-                                add_css_class: "materialicon",
-                                add_css_class: "selected-project-icon",
+                            gtk::Label {
+                                set_css_classes: &["selected-project-icon", "nerdicon"],
                                 set_halign: gtk::Align::Center,
                                 set_valign: gtk::Align::Center,
-                                set_pixel_size: PANEL_ICON_SIZE,
                                 #[watch]
-                                set_icon_name: Some(selected_project::icon_name(&model.selected_project).as_str()),
+                                set_nerd_icon: selected_project::icon(&model.selected_project),
                             },
 
                             gtk::Label {
@@ -322,14 +320,15 @@ impl SimpleAsyncComponent for MainBar {
                             set_orientation: gtk::Orientation::Horizontal,
                             set_spacing: 4,
 
-                            gtk::Image {
-                                add_css_class: "materialicon",
-                                add_css_class: "selected-project-meta-icon",
-                                add_css_class: "selected-project-branch-icon",
+                            gtk::Label {
+                                set_css_classes: &[
+                                    "selected-project-meta-icon",
+                                    "selected-project-branch-icon",
+                                    "nerdicon",
+                                ],
                                 set_halign: gtk::Align::Center,
                                 set_valign: gtk::Align::Center,
-                                set_pixel_size: PANEL_ICON_SIZE,
-                                set_icon_name: Some(selected_project::branch_icon_name().as_str()),
+                                set_nerd_icon: selected_project::branch_icon(),
                             },
 
                             gtk::Label {
@@ -391,9 +390,9 @@ impl SimpleAsyncComponent for MainBar {
                             #[watch]
                             set_sensitive: model.mpris.can_go_previous,
 
-                            gtk::Image {
-                                add_css_class: "materialicon",
-                                set_icon_name: Some(material_icon::icon_name("skip_previous").as_str()),
+                            gtk::Label {
+                                set_css_classes: &["nerdicon", "mpris-control-icon"],
+                                set_nerd_icon: NerdIcon::from_name("skip_previous"),
                             }
                         },
 
@@ -405,10 +404,10 @@ impl SimpleAsyncComponent for MainBar {
                             #[watch]
                             set_sensitive: model.mpris.can_play_pause,
 
-                            gtk::Image {
-                                add_css_class: "materialicon",
+                            gtk::Label {
+                                set_css_classes: &["nerdicon", "mpris-control-icon"],
                                 #[watch]
-                                set_icon_name: Some(material_icon::icon_name(model.mpris.play_pause_icon).as_str()),
+                                set_nerd_icon: NerdIcon::from_name(model.mpris.play_pause_icon),
                             }
                         },
 
@@ -420,9 +419,9 @@ impl SimpleAsyncComponent for MainBar {
                             #[watch]
                             set_sensitive: model.mpris.can_go_next,
 
-                            gtk::Image {
-                                add_css_class: "materialicon",
-                                set_icon_name: Some(material_icon::icon_name("skip_next").as_str()),
+                            gtk::Label {
+                                set_css_classes: &["nerdicon", "mpris-control-icon"],
+                                set_nerd_icon: NerdIcon::from_name("skip_next"),
                             }
                         }
                     },
@@ -480,12 +479,14 @@ impl SimpleAsyncComponent for MainBar {
                                     }
                                 },
 
-                                gtk::Image {
-                                    add_css_class: "materialicon",
-                                    add_css_class: bar_item::ICON_CLASS,
-                                    add_css_class: "power-profile-icon",
+                                gtk::Label {
+                                    set_css_classes: &[
+                                        "nerdicon",
+                                        bar_item::ICON_CLASS,
+                                        "power-profile-icon",
+                                    ],
                                     #[watch]
-                                    set_icon_name: Some(material_icon::icon_name(model.power_profile.icon).as_str()),
+                                    set_nerd_icon: NerdIcon::from_name(model.power_profile.icon),
                                 },
 
                                 gtk::Overlay {
@@ -571,11 +572,10 @@ impl SimpleAsyncComponent for MainBar {
                                         set_child = &gtk::Box {
                                             set_orientation: gtk::Orientation::Horizontal,
 
-                                            gtk::Image {
-                                                add_css_class: "materialicon",
-                                                add_css_class: bar_item::ICON_CLASS,
+                                            gtk::Label {
+                                                set_css_classes: &["nerdicon", bar_item::ICON_CLASS],
                                                 #[watch]
-                                                set_icon_name: Some(material_icon::icon_name(model.bluetooth.keyboard.icon.as_str()).as_str()),
+                                                set_nerd_icon: NerdIcon::from_name(model.bluetooth.keyboard.icon.as_str()),
                                             },
 
                                             gtk::Overlay {
@@ -624,11 +624,10 @@ impl SimpleAsyncComponent for MainBar {
                                         set_child = &gtk::Box {
                                             set_orientation: gtk::Orientation::Horizontal,
 
-                                            gtk::Image {
-                                                add_css_class: "materialicon",
-                                                add_css_class: bar_item::ICON_CLASS,
+                                            gtk::Label {
+                                                set_css_classes: &["nerdicon", bar_item::ICON_CLASS],
                                                 #[watch]
-                                                set_icon_name: Some(material_icon::icon_name(model.bluetooth.audio.icon.as_str()).as_str()),
+                                                set_nerd_icon: NerdIcon::from_name(model.bluetooth.audio.icon.as_str()),
                                             },
 
                                             gtk::Overlay {
@@ -677,11 +676,10 @@ impl SimpleAsyncComponent for MainBar {
                                         set_child = &gtk::Box {
                                             set_orientation: gtk::Orientation::Horizontal,
 
-                                            gtk::Image {
-                                                add_css_class: "materialicon",
-                                                add_css_class: bar_item::ICON_CLASS,
+                                            gtk::Label {
+                                                set_css_classes: &["nerdicon", bar_item::ICON_CLASS],
                                                 #[watch]
-                                                set_icon_name: Some(material_icon::icon_name(model.bluetooth.pointer.icon.as_str()).as_str()),
+                                                set_nerd_icon: NerdIcon::from_name(model.bluetooth.pointer.icon.as_str()),
                                             },
 
                                             gtk::Overlay {
@@ -727,11 +725,10 @@ impl SimpleAsyncComponent for MainBar {
                                 set_tooltip_text: Some(bluetooth::status_tooltip(&model.bluetooth.status).as_str()),
 
                                 gtk::Overlay {
-                                    gtk::Image {
-                                        add_css_class: "materialicon",
-                                        add_css_class: bar_item::ICON_CLASS,
+                                    gtk::Label {
+                                        set_css_classes: &["nerdicon", bar_item::ICON_CLASS],
                                         #[watch]
-                                        set_icon_name: Some(material_icon::icon_name(model.bluetooth.status.icon.as_str()).as_str()),
+                                        set_nerd_icon: NerdIcon::from_name(model.bluetooth.status.icon.as_str()),
                                     },
 
                                     add_overlay = &gtk::Label {
@@ -836,11 +833,13 @@ impl SimpleAsyncComponent for MainBar {
                             set_orientation: gtk::Orientation::Horizontal,
                             set_spacing: 4,
 
-                            gtk::Image {
-                                add_css_class: "materialicon",
-                                add_css_class: bar_item::ICON_CLASS,
-                                add_css_class: "source-error-icon",
-                                set_icon_name: Some(material_icon::icon_name("error").as_str()),
+                            gtk::Label {
+                                set_css_classes: &[
+                                    "nerdicon",
+                                    bar_item::ICON_CLASS,
+                                    "source-error-icon",
+                                ],
+                                set_nerd_icon: NerdIcon::from_name("error"),
                             },
 
                             gtk::Label {

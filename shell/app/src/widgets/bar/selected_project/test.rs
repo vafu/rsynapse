@@ -41,7 +41,6 @@ fn split_project() -> ProjectDetails {
         has_project: true,
         display_main: Some("android".to_owned()),
         display_secondary: Some("core-isol".to_owned()),
-        icon: Some("developer_board".to_owned()),
         branch: Some("codex/android-core-isol".to_owned()),
         cwd_label: Some("platform/taskexecution".to_owned()),
         ..ProjectDetails::default()

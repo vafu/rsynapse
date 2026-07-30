@@ -1,5 +1,6 @@
-use crate::widgets::material_icon;
 use shell_core::source::{self, Observable, rx::Observable as _};
+
+use crate::widgets::nerd_icon::NerdIcon;
 
 use super::{
     niri::{self, NiriWorkspace},
@@ -73,8 +74,8 @@ pub(super) fn visible(view: &SelectedProjectView) -> bool {
     view.visible
 }
 
-pub(super) fn icon_name(_view: &SelectedProjectView) -> String {
-    material_icon::icon_name("folder")
+pub(super) fn icon(_view: &SelectedProjectView) -> NerdIcon {
+    NerdIcon::folder()
 }
 
 pub(super) fn title_label(view: &SelectedProjectView) -> &str {
@@ -93,8 +94,8 @@ pub(super) fn first_separator_visible(view: &SelectedProjectView) -> bool {
     branch_visible(view)
 }
 
-pub(super) fn branch_icon_name() -> String {
-    material_icon::icon_name("account_tree")
+pub(super) fn branch_icon() -> NerdIcon {
+    NerdIcon::branch()
 }
 
 pub(super) fn tooltip(view: &SelectedProjectView) -> String {

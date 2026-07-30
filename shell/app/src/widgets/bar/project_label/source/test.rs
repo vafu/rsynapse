@@ -51,24 +51,33 @@ fn workspace_build_state_uses_failed_running_finished_precedence() {
 }
 
 #[test]
-fn workspace_icon_uses_project_icon_before_context_hints() {
+fn workspace_icon_uses_project_metadata_before_app_context() {
     let context = workspace_icon_context_from_parts(
         ProjectDetails {
             has_project: true,
-            icon: Some("account_tree".to_owned()),
+            name: Some("rsynapse".to_owned()),
             cwd_label: Some(".config/rsynapse".to_owned()),
             ..ProjectDetails::default()
         },
         vec!["slack".to_owned(), "com.mitchellh.ghostty".to_owned()],
     );
 
-    assert_eq!(fallback_icon_for_context(&context), "account_tree");
+    assert_eq!(
+        fallback_icon_for_context(&context),
+        "nf-cod-workspace_unknown"
+    );
+    assert_eq!(
+        picker_strings_for_context(&context),
+        ["rsynapse", ".config/rsynapse"]
+    );
 }
 
 #[test]
 fn workspace_icon_feeds_raw_context_to_picker() {
     let context = workspace_icon_context_from_parts(
         ProjectDetails {
+            has_project: true,
+            name: Some("rsynapse".to_owned()),
             display_main: Some("rsynapse".to_owned()),
             cwd_label: Some(".config/rsynapse".to_owned()),
             branch: Some("main".to_owned()),
@@ -77,7 +86,10 @@ fn workspace_icon_feeds_raw_context_to_picker() {
         vec!["slack".to_owned(), "google-chrome".to_owned()],
     );
 
-    assert_eq!(fallback_icon_for_context(&context), "workspaces");
+    assert_eq!(
+        fallback_icon_for_context(&context),
+        "nf-cod-workspace_unknown"
+    );
     assert_eq!(
         picker_strings_for_context(&context),
         ["rsynapse", ".config/rsynapse", "main"]
@@ -109,7 +121,10 @@ fn workspace_icon_uses_sorted_app_context_without_project_context() {
 fn workspace_icon_falls_back_to_workspace_symbol() {
     let context = workspace_icon_context_from_parts(ProjectDetails::default(), Vec::new());
 
-    assert_eq!(fallback_icon_for_context(&context), "workspaces");
+    assert_eq!(
+        fallback_icon_for_context(&context),
+        "nf-cod-workspace_unknown"
+    );
 }
 
 #[test]
@@ -123,12 +138,12 @@ fn workspace_icon_uses_locus_override_without_project_icon() {
 }
 
 #[test]
-fn workspace_icon_keeps_project_icon_before_locus_override() {
+fn workspace_icon_uses_locus_override_with_project_context() {
     let context = with_icon_override_for_test(
         workspace_icon_context_from_parts(
             ProjectDetails {
                 has_project: true,
-                icon: Some("account_tree".to_owned()),
+                name: Some("rsynapse".to_owned()),
                 ..ProjectDetails::default()
             },
             Vec::new(),
@@ -136,7 +151,22 @@ fn workspace_icon_keeps_project_icon_before_locus_override() {
         "communication",
     );
 
-    assert_eq!(fallback_icon_for_context(&context), "account_tree");
+    assert_eq!(fallback_icon_for_context(&context), "communication");
+}
+
+#[test]
+fn workspace_icon_picks_from_single_project_string() {
+    let context = workspace_icon_context_from_parts(
+        ProjectDetails {
+            has_project: true,
+            name: Some("uiq-worktree".to_owned()),
+            ..ProjectDetails::default()
+        },
+        Vec::new(),
+    );
+
+    assert_eq!(picker_input_for_context(&context), "uiq-worktree");
+    assert!(picker_cache_key_for_context(&context).is_some());
 }
 
 #[test]

@@ -8,24 +8,15 @@ use std::{
 use serde::Deserialize;
 use tokio::{process::Command, time::timeout};
 
-use super::{WorkspaceIconContext, non_empty};
+use super::{IconCandidate, IconCandidateSource, IconChoice, IconRequest};
 
 const PICK_ICON_TIMEOUT: Duration = Duration::from_millis(800);
 const MAX_QUERY_STRINGS: usize = 12;
 const MAX_PICK_ICON_CANDIDATES: usize = 5;
-const MIN_PICK_ICON_INPUTS: usize = 2;
-const MIN_PICK_ICON_SCORE: f64 = 0.72;
 
-type PickIconCache = HashMap<String, Vec<WorkspaceIconCandidate>>;
+type PickIconCache = HashMap<String, Vec<IconCandidate>>;
 
 static PICK_ICON_CACHE: OnceLock<Mutex<PickIconCache>> = OnceLock::new();
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(in crate::widgets::bar::project_label) struct WorkspaceIconCandidate {
-    pub(in crate::widgets::bar::project_label) icon: String,
-    pub(in crate::widgets::bar::project_label) glyph: Option<String>,
-    pub(in crate::widgets::bar::project_label) score_millis: u16,
-}
 
 #[derive(Debug, Deserialize)]
 struct PickIconCandidateJson {
@@ -34,10 +25,8 @@ struct PickIconCandidateJson {
     score: Option<f64>,
 }
 
-pub(super) async fn pick_icon_candidates(
-    context: &WorkspaceIconContext,
-) -> Vec<WorkspaceIconCandidate> {
-    let Some(cache_key) = picker_cache_key_for_context(context) else {
+pub(super) async fn pick_icon_candidates(request: &IconRequest) -> Vec<IconCandidate> {
+    let Some(cache_key) = request.picker_cache_key() else {
         return Vec::new();
     };
     if let Some(candidates) = cached_pick_icon(&cache_key) {
@@ -45,7 +34,7 @@ pub(super) async fn pick_icon_candidates(
     }
 
     let mut command = Command::new(pick_icon_executable());
-    for string in picker_command_strings(context) {
+    for string in picker_command_strings(request) {
         command.args(["--string", string.as_str()]);
     }
     let top = MAX_PICK_ICON_CANDIDATES.to_string();
@@ -56,46 +45,41 @@ pub(super) async fn pick_icon_candidates(
         .ok()
         .and_then(Result::ok)
         .and_then(|output| output.status.success().then_some(output))
-        .map(|output| parse_pick_icon_output(&output.stdout))
+        .map(|output| parse_pick_icon_output(&output.stdout, request.min_picker_score_millis()))
         .unwrap_or_default();
     cache_pick_icon(cache_key, candidates.clone());
     candidates
 }
 
-fn picker_command_strings(context: &WorkspaceIconContext) -> Vec<String> {
-    context
-        .strings
-        .iter()
-        .take(MAX_QUERY_STRINGS)
-        .cloned()
-        .collect()
+#[cfg(test)]
+pub(in crate::widgets::bar) fn picker_strings_for_request(request: &IconRequest) -> Vec<String> {
+    picker_command_strings(request)
+}
+
+pub(in crate::widgets::bar) fn picker_input_for_request(request: &IconRequest) -> String {
+    request.picker_input()
 }
 
 #[cfg(test)]
-pub(in crate::widgets::bar::project_label::source) fn picker_strings_for_context(
-    context: &WorkspaceIconContext,
-) -> &[String] {
-    &context.strings
-}
-
-pub(in crate::widgets::bar::project_label::source) fn picker_input_for_context(
-    context: &WorkspaceIconContext,
-) -> String {
-    picker_command_strings(context).join("\n")
-}
-
-pub(in crate::widgets::bar::project_label::source) fn picker_cache_key_for_context(
-    context: &WorkspaceIconContext,
+pub(in crate::widgets::bar) fn picker_cache_key_for_request(
+    request: &IconRequest,
 ) -> Option<String> {
-    let strings = picker_command_strings(context);
-    (strings.len() >= MIN_PICK_ICON_INPUTS).then(|| strings.join("\u{1f}"))
+    request.picker_cache_key()
 }
 
-fn cached_pick_icon(key: &str) -> Option<Vec<WorkspaceIconCandidate>> {
+fn picker_command_strings(request: &IconRequest) -> Vec<String> {
+    request
+        .picker_strings()
+        .into_iter()
+        .take(MAX_QUERY_STRINGS)
+        .collect()
+}
+
+fn cached_pick_icon(key: &str) -> Option<Vec<IconCandidate>> {
     pick_icon_cache().lock().ok()?.get(key).cloned()
 }
 
-fn cache_pick_icon(key: String, candidates: Vec<WorkspaceIconCandidate>) {
+fn cache_pick_icon(key: String, candidates: Vec<IconCandidate>) {
     if let Ok(mut cache) = pick_icon_cache().lock() {
         cache.insert(key, candidates);
     }
@@ -105,29 +89,42 @@ fn pick_icon_cache() -> &'static Mutex<PickIconCache> {
     PICK_ICON_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-pub(in crate::widgets::bar::project_label::source) fn parse_pick_icon_output(
+pub(in crate::widgets::bar) fn parse_pick_icon_output(
     output: &[u8],
-) -> Vec<WorkspaceIconCandidate> {
+    min_score_millis: u16,
+) -> Vec<IconCandidate> {
     serde_json::from_slice::<Vec<PickIconCandidateJson>>(output)
         .unwrap_or_default()
         .into_iter()
-        .filter_map(pick_icon_candidate)
+        .filter_map(|candidate| pick_icon_candidate(candidate, min_score_millis))
         .take(MAX_PICK_ICON_CANDIDATES)
         .collect()
 }
 
-fn pick_icon_candidate(candidate: PickIconCandidateJson) -> Option<WorkspaceIconCandidate> {
+fn pick_icon_candidate(
+    candidate: PickIconCandidateJson,
+    min_score_millis: u16,
+) -> Option<IconCandidate> {
     let icon = non_empty(candidate.icon)?;
-    let score = candidate.score.unwrap_or_default();
-    (score >= MIN_PICK_ICON_SCORE).then(|| WorkspaceIconCandidate {
-        icon,
-        glyph: candidate.glyph.and_then(non_empty),
-        score_millis: score_millis(score),
-    })
+    let score_millis = score_millis(candidate.score.unwrap_or_default());
+    if score_millis < min_score_millis {
+        return None;
+    }
+    let choice = IconChoice::new(icon, candidate.glyph.and_then(non_empty))?;
+    Some(IconCandidate::new(
+        choice,
+        score_millis,
+        IconCandidateSource::Picker,
+    ))
 }
 
 fn score_millis(score: f64) -> u16 {
     (score.clamp(0.0, 1.0) * 1000.0).round() as u16
+}
+
+fn non_empty(value: String) -> Option<String> {
+    let value = value.trim().to_owned();
+    (!value.is_empty()).then_some(value)
 }
 
 fn pick_icon_executable() -> PathBuf {
