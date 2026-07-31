@@ -33,6 +33,7 @@ tracing-chrome = "0.7.2"
 tracing-subscriber = { version = "0.3.20", features = ["env-filter"] }
 zbus = { version = "4.4.0", default-features = false, features = ["tokio"] }
 zvariant = "4.2.0"
+nerd-font-symbols = { version = "0.3.0", registry = "snap" }
 
 [build-dependencies]
 pkg-config = "0.3.32"

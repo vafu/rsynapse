@@ -2,6 +2,7 @@ pub(in crate::widgets::bar) mod agent;
 mod app_instance;
 mod source;
 
+use nerd_font_symbols::{dev, md, seti};
 use relm4::prelude::*;
 use shell_core::gtk::{self, prelude::*};
 
@@ -141,7 +142,7 @@ fn window_visible(vm: &Option<ViewModel>) -> bool {
 fn window_icon(vm: &Option<ViewModel>) -> NerdIcon {
     vm.as_ref()
         .map(|vm| {
-            let resolved = vm.icon.selected_nerd_icon(NerdIcon::application());
+            let resolved = vm.icon.selected_nerd_icon();
             match &vm.kind {
                 Kind::Agent(agent) => agent_icon(agent, &resolved),
                 Kind::Plain | Kind::Neovim => resolved,
@@ -154,8 +155,39 @@ fn agent_icon(agent: &Agent, fallback: &NerdIcon) -> NerdIcon {
     if agent.icon.is_empty() {
         fallback.clone()
     } else {
-        NerdIcon::for_agent_hints([agent.icon.as_str(), agent.name.as_str()])
+        [agent.icon.as_str(), agent.name.as_str()]
+            .into_iter()
+            .filter(|hint| !hint.trim().is_empty())
+            .find_map(agent_hint_icon)
+            .unwrap_or_else(|| NerdIcon::new(md::MD_ROBOT))
     }
+}
+
+fn agent_hint_icon(hint: &str) -> Option<NerdIcon> {
+    let hint = hint.trim().to_ascii_lowercase();
+    let icon = if hint.contains("chrome") || hint.contains("chromium") {
+        NerdIcon::new(md::MD_GOOGLE_CHROME)
+    } else if hint.contains("slack") {
+        NerdIcon::new(dev::DEV_SLACK)
+    } else if hint.contains("neovim") || hint.contains("nvim") {
+        NerdIcon::new(seti::CUSTOM_NEOVIM)
+    } else if hint.contains("ghostty") || hint.contains("terminal") || hint.contains("term") {
+        NerdIcon::new(dev::DEV_TERMINAL)
+    } else if hint.contains("codex") || hint.contains("agent") || hint.contains("cognition") {
+        NerdIcon::new(md::MD_ROBOT)
+    } else if hint.contains("workspace") || hint == "workspaces" {
+        NerdIcon::workspace()
+    } else if hint.contains("folder") || hint.contains("project") {
+        NerdIcon::folder()
+    } else if hint.contains("git") || hint.contains("branch") || hint.contains("account tree") {
+        NerdIcon::branch()
+    } else if hint.contains("application") || hint.contains("executable") || hint.contains("window")
+    {
+        NerdIcon::application()
+    } else {
+        return None;
+    };
+    Some(icon)
 }
 
 fn agent_unseen_visible(vm: &Option<ViewModel>) -> bool {

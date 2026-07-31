@@ -1,23 +1,23 @@
+use nerd_font_symbols::{dev, fa};
+
 use super::{
     IconCandidate, IconCandidateSource, IconChoice, IconEvidence, IconEvidenceKind, IconPolicy,
     IconRequest, parse_pick_icon_output, picker_cache_key_for_request, picker_input_for_request,
     resolve_icon_for_test,
 };
-use crate::widgets::nerd_icon::NerdIcon;
 
 #[test]
 fn app_alias_resolves_firefox_without_picker() {
     let request = IconRequest::new(
         "window-app-icon",
-        IconChoice::from_nerd_icon(NerdIcon::application()),
+        IconChoice::application_fallback(),
         IconPolicy::window_app(),
         vec![IconEvidence::new(IconEvidenceKind::AppId, "firefox").unwrap()],
     );
 
     let resolution = resolve_icon_for_test(&request, Vec::new());
 
-    assert_eq!(resolution.selected.icon, "nf-fa-firefox");
-    assert_eq!(resolution.selected.glyph.as_deref(), Some(""));
+    assert_eq!(resolution.selected.glyph, fa::FA_FIREFOX);
     assert_eq!(resolution.candidates[0].score_millis, 1000);
     assert_eq!(resolution.candidates[0].source, IconCandidateSource::Alias);
 }
@@ -26,7 +26,7 @@ fn app_alias_resolves_firefox_without_picker() {
 fn picker_policy_is_chosen_by_request_source() {
     let app_request = IconRequest::new(
         "workspace-icon",
-        IconChoice::from_nerd_icon(NerdIcon::workspace()),
+        IconChoice::workspace_fallback(),
         IconPolicy::workspace_apps(),
         vec![IconEvidence::new(IconEvidenceKind::AppId, "unknown-app").unwrap()],
     );
@@ -34,7 +34,7 @@ fn picker_policy_is_chosen_by_request_source() {
 
     let project_request = IconRequest::new(
         "workspace-icon",
-        IconChoice::from_nerd_icon(NerdIcon::workspace()),
+        IconChoice::workspace_fallback(),
         IconPolicy::workspace_project(),
         vec![IconEvidence::new(IconEvidenceKind::ProjectName, "rsynapse").unwrap()],
     );
@@ -46,26 +46,26 @@ fn picker_policy_is_chosen_by_request_source() {
 fn override_wins_but_candidates_remain_available() {
     let request = IconRequest::new(
         "workspace-icon",
-        IconChoice::from_nerd_icon(NerdIcon::workspace()),
+        IconChoice::workspace_fallback(),
         IconPolicy::workspace_project(),
         vec![IconEvidence::new(IconEvidenceKind::ProjectName, "rsynapse").unwrap()],
     )
-    .with_override(Some(IconChoice::named("custom-icon")));
+    .with_override(Some(IconChoice::of("custom-icon")));
     let picker_candidate = IconCandidate::new(
-        IconChoice::new("nf-dev-rust".to_owned(), Some("".to_owned())).unwrap(),
+        IconChoice::new(dev::DEV_RUST.to_owned()).unwrap(),
         740,
         IconCandidateSource::Picker,
     );
 
     let resolution = resolve_icon_for_test(&request, vec![picker_candidate]);
 
-    assert_eq!(resolution.selected.icon, "custom-icon");
-    assert_eq!(resolution.candidates[0].icon, "nf-dev-rust");
+    assert_eq!(resolution.selected.glyph, "custom-icon");
+    assert_eq!(resolution.candidates[0].glyph, dev::DEV_RUST);
     assert!(resolution.overridden);
 }
 
 #[test]
-fn picker_json_preserves_score_and_thresholds() {
+fn picker_json_keeps_only_candidates_with_a_glyph() {
     let candidates = parse_pick_icon_output(
         br#"[{"icon":"communication","glyph":"x","score":1.0},{"icon":"terminal","score":0.721}]"#,
         720,
@@ -75,28 +75,27 @@ fn picker_json_preserves_score_and_thresholds() {
         candidates
             .iter()
             .map(|candidate| (
-                candidate.icon.as_str(),
-                candidate.glyph.as_deref(),
+                candidate.glyph.as_str(),
                 candidate.score_millis,
-                candidate.source,
+                candidate.source
             ))
             .collect::<Vec<_>>(),
-        vec![
-            (
-                "communication",
-                Some("x"),
-                1000,
-                IconCandidateSource::Picker
-            ),
-            ("terminal", None, 721, IconCandidateSource::Picker),
-        ]
+        vec![("x", 1000, IconCandidateSource::Picker)]
     );
+}
+
+#[test]
+fn picker_json_applies_the_score_threshold() {
     assert!(
-        parse_pick_icon_output(br#"[{"icon":"phishing","score":0.6931895017623901}]"#, 720)
-            .is_empty()
+        parse_pick_icon_output(
+            br#"[{"icon":"phishing","glyph":"y","score":0.6931895017623901}]"#,
+            720
+        )
+        .is_empty()
     );
     assert_eq!(
-        parse_pick_icon_output(br#"[{"icon":"folder","score":0.67}]"#, 660)[0].score_millis,
+        parse_pick_icon_output(br#"[{"icon":"folder","glyph":"z","score":0.67}]"#, 660)[0]
+            .score_millis,
         670
     );
 }

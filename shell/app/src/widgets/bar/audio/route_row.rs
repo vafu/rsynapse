@@ -1,3 +1,4 @@
+use nerd_font_symbols::fa;
 use relm4::prelude::*;
 use shell_core::gtk::{self, prelude::*};
 
@@ -28,7 +29,7 @@ impl SimpleComponent for AudioRouteRow {
 
                 gtk::Label {
                     set_css_classes: &["nerdicon", "audio-route-icon"],
-                    set_nerd_icon: NerdIcon::from_name(model.route.icon.as_str()),
+                    set_nerd_icon: model.route.icon.clone(),
                 },
 
                 gtk::Box {
@@ -53,7 +54,7 @@ impl SimpleComponent for AudioRouteRow {
                 gtk::Label {
                     set_css_classes: &["nerdicon", "audio-route-selected-icon"],
                     set_visible: model.route.is_default,
-                    set_nerd_icon: NerdIcon::from_name("check"),
+                    set_nerd_icon: NerdIcon::new(fa::FA_CIRCLE_CHECK),
                 }
             }
         }

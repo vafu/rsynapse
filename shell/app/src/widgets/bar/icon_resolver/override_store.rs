@@ -9,9 +9,7 @@ use super::IconChoice;
 use crate::widgets::bar::niri::NiriWorkspace;
 
 const WORKSPACE_ICON_OVERRIDE_RELATION: &str = "org.rsynapse.workspace.icon-override";
-const ICON_KEY_KIND: &str = "org.rsynapse.icon.key";
-const LEGACY_MATERIAL_ICON_KIND: &str = "org.rsynapse.material-icon.name";
-const ICON_GLYPH_METADATA: &str = "icon-glyph";
+const ICON_GLYPH_KIND: &str = "org.rsynapse.icon.glyph";
 const PICKER_INPUT_METADATA: &str = "pick-icon-input";
 
 pub(in crate::widgets::bar) fn workspace_icon_override_source(
@@ -170,7 +168,7 @@ async fn set_workspace_icon_override_async(
     icon: IconChoice,
     picker_input: String,
 ) -> Result<(), String> {
-    let icon_name = non_empty(icon.icon).ok_or_else(|| "empty icon override".to_string())?;
+    let glyph = non_empty(icon.glyph).ok_or_else(|| "empty icon override".to_string())?;
     let connection = Connection::session()
         .await
         .map_err(|error| format!("connect session bus: {error}"))?;
@@ -178,11 +176,8 @@ async fn set_workspace_icon_override_async(
         .await
         .map_err(|error| format!("connect locus proxy: {error}"))?;
     let subject = workspace_subject(workspace_id);
-    let target = RelationEndpoint::stable_key(ICON_KEY_KIND, icon_name);
+    let target = RelationEndpoint::stable_key(ICON_GLYPH_KIND, glyph);
     let mut metadata = HashMap::new();
-    if let Some(glyph) = icon.glyph.and_then(non_empty) {
-        metadata.insert(ICON_GLYPH_METADATA.to_owned(), glyph);
-    }
     if let Some(input) = non_empty(picker_input) {
         metadata.insert(PICKER_INPUT_METADATA.to_owned(), input);
     }
@@ -241,19 +236,12 @@ fn clear_matches(message: &zbus::Message, subject: &RelationEndpoint) -> Result<
 }
 
 fn icon_choice_from_record(record: &RelationRecord) -> Option<IconChoice> {
-    let icon = icon_name_from_endpoint(&record.target)?;
-    let glyph = metadata_value(
-        &record.metadata,
-        &[ICON_GLYPH_METADATA, "display-icon-glyph", "glyph"],
-    );
-    IconChoice::new(icon, glyph)
+    IconChoice::new(glyph_from_endpoint(&record.target)?)
 }
 
-fn icon_name_from_endpoint(endpoint: &RelationEndpoint) -> Option<String> {
+fn glyph_from_endpoint(endpoint: &RelationEndpoint) -> Option<String> {
     match endpoint {
-        RelationEndpoint::StableKey { kind, id }
-            if kind == ICON_KEY_KIND || kind == LEGACY_MATERIAL_ICON_KIND =>
-        {
+        RelationEndpoint::StableKey { kind, id } if kind == ICON_GLYPH_KIND => {
             non_empty(id.clone())
         }
         _ => None,
@@ -262,11 +250,6 @@ fn icon_name_from_endpoint(endpoint: &RelationEndpoint) -> Option<String> {
 
 fn workspace_subject(id: u64) -> RelationEndpoint {
     RelationEndpoint::stable_key(keys::NIRI_WORKSPACE_ID, id.to_string())
-}
-
-fn metadata_value(metadata: &HashMap<String, String>, keys: &[&str]) -> Option<String> {
-    keys.iter()
-        .find_map(|key| metadata.get(*key).cloned().and_then(non_empty))
 }
 
 fn non_empty(value: String) -> Option<String> {

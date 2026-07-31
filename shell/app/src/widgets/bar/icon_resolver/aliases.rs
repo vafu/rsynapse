@@ -1,5 +1,7 @@
 use std::collections::BTreeSet;
 
+use nerd_font_symbols::{dev, fa, md, seti};
+
 use super::{IconCandidate, IconCandidateSource, IconChoice, IconEvidence, IconEvidenceKind};
 
 const ALIAS_SCORE: u16 = 1000;
@@ -10,7 +12,7 @@ pub(super) fn alias_candidates(evidence: &[IconEvidence]) -> Vec<IconCandidate> 
         .iter()
         .filter_map(alias_for_evidence)
         .map(|choice| IconCandidate::new(choice, ALIAS_SCORE, IconCandidateSource::Alias))
-        .filter(|candidate| seen.insert(candidate.identity()))
+        .filter(|candidate| seen.insert(candidate.identity().to_owned()))
         .collect()
 }
 
@@ -29,25 +31,20 @@ fn alias_for_evidence(evidence: &IconEvidence) -> Option<IconChoice> {
 
 fn app_alias(value: &str) -> Option<IconChoice> {
     let value = normalize(value);
-    let choice = match value.as_str() {
-        _ if value.contains("firefox") => {
-            IconChoice::new("nf-fa-firefox".to_owned(), Some("".to_owned()))
-        }
-        _ if value.contains("chrome") || value.contains("chromium") => {
-            IconChoice::new("nf-md-google_chrome".to_owned(), Some("󰊯".to_owned()))
-        }
-        _ if value.contains("slack") => {
-            IconChoice::new("nf-dev-slack".to_owned(), Some("".to_owned()))
-        }
-        _ if value.contains("neovim") || value.contains("nvim") => {
-            IconChoice::new("nf-custom-neovim".to_owned(), Some("".to_owned()))
-        }
-        _ if value.contains("ghostty") || value.contains("terminal") || value.contains("term") => {
-            IconChoice::new("nf-dev-terminal".to_owned(), Some("".to_owned()))
-        }
-        _ => None,
-    }?;
-    Some(choice)
+    let glyph = if value.contains("firefox") {
+        fa::FA_FIREFOX
+    } else if value.contains("chrome") || value.contains("chromium") {
+        md::MD_GOOGLE_CHROME
+    } else if value.contains("slack") {
+        dev::DEV_SLACK
+    } else if value.contains("neovim") || value.contains("nvim") {
+        seti::CUSTOM_NEOVIM
+    } else if value.contains("ghostty") || value.contains("terminal") || value.contains("term") {
+        dev::DEV_TERMINAL
+    } else {
+        return None;
+    };
+    IconChoice::new(glyph.to_owned())
 }
 
 fn normalize(value: &str) -> String {

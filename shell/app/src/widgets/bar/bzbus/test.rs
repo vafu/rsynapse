@@ -3,6 +3,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+use nerd_font_symbols::md;
 use zbus::zvariant::{OwnedObjectPath, OwnedValue, Value};
 
 use super::{
@@ -15,7 +16,7 @@ fn offline_view_reports_offline() {
     let view = view::view(false, Vec::new());
 
     assert!(!view.progress_visible);
-    assert_eq!(view.icon, "cloud_off");
+    assert_eq!(view.icon.glyph(), md::MD_CLOUD_OFF_OUTLINE);
     assert!(view.classes.contains(&"offline"));
     assert_eq!(view.progress_level_classes, vec!["level", "offline"]);
 }
@@ -45,7 +46,7 @@ fn active_invocation_uses_progress_and_failures() {
         }],
     );
 
-    assert_eq!(view.icon, "build_circle");
+    assert_eq!(view.icon.glyph(), md::MD_WRENCH);
     assert_eq!(view.progress_percent, 33);
     assert!(view.progress_visible);
     assert!(view.tooltip.contains("progress: 3/9 · 12a/4r"));

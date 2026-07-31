@@ -179,7 +179,7 @@ fn item_tooltip(item: &ContextItem) -> String {
 
 fn item_icon(item: &ContextItem) -> NerdIcon {
     match item {
-        ContextItem::Build(build) => NerdIcon::from_name(build.icon),
+        ContextItem::Build(build) => build.icon.clone(),
     }
 }
 

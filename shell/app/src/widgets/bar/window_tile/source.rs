@@ -1,7 +1,7 @@
 use shell_core::source::{self, Observable, rx::Observable as _};
 use shell_rx_macros::combine_latest;
 
-use crate::{desktop_icon, widgets::nerd_icon::NerdIcon};
+use crate::desktop_icon;
 
 use super::super::{
     WindowNode,
@@ -138,7 +138,7 @@ fn window_icon_request(app_id: &str, app_instance: &AppInstance) -> IconRequest 
 
     IconRequest::new(
         "window-app-icon",
-        IconChoice::from_nerd_icon(NerdIcon::application()),
+        IconChoice::application_fallback(),
         IconPolicy::window_app(),
         evidence,
     )

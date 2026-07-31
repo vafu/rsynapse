@@ -1,17 +1,17 @@
 use std::collections::BTreeSet;
 
+use nerd_font_symbols::{cod, md};
+
 use crate::widgets::nerd_icon::NerdIcon;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(in crate::widgets::bar) struct IconChoice {
-    pub(in crate::widgets::bar) icon: String,
-    pub(in crate::widgets::bar) glyph: Option<String>,
+    pub(in crate::widgets::bar) glyph: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(in crate::widgets::bar) struct IconCandidate {
-    pub(in crate::widgets::bar) icon: String,
-    pub(in crate::widgets::bar) glyph: Option<String>,
+    pub(in crate::widgets::bar) glyph: String,
     pub(in crate::widgets::bar) score_millis: u16,
     pub(in crate::widgets::bar) source: IconCandidateSource,
 }
@@ -64,38 +64,37 @@ pub(in crate::widgets::bar) struct IconResolution {
 }
 
 impl IconChoice {
-    pub(in crate::widgets::bar) fn new(icon: String, glyph: Option<String>) -> Option<Self> {
-        let icon = non_empty(icon)?;
-        Some(Self {
-            icon,
-            glyph: glyph.and_then(non_empty),
-        })
+    pub(in crate::widgets::bar) fn new(glyph: String) -> Option<Self> {
+        non_empty(glyph).map(|glyph| Self { glyph })
     }
 
     #[cfg(test)]
-    pub(in crate::widgets::bar) fn named(icon: &str) -> Self {
+    pub(in crate::widgets::bar) fn of(glyph: &str) -> Self {
         Self {
-            icon: icon.to_owned(),
-            glyph: None,
+            glyph: glyph.to_owned(),
         }
     }
 
-    pub(in crate::widgets::bar) fn from_nerd_icon(icon: NerdIcon) -> Self {
+    pub(in crate::widgets::bar) fn application_fallback() -> Self {
         Self {
-            icon: icon.key().to_owned(),
-            glyph: Some(icon.glyph().to_owned()),
+            glyph: md::MD_APPLICATION.to_owned(),
         }
     }
 
-    pub(in crate::widgets::bar) fn to_nerd_icon(&self, fallback: NerdIcon) -> NerdIcon {
-        NerdIcon::from_parts(self.icon.clone(), self.glyph.clone(), fallback)
+    pub(in crate::widgets::bar) fn workspace_fallback() -> Self {
+        Self {
+            glyph: cod::COD_WORKSPACE_UNKNOWN.to_owned(),
+        }
+    }
+
+    pub(in crate::widgets::bar) fn to_nerd_icon(&self) -> NerdIcon {
+        NerdIcon::new(self.glyph.clone())
     }
 }
 
 impl From<&IconCandidate> for IconChoice {
     fn from(candidate: &IconCandidate) -> Self {
         Self {
-            icon: candidate.icon.clone(),
             glyph: candidate.glyph.clone(),
         }
     }
@@ -108,19 +107,14 @@ impl IconCandidate {
         source: IconCandidateSource,
     ) -> Self {
         Self {
-            icon: choice.icon,
             glyph: choice.glyph,
             score_millis,
             source,
         }
     }
 
-    pub(in crate::widgets::bar::icon_resolver) fn identity(&self) -> String {
-        format!(
-            "{}:{}",
-            self.icon,
-            self.glyph.as_deref().unwrap_or_default()
-        )
+    pub(in crate::widgets::bar::icon_resolver) fn identity(&self) -> &str {
+        self.glyph.as_str()
     }
 }
 
@@ -254,19 +248,14 @@ impl IconRequest {
             .collect::<Vec<_>>()
             .join("\u{1e}");
         format!(
-            "{}:{}:{}:{}:{}:{}:{}",
+            "{}:{}:{}:{}:{}:{}",
             self.namespace,
             self.policy.min_picker_inputs(),
             self.policy.min_picker_score_millis(),
-            self.fallback.icon,
-            self.fallback.glyph.as_deref().unwrap_or_default(),
+            self.fallback.glyph,
             self.override_icon
                 .as_ref()
-                .map(|icon| format!(
-                    "{}:{}",
-                    icon.icon,
-                    icon.glyph.as_deref().unwrap_or_default()
-                ))
+                .map(|icon| icon.glyph.as_str())
                 .unwrap_or_default(),
             evidence
         )
@@ -274,8 +263,8 @@ impl IconRequest {
 }
 
 impl IconResolution {
-    pub(in crate::widgets::bar) fn selected_nerd_icon(&self, fallback: NerdIcon) -> NerdIcon {
-        self.selected.to_nerd_icon(fallback)
+    pub(in crate::widgets::bar) fn selected_nerd_icon(&self) -> NerdIcon {
+        self.selected.to_nerd_icon()
     }
 }
 

@@ -32,6 +32,7 @@ use std::{
     thread,
 };
 
+use nerd_font_symbols::{fa, md};
 use relm4::component::ComponentController;
 use relm4::prelude::*;
 use shell_core::{
@@ -392,7 +393,7 @@ impl SimpleAsyncComponent for MainBar {
 
                             gtk::Label {
                                 set_css_classes: &["nerdicon", "mpris-control-icon"],
-                                set_nerd_icon: NerdIcon::from_name("skip_previous"),
+                                set_nerd_icon: NerdIcon::new(fa::FA_BACKWARD_STEP),
                             }
                         },
 
@@ -407,7 +408,7 @@ impl SimpleAsyncComponent for MainBar {
                             gtk::Label {
                                 set_css_classes: &["nerdicon", "mpris-control-icon"],
                                 #[watch]
-                                set_nerd_icon: NerdIcon::from_name(model.mpris.play_pause_icon),
+                                set_nerd_icon: model.mpris.play_pause_icon.clone(),
                             }
                         },
 
@@ -421,7 +422,7 @@ impl SimpleAsyncComponent for MainBar {
 
                             gtk::Label {
                                 set_css_classes: &["nerdicon", "mpris-control-icon"],
-                                set_nerd_icon: NerdIcon::from_name("skip_next"),
+                                set_nerd_icon: NerdIcon::new(fa::FA_FORWARD_STEP),
                             }
                         }
                     },
@@ -486,7 +487,7 @@ impl SimpleAsyncComponent for MainBar {
                                         "power-profile-icon",
                                     ],
                                     #[watch]
-                                    set_nerd_icon: NerdIcon::from_name(model.power_profile.icon),
+                                    set_nerd_icon: model.power_profile.icon.clone(),
                                 },
 
                                 gtk::Overlay {
@@ -575,7 +576,7 @@ impl SimpleAsyncComponent for MainBar {
                                             gtk::Label {
                                                 set_css_classes: &["nerdicon", bar_item::ICON_CLASS],
                                                 #[watch]
-                                                set_nerd_icon: NerdIcon::from_name(model.bluetooth.keyboard.icon.as_str()),
+                                                set_nerd_icon: model.bluetooth.keyboard.icon.clone(),
                                             },
 
                                             gtk::Overlay {
@@ -627,7 +628,7 @@ impl SimpleAsyncComponent for MainBar {
                                             gtk::Label {
                                                 set_css_classes: &["nerdicon", bar_item::ICON_CLASS],
                                                 #[watch]
-                                                set_nerd_icon: NerdIcon::from_name(model.bluetooth.audio.icon.as_str()),
+                                                set_nerd_icon: model.bluetooth.audio.icon.clone(),
                                             },
 
                                             gtk::Overlay {
@@ -679,7 +680,7 @@ impl SimpleAsyncComponent for MainBar {
                                             gtk::Label {
                                                 set_css_classes: &["nerdicon", bar_item::ICON_CLASS],
                                                 #[watch]
-                                                set_nerd_icon: NerdIcon::from_name(model.bluetooth.pointer.icon.as_str()),
+                                                set_nerd_icon: model.bluetooth.pointer.icon.clone(),
                                             },
 
                                             gtk::Overlay {
@@ -728,7 +729,7 @@ impl SimpleAsyncComponent for MainBar {
                                     gtk::Label {
                                         set_css_classes: &["nerdicon", bar_item::ICON_CLASS],
                                         #[watch]
-                                        set_nerd_icon: NerdIcon::from_name(model.bluetooth.status.icon.as_str()),
+                                        set_nerd_icon: model.bluetooth.status.icon.clone(),
                                     },
 
                                     add_overlay = &gtk::Label {
@@ -839,7 +840,7 @@ impl SimpleAsyncComponent for MainBar {
                                     bar_item::ICON_CLASS,
                                     "source-error-icon",
                                 ],
-                                set_nerd_icon: NerdIcon::from_name("error"),
+                                set_nerd_icon: NerdIcon::new(md::MD_ALERT),
                             },
 
                             gtk::Label {

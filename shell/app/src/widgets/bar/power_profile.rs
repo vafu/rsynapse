@@ -1,10 +1,13 @@
 use std::thread;
 
+use nerd_font_symbols::md;
 use shell_core::source::{
     self, Observable,
     dbus::{self, Bus, ObjectDescriptor, PropertyDescriptor},
     rx::Observable as _,
 };
+
+use crate::widgets::nerd_icon::NerdIcon;
 
 const POWER_PROFILE_ORDER: &[&str] = &["power-saver", "balanced", "performance"];
 const POWER_PROFILE_BUS: &str = "net.hadess.PowerProfiles";
@@ -15,7 +18,7 @@ const POWER_PROFILES_OBJECT_PATH: &str = "/net/hadess/PowerProfiles";
 pub(crate) struct PowerProfileView {
     pub(super) visible: bool,
     pub(super) profile: String,
-    pub(super) icon: &'static str,
+    pub(super) icon: NerdIcon,
     pub(super) tooltip: String,
 }
 
@@ -24,7 +27,7 @@ impl Default for PowerProfileView {
         Self {
             visible: false,
             profile: String::new(),
-            icon: "speed",
+            icon: icon_name("balanced"),
             tooltip: String::new(),
         }
     }
@@ -99,11 +102,11 @@ fn power_profile_view(profile: String) -> PowerProfileView {
     }
 }
 
-fn icon_name(profile: &str) -> &'static str {
+fn icon_name(profile: &str) -> NerdIcon {
     match profile {
-        "performance" => "bolt",
-        "power-saver" => "eco",
-        _ => "speed",
+        "performance" => NerdIcon::new(md::MD_CAR_TURBOCHARGER),
+        "power-saver" => NerdIcon::new(md::MD_LEAF),
+        _ => NerdIcon::new(md::MD_SPEEDOMETER),
     }
 }
 

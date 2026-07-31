@@ -57,18 +57,8 @@ pub(super) fn workspace_visible(vm: &ProjectLabelVm, selected: bool) -> bool {
     selected || !vm.empty
 }
 
-pub(super) fn project_icon(model: &ProjectLabelVm) -> String {
-    non_empty_text(&model.project_icon)
-        .map(str::to_owned)
-        .unwrap_or_else(|| NerdIcon::workspace().key().to_owned())
-}
-
 pub(super) fn project_icon_render(model: &ProjectLabelVm) -> NerdIcon {
-    NerdIcon::from_parts(
-        project_icon(model),
-        model.project_icon_glyph.clone(),
-        NerdIcon::workspace(),
-    )
+    NerdIcon::new(model.project_icon_glyph.clone())
 }
 
 // Build status icon rendering is paused while the status is moved to a new surface.
@@ -104,44 +94,11 @@ pub(super) fn project_tooltip(model: &ProjectLabelVm, workspace: &WorkspaceNode)
         Some(secondary) => format!("{primary} · {secondary}"),
         None => primary,
     };
-    let icon = icon_label(project_icon(model), model.project_icon_glyph.as_deref());
     let override_line = model
         .project_icon_overridden
         .then_some("\noverride: locus")
         .unwrap_or_default();
-    let candidate_lines = icon_candidate_lines(model);
-    match (
-        non_empty_text(&model.project_icon_input),
-        candidate_lines.is_empty(),
-    ) {
-        (Some(input), false) => {
-            format!(
-                "{title}\nicon: {icon}{override_line}\npick-icon input:\n{input}\ncandidates:\n{candidate_lines}"
-            )
-        }
-        (Some(input), true) => {
-            format!("{title}\nicon: {icon}{override_line}\npick-icon input:\n{input}")
-        }
-        (None, false) => {
-            format!("{title}\nicon: {icon}{override_line}\ncandidates:\n{candidate_lines}")
-        }
-        (None, true) => format!("{title}\nicon: {icon}{override_line}"),
-    }
-}
-
-pub(super) fn icon_candidate_lines(model: &ProjectLabelVm) -> String {
-    model
-        .project_icon_candidates
-        .iter()
-        .map(|candidate| {
-            format!(
-                "{} {}",
-                icon_label(candidate.icon.clone(), candidate.glyph.as_deref()),
-                score_label(candidate.score_millis)
-            )
-        })
-        .collect::<Vec<_>>()
-        .join("\n")
+    format!("{title}{override_line}")
 }
 
 pub(super) fn auto_icon_visible(model: &ProjectLabelVm) -> bool {
@@ -156,13 +113,6 @@ pub(super) fn auto_icon_button_classes(model: &ProjectLabelVm) -> Vec<&'static s
     classes
 }
 
-pub(super) fn auto_icon_tooltip(model: &ProjectLabelVm) -> String {
-    format!(
-        "automatic · current {}",
-        icon_label(project_icon(model), model.project_icon_glyph.as_deref())
-    )
-}
-
 pub(super) fn icon_candidate_visible(model: &ProjectLabelVm, index: usize) -> bool {
     index < ICON_CANDIDATE_COUNT && model.project_icon_candidates.get(index).is_some()
 }
@@ -172,35 +122,17 @@ pub(super) fn icon_candidate_button_classes(
     index: usize,
 ) -> Vec<&'static str> {
     let mut classes = vec!["flat", "workspace-icon-choice"];
-    if icon_candidate(model, index).is_some_and(|candidate| {
-        candidate.icon == project_icon(model) && candidate.glyph == model.project_icon_glyph
-    }) {
+    if icon_candidate(model, index)
+        .is_some_and(|candidate| candidate.glyph == model.project_icon_glyph)
+    {
         classes.push("selected");
     }
     classes
 }
 
-pub(super) fn icon_candidate_tooltip(model: &ProjectLabelVm, index: usize) -> String {
-    icon_candidate(model, index)
-        .map(|candidate| {
-            format!(
-                "{} · {}",
-                icon_label(candidate.icon.clone(), candidate.glyph.as_deref()),
-                score_label(candidate.score_millis)
-            )
-        })
-        .unwrap_or_default()
-}
-
 pub(super) fn icon_candidate_render(model: &ProjectLabelVm, index: usize) -> NerdIcon {
     icon_candidate(model, index)
-        .map(|candidate| {
-            NerdIcon::from_parts(
-                candidate.icon.clone(),
-                candidate.glyph.clone(),
-                NerdIcon::workspace(),
-            )
-        })
+        .map(|candidate| NerdIcon::new(candidate.glyph.clone()))
         .unwrap_or_else(NerdIcon::workspace)
 }
 
@@ -209,10 +141,6 @@ pub(super) fn icon_candidate(
     index: usize,
 ) -> Option<&WorkspaceIconCandidate> {
     model.project_icon_candidates.get(index)
-}
-
-pub(super) fn score_label(score_millis: u16) -> String {
-    format!("{:.3}", f32::from(score_millis) / 1000.0)
 }
 
 pub(super) fn workspace_agent_unseen_visible(model: &ProjectLabelVm) -> bool {
@@ -232,13 +160,6 @@ pub(super) fn optional_text(value: Option<&str>) -> Option<&str> {
 pub(super) fn non_empty_text(value: &str) -> Option<&str> {
     let value = value.trim();
     (!value.is_empty()).then_some(value)
-}
-
-fn icon_label(icon: String, glyph: Option<&str>) -> String {
-    match glyph.and_then(non_empty_text) {
-        Some(glyph) => format!("{icon} {glyph}"),
-        None => icon,
-    }
 }
 
 pub(super) fn workspace_badge_label(sort_index: u32) -> String {

@@ -20,7 +20,6 @@ static PICK_ICON_CACHE: OnceLock<Mutex<PickIconCache>> = OnceLock::new();
 
 #[derive(Debug, Deserialize)]
 struct PickIconCandidateJson {
-    icon: String,
     glyph: Option<String>,
     score: Option<f64>,
 }
@@ -105,12 +104,12 @@ fn pick_icon_candidate(
     candidate: PickIconCandidateJson,
     min_score_millis: u16,
 ) -> Option<IconCandidate> {
-    let icon = non_empty(candidate.icon)?;
+    let glyph = non_empty(candidate.glyph.unwrap_or_default())?;
     let score_millis = score_millis(candidate.score.unwrap_or_default());
     if score_millis < min_score_millis {
         return None;
     }
-    let choice = IconChoice::new(icon, candidate.glyph.and_then(non_empty))?;
+    let choice = IconChoice::new(glyph)?;
     Some(IconCandidate::new(
         choice,
         score_millis,

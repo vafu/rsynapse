@@ -78,8 +78,6 @@ impl SimpleComponent for ProjectLabel {
                             set_css_classes: &auto_icon_button_classes(&model.vm),
                             #[watch]
                             set_visible: auto_icon_visible(&model.vm),
-                            #[watch]
-                            set_tooltip_text: Some(auto_icon_tooltip(&model.vm).as_str()),
 
                             gtk::Label {
                                 set_css_classes: &["bar-indicator-icon", "nerdicon"],
@@ -95,8 +93,6 @@ impl SimpleComponent for ProjectLabel {
                             set_visible: icon_candidate_visible(&model.vm, 0),
                             #[watch]
                             set_css_classes: &icon_candidate_button_classes(&model.vm, 0),
-                            #[watch]
-                            set_tooltip_text: Some(icon_candidate_tooltip(&model.vm, 0).as_str()),
 
                             gtk::Label {
                                 set_css_classes: &["bar-indicator-icon", "nerdicon"],
@@ -113,8 +109,6 @@ impl SimpleComponent for ProjectLabel {
                             set_visible: icon_candidate_visible(&model.vm, 1),
                             #[watch]
                             set_css_classes: &icon_candidate_button_classes(&model.vm, 1),
-                            #[watch]
-                            set_tooltip_text: Some(icon_candidate_tooltip(&model.vm, 1).as_str()),
 
                             gtk::Label {
                                 set_css_classes: &["bar-indicator-icon", "nerdicon"],
@@ -131,8 +125,6 @@ impl SimpleComponent for ProjectLabel {
                             set_visible: icon_candidate_visible(&model.vm, 2),
                             #[watch]
                             set_css_classes: &icon_candidate_button_classes(&model.vm, 2),
-                            #[watch]
-                            set_tooltip_text: Some(icon_candidate_tooltip(&model.vm, 2).as_str()),
 
                             gtk::Label {
                                 set_css_classes: &["bar-indicator-icon", "nerdicon"],
@@ -149,8 +141,6 @@ impl SimpleComponent for ProjectLabel {
                             set_visible: icon_candidate_visible(&model.vm, 3),
                             #[watch]
                             set_css_classes: &icon_candidate_button_classes(&model.vm, 3),
-                            #[watch]
-                            set_tooltip_text: Some(icon_candidate_tooltip(&model.vm, 3).as_str()),
 
                             gtk::Label {
                                 set_css_classes: &["bar-indicator-icon", "nerdicon"],
@@ -167,8 +157,6 @@ impl SimpleComponent for ProjectLabel {
                             set_visible: icon_candidate_visible(&model.vm, 4),
                             #[watch]
                             set_css_classes: &icon_candidate_button_classes(&model.vm, 4),
-                            #[watch]
-                            set_tooltip_text: Some(icon_candidate_tooltip(&model.vm, 4).as_str()),
 
                             gtk::Label {
                                 set_css_classes: &["bar-indicator-icon", "nerdicon"],

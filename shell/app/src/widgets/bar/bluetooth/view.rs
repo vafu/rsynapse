@@ -1,8 +1,10 @@
+use nerd_font_symbols::md;
 use zbus::zvariant::OwnedObjectPath;
 
 use super::{
     BluetoothDeviceGroup, BluetoothDeviceView, BluetoothStatusView, BluetoothView, DeviceGroupView,
 };
+use crate::widgets::nerd_icon::NerdIcon;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct AdapterSnapshot {
@@ -41,7 +43,7 @@ pub(super) fn device_snapshot(
             path,
             name,
             address,
-            icon: device_icon(group, bluez_icon.as_deref()).to_owned(),
+            icon: device_icon(group, bluez_icon.as_deref()),
             connected,
             connecting,
             battery,
@@ -74,7 +76,7 @@ pub(super) fn bluetooth_view(
 
     BluetoothView {
         status: BluetoothStatusView {
-            icon: status_icon(powered, connected_count).to_owned(),
+            icon: status_icon(powered, connected_count),
             connected_count,
             powered,
             adapter_path: adapter.map(|adapter| adapter.path),
@@ -102,7 +104,7 @@ fn group_view(group: BluetoothDeviceGroup, devices: &[DeviceSnapshot]) -> Device
 
     DeviceGroupView {
         visible: !group_devices.is_empty(),
-        icon: group_icon(group).to_owned(),
+        icon: group_icon(group),
         tinted: connected,
         tooltip: group_tooltip(group, &group_devices),
         battery,
@@ -135,21 +137,21 @@ fn group_tooltip(group: BluetoothDeviceGroup, devices: &[BluetoothDeviceView]) -
     }
 }
 
-fn status_icon(powered: bool, connected_count: u8) -> &'static str {
+fn status_icon(powered: bool, connected_count: u8) -> NerdIcon {
     if !powered {
-        "bluetooth_disabled"
+        NerdIcon::new(md::MD_BLUETOOTH_OFF)
     } else if connected_count > 0 {
-        "bluetooth_connected"
+        NerdIcon::new(md::MD_BLUETOOTH_CONNECT)
     } else {
-        "bluetooth"
+        NerdIcon::new(md::MD_BLUETOOTH)
     }
 }
 
-fn group_icon(group: BluetoothDeviceGroup) -> &'static str {
+fn group_icon(group: BluetoothDeviceGroup) -> NerdIcon {
     match group {
-        BluetoothDeviceGroup::Keyboard => "keyboard",
-        BluetoothDeviceGroup::Audio => "headphones",
-        BluetoothDeviceGroup::Pointer => "mouse",
+        BluetoothDeviceGroup::Keyboard => NerdIcon::new(md::MD_KEYBOARD_RETURN),
+        BluetoothDeviceGroup::Audio => NerdIcon::new(md::MD_HEADPHONES_SETTINGS),
+        BluetoothDeviceGroup::Pointer => NerdIcon::new(md::MD_MOUSE_VARIANT),
     }
 }
 
@@ -161,7 +163,7 @@ fn group_label(group: BluetoothDeviceGroup) -> &'static str {
     }
 }
 
-fn device_icon(group: Option<BluetoothDeviceGroup>, bluez_icon: Option<&str>) -> &'static str {
+fn device_icon(group: Option<BluetoothDeviceGroup>, bluez_icon: Option<&str>) -> NerdIcon {
     match group {
         Some(group) => group_icon(group),
         None => {
@@ -169,9 +171,9 @@ fn device_icon(group: Option<BluetoothDeviceGroup>, bluez_icon: Option<&str>) ->
                 .map(|icon| icon.contains("phone"))
                 .unwrap_or(false)
             {
-                "smartphone"
+                NerdIcon::new(md::MD_CELLPHONE_INFORMATION)
             } else {
-                "bluetooth"
+                NerdIcon::new(md::MD_BLUETOOTH)
             }
         }
     }
@@ -231,13 +233,15 @@ fn present_string(value: Option<String>) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    use nerd_font_symbols::md;
+
     use super::{BluetoothDeviceGroup, device_group, status_icon};
 
     #[test]
     fn status_icon_tracks_power_and_connections() {
-        assert_eq!(status_icon(false, 0), "bluetooth_disabled");
-        assert_eq!(status_icon(true, 0), "bluetooth");
-        assert_eq!(status_icon(true, 2), "bluetooth_connected");
+        assert_eq!(status_icon(false, 0).glyph(), md::MD_BLUETOOTH_OFF);
+        assert_eq!(status_icon(true, 0).glyph(), md::MD_BLUETOOTH);
+        assert_eq!(status_icon(true, 2).glyph(), md::MD_BLUETOOTH_CONNECT);
     }
 
     #[test]

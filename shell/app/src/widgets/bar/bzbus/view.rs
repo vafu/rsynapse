@@ -3,9 +3,10 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+use nerd_font_symbols::{fa, md};
 use shell_core::gtk::{self, prelude::*};
 
-use crate::widgets::BACKGROUND_BLUR_CLASS;
+use crate::widgets::{BACKGROUND_BLUR_CLASS, nerd_icon::NerdIcon};
 
 const ACTIVE_STALE_MS: i64 = 2 * 60 * 60 * 1000;
 
@@ -13,7 +14,7 @@ const ACTIVE_STALE_MS: i64 = 2 * 60 * 60 * 1000;
 pub(crate) struct BzBusView {
     pub(in crate::widgets::bar) classes: Vec<&'static str>,
     pub(in crate::widgets::bar) tooltip: String,
-    pub(in crate::widgets::bar) icon: &'static str,
+    pub(in crate::widgets::bar) icon: NerdIcon,
     pub(in crate::widgets::bar) progress_level_classes: Vec<&'static str>,
     pub(in crate::widgets::bar) progress_percent: u8,
     pub(in crate::widgets::bar) progress_visible: bool,
@@ -24,7 +25,7 @@ impl Default for BzBusView {
         Self {
             classes: classes_for(false, None),
             tooltip: "bzbus offline".to_owned(),
-            icon: "cloud_off",
+            icon: NerdIcon::new(md::MD_CLOUD_OFF_OUTLINE),
             progress_level_classes: progress_level_classes_for(false, None),
             progress_percent: 0,
             progress_visible: false,
@@ -197,16 +198,20 @@ fn tooltip(invocation: Option<&Invocation>) -> String {
     lines.join("\n")
 }
 
-fn icon_for(active: bool, invocation: Option<&Invocation>) -> &'static str {
+fn icon_for(active: bool, invocation: Option<&Invocation>) -> NerdIcon {
     let Some(invocation) = invocation else {
-        return if active { "construction" } else { "cloud_off" };
+        return if active {
+            NerdIcon::new(md::MD_WRENCH)
+        } else {
+            NerdIcon::new(md::MD_CLOUD_OFF_OUTLINE)
+        };
     };
     if is_failed(invocation) {
-        "error"
+        NerdIcon::new(md::MD_ALERT)
     } else if is_finished(invocation) {
-        "check_circle"
+        NerdIcon::new(fa::FA_CIRCLE_CHECK)
     } else {
-        "build_circle"
+        NerdIcon::new(md::MD_WRENCH)
     }
 }
 

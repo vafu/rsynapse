@@ -6,17 +6,14 @@ pub(in crate::widgets::bar::project_label) use crate::widgets::bar::icon_resolve
 pub(super) use crate::widgets::bar::icon_resolver::{
     clear_workspace_icon_override, set_workspace_icon_override,
 };
-use crate::widgets::{
-    bar::{
-        icon_resolver::{
-            IconChoice, IconEvidence, IconEvidenceKind, IconPolicy, IconRequest, IconResolution,
-            resolve_icon, workspace_icon_override_source,
-        },
-        niri::NiriWorkspace,
-        project::{ProjectDetails, project_details},
-        window_source::{WindowSnapshot, window_snapshots},
+use crate::widgets::bar::{
+    icon_resolver::{
+        IconChoice, IconEvidence, IconEvidenceKind, IconPolicy, IconRequest, IconResolution,
+        resolve_icon, workspace_icon_override_source,
     },
-    nerd_icon::NerdIcon,
+    niri::NiriWorkspace,
+    project::{ProjectDetails, project_details},
+    window_source::{WindowSnapshot, window_snapshots},
 };
 
 #[cfg(test)]
@@ -28,8 +25,7 @@ use crate::widgets::bar::icon_resolver::{
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct WorkspaceIcon {
-    pub(super) icon: String,
-    pub(super) glyph: Option<String>,
+    pub(super) glyph: String,
     pub(super) empty: bool,
     pub(super) picker_input: String,
     pub(super) candidates: Vec<WorkspaceIconCandidate>,
@@ -78,7 +74,6 @@ fn workspace_icon_for_context(context: WorkspaceIconContext) -> Observable<Works
 fn workspace_icon_from_resolution(resolution: IconResolution, empty: bool) -> WorkspaceIcon {
     let selected = resolution.selected;
     WorkspaceIcon {
-        icon: selected.icon,
         glyph: selected.glyph,
         empty,
         picker_input: resolution.picker_input,
@@ -130,7 +125,7 @@ fn workspace_icon_context_from_parts_with_override(
     let empty = !has_project && evidence.is_empty();
     let request = IconRequest::new(
         "workspace-icon",
-        IconChoice::from_nerd_icon(NerdIcon::workspace()),
+        IconChoice::workspace_fallback(),
         policy,
         evidence,
     )
@@ -180,24 +175,24 @@ fn push_optional(evidence: &mut Vec<IconEvidence>, kind: IconEvidenceKind, value
 }
 
 #[cfg(test)]
-pub(super) fn fallback_icon_for_context(context: &WorkspaceIconContext) -> &str {
+pub(super) fn fallback_glyph_for_context(context: &WorkspaceIconContext) -> &str {
     context
         .request
         .override_icon()
         .unwrap_or_else(|| context.request.fallback())
-        .icon
+        .glyph
         .as_str()
 }
 
 #[cfg(test)]
 pub(super) fn with_icon_override_for_test(
     mut context: WorkspaceIconContext,
-    icon: &str,
+    glyph: &str,
 ) -> WorkspaceIconContext {
     context.request = context
         .request
         .clone()
-        .with_override(Some(IconChoice::named(icon)));
+        .with_override(Some(IconChoice::of(glyph)));
     context
 }
 

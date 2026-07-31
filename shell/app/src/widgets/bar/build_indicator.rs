@@ -1,3 +1,4 @@
+use nerd_font_symbols::{fa, md};
 use shell_core::gtk::{self, prelude::*};
 
 use crate::widgets::nerd_icon::{NerdIcon, NerdIconLabelExt};
@@ -46,8 +47,8 @@ fn classes(state: BuildIndicatorState) -> Vec<&'static str> {
 fn icon(state: BuildIndicatorState) -> NerdIcon {
     match state {
         BuildIndicatorState::None => NerdIcon::application(),
-        BuildIndicatorState::Running => NerdIcon::from_name("build"),
-        BuildIndicatorState::Failed => NerdIcon::from_name("priority_high"),
-        BuildIndicatorState::Finished => NerdIcon::from_name("check"),
+        BuildIndicatorState::Running => NerdIcon::new(md::MD_WRENCH),
+        BuildIndicatorState::Failed => NerdIcon::new(md::MD_ALERT),
+        BuildIndicatorState::Finished => NerdIcon::new(fa::FA_CIRCLE_CHECK),
     }
 }

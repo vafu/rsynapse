@@ -85,7 +85,7 @@ fn merge_candidates(
             .then_with(|| {
                 candidate_source_rank(left.source).cmp(&candidate_source_rank(right.source))
             })
-            .then_with(|| left.icon.cmp(&right.icon))
+            .then_with(|| left.glyph.cmp(&right.glyph))
     });
     candidates.truncate(5);
     candidates

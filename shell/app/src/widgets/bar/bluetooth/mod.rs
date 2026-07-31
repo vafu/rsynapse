@@ -3,6 +3,7 @@ mod source;
 mod view;
 
 use adw::prelude::*;
+use nerd_font_symbols::md;
 use relm4::prelude::*;
 use shell_core::{gtk, list::ComponentListBoxExt, source::Observable};
 use zbus::zvariant::OwnedObjectPath;
@@ -29,7 +30,7 @@ pub(crate) struct BluetoothView {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct BluetoothStatusView {
-    pub(super) icon: String,
+    pub(super) icon: NerdIcon,
     pub(super) connected_count: u8,
     pub(super) powered: bool,
     pub(super) adapter_path: Option<OwnedObjectPath>,
@@ -38,7 +39,7 @@ pub(super) struct BluetoothStatusView {
 impl Default for BluetoothStatusView {
     fn default() -> Self {
         Self {
-            icon: "bluetooth_disabled".to_owned(),
+            icon: NerdIcon::new(md::MD_BLUETOOTH_OFF),
             connected_count: 0,
             powered: false,
             adapter_path: None,
@@ -122,7 +123,7 @@ impl SimpleComponent for BluetoothDeviceRow {
 
             add_prefix = &gtk::Label {
                 set_css_classes: &["nerdicon", "bt-device-icon"],
-                set_nerd_icon: NerdIcon::from_name(model.device.icon.as_str()),
+                set_nerd_icon: model.device.icon.clone(),
             }
         }
     }
@@ -154,7 +155,7 @@ pub(super) fn toggle_power(status: &BluetoothStatusView) {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct DeviceGroupView {
     pub(super) visible: bool,
-    pub(super) icon: String,
+    pub(super) icon: NerdIcon,
     pub(super) tinted: bool,
     pub(super) tooltip: String,
     pub(super) battery: Option<u8>,
@@ -165,7 +166,7 @@ impl Default for DeviceGroupView {
     fn default() -> Self {
         Self {
             visible: false,
-            icon: "bluetooth".to_owned(),
+            icon: NerdIcon::new(md::MD_BLUETOOTH),
             tinted: true,
             tooltip: String::new(),
             battery: None,
@@ -179,7 +180,7 @@ pub(crate) struct BluetoothDeviceView {
     pub(super) path: OwnedObjectPath,
     pub(super) name: String,
     pub(super) address: String,
-    pub(super) icon: String,
+    pub(super) icon: NerdIcon,
     pub(super) connected: bool,
     pub(super) connecting: bool,
     pub(super) battery: Option<u8>,

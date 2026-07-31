@@ -1,12 +1,15 @@
+use nerd_font_symbols::cod;
+
 use super::agent::workspace_agent_state_from_agents;
 use super::build::{WorkspaceBuildState, workspace_build_state_from_builds};
 use super::workspace_icon::{
-    fallback_icon_for_context, parse_pick_icon_output, picker_cache_key_for_context,
+    fallback_glyph_for_context, parse_pick_icon_output, picker_cache_key_for_context,
     picker_input_for_context, picker_strings_for_context, with_icon_override_for_test,
     workspace_icon_context_from_parts,
 };
 use crate::widgets::bar::window_tile::agent::{Agent, State};
 use crate::widgets::bar::{bzbus::BzBusView, project::ProjectDetails};
+use crate::widgets::nerd_icon::NerdIcon;
 
 #[test]
 fn workspace_agent_state_tracks_unseen_agents() {
@@ -63,8 +66,8 @@ fn workspace_icon_uses_project_metadata_before_app_context() {
     );
 
     assert_eq!(
-        fallback_icon_for_context(&context),
-        "nf-cod-workspace_unknown"
+        fallback_glyph_for_context(&context),
+        cod::COD_WORKSPACE_UNKNOWN
     );
     assert_eq!(
         picker_strings_for_context(&context),
@@ -87,8 +90,8 @@ fn workspace_icon_feeds_raw_context_to_picker() {
     );
 
     assert_eq!(
-        fallback_icon_for_context(&context),
-        "nf-cod-workspace_unknown"
+        fallback_glyph_for_context(&context),
+        cod::COD_WORKSPACE_UNKNOWN
     );
     assert_eq!(
         picker_strings_for_context(&context),
@@ -122,8 +125,8 @@ fn workspace_icon_falls_back_to_workspace_symbol() {
     let context = workspace_icon_context_from_parts(ProjectDetails::default(), Vec::new());
 
     assert_eq!(
-        fallback_icon_for_context(&context),
-        "nf-cod-workspace_unknown"
+        fallback_glyph_for_context(&context),
+        cod::COD_WORKSPACE_UNKNOWN
     );
 }
 
@@ -134,7 +137,7 @@ fn workspace_icon_uses_locus_override_without_project_icon() {
         "communication",
     );
 
-    assert_eq!(fallback_icon_for_context(&context), "communication");
+    assert_eq!(fallback_glyph_for_context(&context), "communication");
 }
 
 #[test]
@@ -151,7 +154,7 @@ fn workspace_icon_uses_locus_override_with_project_context() {
         "communication",
     );
 
-    assert_eq!(fallback_icon_for_context(&context), "communication");
+    assert_eq!(fallback_glyph_for_context(&context), "communication");
 }
 
 #[test]
@@ -188,13 +191,9 @@ fn workspace_icon_parses_pick_icon_json() {
     assert_eq!(
         candidates
             .iter()
-            .map(|candidate| (
-                candidate.icon.as_str(),
-                candidate.glyph.as_deref(),
-                candidate.score_millis,
-            ))
+            .map(|candidate| (candidate.glyph.as_str(), candidate.score_millis,))
             .collect::<Vec<_>>(),
-        vec![("communication", Some("x"), 1000), ("terminal", None, 721)]
+        vec![("x", 1000)]
     );
     assert!(
         parse_pick_icon_output(br#"[{"icon":"phishing","score":0.6931895017623901}]"#).is_empty()
@@ -218,7 +217,7 @@ fn build(state: &'static str) -> BzBusView {
     BzBusView {
         classes: vec!["bar-item", "bzbus-widget", state],
         tooltip: String::new(),
-        icon: "",
+        icon: NerdIcon::application(),
         progress_level_classes: vec![],
         progress_percent: 0,
         progress_visible: false,
