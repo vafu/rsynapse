@@ -76,7 +76,7 @@ fn merge_candidates(
     let mut candidates = alias_candidates
         .into_iter()
         .chain(picker_candidates)
-        .filter(|candidate| seen.insert(candidate.identity()))
+        .filter(|candidate| seen.insert(candidate.identity().to_owned()))
         .collect::<Vec<_>>();
     candidates.sort_by(|left, right| {
         right

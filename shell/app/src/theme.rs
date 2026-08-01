@@ -1,4 +1,10 @@
-use std::{cell::RefCell, path::PathBuf, process::Command};
+use std::{
+    cell::RefCell,
+    fs,
+    os::unix::fs::symlink,
+    path::{Path, PathBuf},
+    process::Command,
+};
 
 use shell_core::gtk::{self, gio, prelude::*};
 
@@ -23,7 +29,7 @@ pub(crate) fn toggle_color_scheme() -> Result<(), String> {
         .set_string("color-scheme", next)
         .map_err(|error| format!("set color-scheme to {next}: {error}"))?;
     gio::Settings::sync();
-    update_gtk_theme(&settings, next)
+    update_desktop_theme(&settings, next)
 }
 
 pub(crate) fn set_frost_mode(frosted: bool) -> Result<(), String> {
@@ -53,8 +59,9 @@ fn prepare_icons() {
 fn prepare_desktop_theme() {
     let settings = interface_settings();
     settings.connect_changed(Some("color-scheme"), |settings, _| {
-        if let Err(error) = update_gtk_theme(settings, settings.string("color-scheme").as_str()) {
-            eprintln!("[theme] failed to update GTK theme: {error}");
+        if let Err(error) = update_desktop_theme(settings, settings.string("color-scheme").as_str())
+        {
+            eprintln!("[theme] failed to update desktop theme: {error}");
         }
     });
     SETTINGS.with(|cell| {
@@ -76,8 +83,8 @@ fn prepare_accent_sync() {
 
 fn sync_color_scheme() {
     let settings = interface_settings();
-    if let Err(error) = update_gtk_theme(&settings, settings.string("color-scheme").as_str()) {
-        eprintln!("[theme] failed to sync GTK theme: {error}");
+    if let Err(error) = update_desktop_theme(&settings, settings.string("color-scheme").as_str()) {
+        eprintln!("[theme] failed to sync desktop theme: {error}");
     }
 }
 
@@ -96,6 +103,71 @@ fn update_gtk_theme(settings: &gio::Settings, color_scheme: &str) -> Result<(), 
         .map_err(|error| format!("set gtk-theme to {theme}: {error}"))?;
     gio::Settings::sync();
     Ok(())
+}
+
+fn update_desktop_theme(settings: &gio::Settings, color_scheme: &str) -> Result<(), String> {
+    update_gtk_theme(settings, color_scheme)?;
+    update_niri_theme(color_scheme)
+}
+
+fn update_niri_theme(color_scheme: &str) -> Result<(), String> {
+    let niri_dir = config_home().join("niri");
+    let source = niri_dir.join(format!("theme_{}.kdl", scheme_name(color_scheme)));
+    let target = niri_dir.join("theme.kdl");
+
+    if fs::read_link(&target).is_ok_and(|current| current == source) {
+        return Ok(());
+    }
+    if !source.exists() {
+        return Err(format!("niri theme does not exist: {}", source.display()));
+    }
+
+    replace_symlink(&source, &target)?;
+    let status = Command::new(niri_binary())
+        .args(["msg", "action", "load-config-file"])
+        .status()
+        .map_err(|error| format!("reload niri config: {error}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("niri config reload exited with {status}"))
+    }
+}
+
+fn replace_symlink(source: &Path, target: &Path) -> Result<(), String> {
+    let staging = target.with_extension("kdl.next");
+    if staging.exists() || staging.is_symlink() {
+        fs::remove_file(&staging)
+            .map_err(|error| format!("remove stale {}: {error}", staging.display()))?;
+    }
+    symlink(source, &staging).map_err(|error| {
+        format!(
+            "link {} to {}: {error}",
+            staging.display(),
+            source.display()
+        )
+    })?;
+    fs::rename(&staging, target).map_err(|error| format!("replace {}: {error}", target.display()))
+}
+
+fn niri_binary() -> PathBuf {
+    std::env::var_os("NIRI_BIN")
+        .map(PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("HOME")
+                .map(PathBuf::from)
+                .map(|home| home.join(".nix-profile/bin/niri"))
+                .filter(|path| path.exists())
+        })
+        .unwrap_or_else(|| PathBuf::from("niri"))
+}
+
+fn scheme_name(color_scheme: &str) -> &'static str {
+    if color_scheme == DARK_SCHEME {
+        "dark"
+    } else {
+        "light"
+    }
 }
 
 fn sync_accent(color: &str) -> Result<(), String> {
@@ -203,7 +275,8 @@ thread_local! {
 #[cfg(test)]
 mod tests {
     use super::{
-        DEFAULT_LIGHT_THEME, theme_for_frost_mode, theme_for_scheme, toggled_color_scheme,
+        DEFAULT_LIGHT_THEME, scheme_name, theme_for_frost_mode, theme_for_scheme,
+        toggled_color_scheme,
     };
 
     #[test]
@@ -211,6 +284,13 @@ mod tests {
         assert_eq!(toggled_color_scheme("prefer-light"), "prefer-dark");
         assert_eq!(toggled_color_scheme("prefer-dark"), "prefer-light");
         assert_eq!(toggled_color_scheme("default"), "prefer-light");
+    }
+
+    #[test]
+    fn maps_color_scheme_to_niri_theme_name() {
+        assert_eq!(scheme_name("prefer-dark"), "dark");
+        assert_eq!(scheme_name("prefer-light"), "light");
+        assert_eq!(scheme_name("default"), "light");
     }
 
     #[test]

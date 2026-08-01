@@ -72,7 +72,7 @@ use super::{
 use crate::{hints, request, theme};
 
 type WindowNode = niri::NiriWindow;
-pub(super) const WORKSPACE_RAIL_WIDTH: i32 = 36;
+pub(super) const WORKSPACE_RAIL_WIDTH: i32 = 28;
 const BT_BATTERY_INDICATOR_WIDTH: i32 = 4;
 const BT_BATTERY_INDICATOR_HEIGHT: i32 = 18;
 const SYSTEM_STATS_ARC_WIDTH: i32 = 10;

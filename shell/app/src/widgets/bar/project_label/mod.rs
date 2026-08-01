@@ -59,7 +59,10 @@ impl SimpleComponent for ProjectLabel {
 
             gtk::MenuButton {
                 set_css_classes: &["flat", "workspace-icon-menu-button"],
+                set_always_show_arrow: false,
                 set_has_frame: false,
+                set_halign: gtk::Align::Center,
+                set_valign: gtk::Align::Center,
 
                 #[watch]
                 set_tooltip_text: Some(project_tooltip(&model.vm, &model.workspace).as_str()),
