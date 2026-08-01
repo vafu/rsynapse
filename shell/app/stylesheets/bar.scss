@@ -1,29 +1,24 @@
-$panel-bg: #000;
-$panel-surface: color-mix(in srgb, #{$fg} 6%, #000);
-$panel-surface-hover: color-mix(in srgb, #{$fg} 10%, #000);
+$panel-bg: #{$secondary_sidebar_bg_color};
+$panel-surface: color-mix(in srgb, #{$fg} 6%, #{$panel-bg});
+$panel-surface-hover: color-mix(in srgb, #{$fg} 10%, #{$panel-bg});
 $panel-border: color-mix(in srgb, #{$fg} 9%, transparent);
 $panel-border-strong: color-mix(in srgb, #{$fg} 18%, transparent);
 $panel-muted: color-mix(in srgb, #{$fg} 62%, transparent);
 $panel-icon-size: 18px;
 $panel-meta-icon-size: 14px;
 $panel-item-size: 28px;
-$workspace-rail-width: 36px;
-$indicator-fill: color-mix(in srgb, #{$accent_color} 18%, #000);
-$indicator-fill-muted: color-mix(in srgb, #{$fg} 10%, #000);
-$indicator-fill-danger: color-mix(in srgb, #{$sys_danger} 8%, #000);
+$workspace-rail-width: $panel-item-size;
+$indicator-fill: color-mix(in srgb, #{$accent_color} 18%, #{$panel-bg});
+$indicator-fill-muted: color-mix(in srgb, #{$fg} 10%, #{$panel-bg});
+$indicator-fill-danger: color-mix(in srgb, #{$sys_danger} 8%, #{$panel-bg});
 $indicator-accent: color-mix(in srgb, #{$accent_color} 88%, transparent);
 $indicator-accent-pulse: color-mix(in srgb, #{$accent_color} 82%, transparent);
 $indicator-muted: color-mix(in srgb, #{$fg} 46%, transparent);
 $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
 
-.bar-window {
-  background-color: #{$panel-bg};
-  border-top: 1px solid #{$panel-border};
-}
-
+.bar-window,
 .workspace-bar-window {
-  background-color: #{$panel-bg};
-  border-right: 1px solid #{$panel-border};
+  background-color: transparent;
 }
 
 .bar {
@@ -309,7 +304,7 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
 
     &.idle,
     &.offline {
-      color: color-mix(in srgb, #{$fg} 60%, #{$bg});
+      color: color-mix(in srgb, #{$fg} 60%, #{$panel-bg});
     }
 
     &.failed {
@@ -328,7 +323,7 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
   }
 
   &.offline {
-    color: color-mix(in srgb, #{$fg} 60%, #{$bg});
+    color: color-mix(in srgb, #{$fg} 60%, #{$panel-bg});
   }
 
   &.running image {
@@ -436,14 +431,14 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
   margin-right: -4px;
   padding: 0 3px;
   border-radius: 999px;
-  background-color: color-mix(in srgb, #{$accent_color} 74%, #{$bg});
+  background-color: color-mix(in srgb, #{$accent_color} 74%, #{$panel-bg});
   color: #{$bg};
   font-size: 7pt;
   font-weight: 700;
 }
 
 .bar-badge.workspace-number-badge {
-  background-color: color-mix(in srgb, #{$fg} 16%, #{$bg});
+  background-color: color-mix(in srgb, #{$fg} 16%, #{$panel-bg});
   color: color-mix(in srgb, #{$fg} 72%, transparent);
 }
 
@@ -529,7 +524,7 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
 
     &.idle,
     &.offline {
-      color: color-mix(in srgb, #{$fg} 60%, #{$bg});
+      color: color-mix(in srgb, #{$fg} 60%, #{$panel-bg});
     }
 
     &.failed {
@@ -554,7 +549,7 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
   }
 
   &.offline {
-    color: color-mix(in srgb, #{$fg} 60%, #{$bg});
+    color: color-mix(in srgb, #{$fg} 60%, #{$panel-bg});
   }
 
   &.running .nerdicon {

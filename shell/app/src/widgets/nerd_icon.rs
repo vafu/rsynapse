@@ -49,8 +49,6 @@ impl NerdIconLabelExt for gtk::Label {
     fn set_nerd_icon(&self, icon: NerdIcon) {
         self.set_halign(gtk::Align::Center);
         self.set_valign(gtk::Align::Center);
-        self.set_hexpand(false);
-        self.set_vexpand(false);
         self.set_xalign(0.5);
         self.set_yalign(0.5);
         self.set_justify(gtk::Justification::Center);

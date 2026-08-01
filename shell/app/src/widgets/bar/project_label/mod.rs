@@ -11,13 +11,16 @@ use shell_core::gtk::{self, prelude::*};
 use self::{
     input::ProjectLabelInput,
     source::{
-        clear_project_icon_override, project_label_vm, set_project_icon_override, ProjectLabelVm,
-        WorkspaceIconChoice,
+        ProjectLabelVm, WorkspaceIconChoice, clear_project_icon_override, project_label_vm,
+        set_project_icon_override,
     },
     view::*,
 };
 
-use super::WorkspaceNode;
+use super::{
+    WorkspaceNode,
+    bar_indicator::{self, BarIndicatorExt},
+};
 use crate::{
     hints::hints_active,
     widgets::nerd_icon::{NerdIcon, NerdIconLabelExt},
@@ -63,7 +66,10 @@ impl SimpleComponent for ProjectLabel {
 
                 gtk::MenuButton {
                     set_css_classes: &["flat", "workspace-icon-menu-button"],
+                    set_always_show_arrow: false,
                     set_has_frame: false,
+                    set_halign: gtk::Align::Center,
+                    set_valign: gtk::Align::Center,
 
                     #[watch]
                     set_tooltip_text: Some(project_tooltip(&model.vm, &model.workspace).as_str()),
@@ -175,6 +181,7 @@ impl SimpleComponent for ProjectLabel {
 
                     #[wrap(Some)]
                     set_child = &gtk::Box {
+                        set_bar_indicator_size: bar_indicator::SIZE,
                         #[watch]
                         set_css_classes: &project_group_classes(&model.vm, model.selected),
 
@@ -184,11 +191,14 @@ impl SimpleComponent for ProjectLabel {
                         set_orientation: gtk::Orientation::Horizontal,
                         set_spacing: 1,
 
+                        #[name = "project_icon_label"]
                         gtk::Label {
+                            set_widget_name: "workspace-project-icon",
                             set_css_classes: &["bar-indicator-icon", "nerdicon"],
                             set_halign: gtk::Align::Center,
                             set_valign: gtk::Align::Center,
                             set_hexpand: true,
+                            set_xalign: 0.5,
 
                             #[watch]
                             set_nerd_icon: project_icon_render(&model.vm),

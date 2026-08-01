@@ -10,7 +10,10 @@ use self::{
     agent::{Agent, State as AgentState},
     source::{Kind, ViewModel, window_tile_vm},
 };
-use super::WindowNode;
+use super::{
+    WindowNode,
+    bar_indicator::{self, BarIndicatorExt},
+};
 use crate::widgets::nerd_icon::{NerdIcon, NerdIconLabelExt};
 
 #[derive(Debug)]
@@ -43,6 +46,7 @@ impl SimpleComponent for WindowTile {
             set_vexpand: false,
 
             gtk::Overlay {
+                set_bar_indicator_size: bar_indicator::SIZE,
                 #[watch]
                 set_css_classes: &traced_window_tile_classes(&model.vm),
 
