@@ -1,4 +1,5 @@
 mod audio;
+mod bar_indicator;
 mod bar_item;
 mod battery;
 mod bluetooth;
@@ -72,7 +73,7 @@ use super::{
 use crate::{hints, request, theme};
 
 type WindowNode = niri::NiriWindow;
-pub(super) const WORKSPACE_RAIL_WIDTH: i32 = 28;
+pub(super) const WORKSPACE_RAIL_WIDTH: i32 = bar_indicator::SIZE;
 const BT_BATTERY_INDICATOR_WIDTH: i32 = 4;
 const BT_BATTERY_INDICATOR_HEIGHT: i32 = 18;
 const SYSTEM_STATS_ARC_WIDTH: i32 = 10;
