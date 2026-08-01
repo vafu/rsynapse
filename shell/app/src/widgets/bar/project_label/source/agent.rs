@@ -1,9 +1,9 @@
-use shell_core::source::{self, Observable, rx::Observable as _};
+use shell_core::source::{self, rx::Observable as _, Observable};
 
 use crate::widgets::bar::{
     niri::NiriWorkspace,
-    window_source::{WindowSnapshot, window_snapshots},
-    window_tile::agent::{Agent, State, agent_for_window},
+    window_source::{window_snapshots, WindowSnapshot},
+    window_tile::agent::{agent_for_window, Agent, State},
 };
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]

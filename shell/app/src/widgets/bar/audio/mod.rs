@@ -7,6 +7,8 @@ use route_row::AudioRouteRow;
 use source::audio_routes;
 pub(super) use source::audio_status;
 
+use crate::widgets::nerd_icon::NerdIcon;
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct AudioView {
     pub(super) visible: bool,
@@ -34,7 +36,7 @@ pub(super) struct AudioRouteView {
     pub(super) name: String,
     pub(super) title: String,
     pub(super) subtitle: String,
-    pub(super) icon: String,
+    pub(super) icon: NerdIcon,
     pub(super) is_default: bool,
 }
 

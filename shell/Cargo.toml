@@ -17,7 +17,7 @@ rust-version = "1.93"
 license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
-gtk = { package = "gtk4", version = "0.11.3" }
+gtk = { package = "gtk4", version = "0.11.3", features = ["v4_22"] }
 gtk4-background-effect = { path = "core/background-effect" }
 gtk4-layer-shell = "0.8.0"
 relm4 = "0.11.0"

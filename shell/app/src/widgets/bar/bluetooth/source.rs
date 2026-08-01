@@ -1,22 +1,20 @@
 use std::thread;
 
+use super::model::{
+    ADAPTER_INTERFACE, BLUEZ_BUS, BLUEZ_OBJECT_PATH, BluezAdapter, BluezDevice, DEVICE_INTERFACE,
+    bluez, bluez_models,
+};
+use super::view::{self, AdapterSnapshot, DeviceSnapshot};
+use super::{BluetoothDeviceGroup, BluetoothDeviceView, BluetoothView};
 use shell_core::source::{self, Observable, dbus, rx::Observable as _};
 use shell_rx_macros::combine_latest;
 use zbus::zvariant::OwnedObjectPath;
 
-use super::model::{
-    ADAPTER_INTERFACE, BLUEZ_BUS, BLUEZ_OBJECT_PATH, BluezAdapter, BluezDevice, DEVICE_INTERFACE,
-    bluez,
-};
-use super::view::{self, AdapterSnapshot, DeviceSnapshot};
-use super::{BluetoothDeviceGroup, BluetoothDeviceView, BluetoothView};
-
 pub(super) fn bluetooth_status() -> Observable<BluetoothView> {
     source::shared_by_key("rsynapse.bluetooth-status", BLUEZ_OBJECT_PATH, || {
-        let models = dbus::models::<BluezAdapter>(bluez())
-            .combine_latest(dbus::models::<BluezDevice>(bluez()), |adapters, devices| {
-                (adapters, devices)
-            })
+        let models = dbus::object_manager(bluez())
+            .map(bluez_models)
+            .distinct_until_changed()
             .box_it();
 
         source::switch_map(

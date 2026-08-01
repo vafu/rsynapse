@@ -1,32 +1,436 @@
-$label-margin: 4px;
-$outline-width: $label-margin * 0.4;
-$outline-offset: $label-margin * 0.5;
+$panel-bg: #000;
+$panel-surface: color-mix(in srgb, #{$fg} 6%, #000);
+$panel-surface-hover: color-mix(in srgb, #{$fg} 10%, #000);
+$panel-border: color-mix(in srgb, #{$fg} 9%, transparent);
+$panel-border-strong: color-mix(in srgb, #{$fg} 18%, transparent);
+$panel-muted: color-mix(in srgb, #{$fg} 62%, transparent);
+$panel-icon-size: 18px;
+$panel-meta-icon-size: 14px;
+$panel-item-size: 28px;
+$workspace-rail-width: 36px;
+$indicator-fill: color-mix(in srgb, #{$accent_color} 18%, #000);
+$indicator-fill-muted: color-mix(in srgb, #{$fg} 10%, #000);
+$indicator-fill-danger: color-mix(in srgb, #{$sys_danger} 8%, #000);
+$indicator-accent: color-mix(in srgb, #{$accent_color} 88%, transparent);
+$indicator-accent-pulse: color-mix(in srgb, #{$accent_color} 82%, transparent);
+$indicator-muted: color-mix(in srgb, #{$fg} 46%, transparent);
+$indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
 
 .bar-window {
-  background-color: transparent;
+  background-color: #{$panel-bg};
+  border-top: 1px solid #{$panel-border};
+}
+
+.workspace-bar-window {
+  background-color: #{$panel-bg};
+  border-right: 1px solid #{$panel-border};
 }
 
 .bar {
-  background-color: transparent;
-  padding: 0px 0px 8px 0px;
-
+  background-color: #{$panel-bg};
+  padding: 0 5px 0 0;
   transition: 100ms;
-  min-height: 32px;
+  min-height: #{$panel-item-size};
 
-  .barblock {
-    @include rsx-surface;
+  .bar-zone {
+    min-height: #{$panel-item-size};
+  }
 
+  .bar-zone-start,
+  .bar-zone-status {
+    min-width: 0;
+  }
+
+  .bar-item {
+    background-color: transparent;
+    color: #{$fg};
+    border: 1px solid transparent;
+    border-radius: 0;
+    box-shadow: none;
+    min-height: #{$panel-item-size};
+    margin: 0;
+    padding: 0 6px;
     transition:
       background-color 100ms,
-      border-color 100ms;
-    padding: 0 8px;
-    margin-top: 4px;
-    margin-left: 8px;
-    margin-right: 8px;
+      border-color 100ms,
+      opacity 100ms;
+  }
+
+  button.bar-action,
+  menubutton.bar-action > button {
+    color: inherit;
+    min-height: #{$panel-item-size};
+    min-width: #{$panel-item-size};
+    margin: 0;
+    padding: 0;
+  }
+
+  menubutton.bar-action {
+    margin: 0;
+    padding: 0;
+  }
+
+  .bar-item-square {
+    min-width: #{$panel-item-size};
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  .bar-item-square button.bar-action,
+  .bar-item-square menubutton.bar-action > button {
+    min-width: #{$panel-item-size};
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  .bar-item-icon {
+    -gtk-icon-size: #{$panel-icon-size};
   }
 }
 
-.barblock-badge {
+.bar-zone-windows {
+  margin-left: 0;
+  margin-right: 12px;
+}
+
+.bar-zone-title {
+  min-width: 360px;
+}
+
+.bar-zone-title .selected-project {
+  margin: 0;
+  padding: 0 12px;
+}
+
+.bar-zone-status .bar-item,
+.bar-zone-status .bar-item button {
+  color: #{$fg};
+}
+
+
+.bar-zone-status .bar-item.disabled,
+.bar-zone-status .bar-item.inactive,
+.bar-zone-status .bar-item.muted,
+.bar-zone-status button.bar-action:disabled,
+.bar-zone-status menubutton.bar-action:disabled > button {
+  color: #{$panel-muted};
+  opacity: 0.72;
+}
+
+.bar-zone-status .bar-item image,
+.bar-zone-status .bar-item .nerdicon {
+  color: inherit;
+}
+
+.bar-corner-indicator {
+  min-width: #{$workspace-rail-width};
+  color: color-mix(in srgb, #{$accent_color} 70%, #{$fg});
+}
+
+.bar-corner-icon,
+.selected-project-icon,
+.bar-indicator-icon {
+  -gtk-icon-size: #{$panel-icon-size};
+}
+
+.nerdicon {
+  font-family: "FiraCode Nerd Font Mono", "0xProto Nerd Font Mono", monospace;
+  font-weight: 500;
+  margin: 0;
+  padding: 0;
+  font-size: 18pt;
+}
+
+.nerdicon.bar-corner-icon,
+.nerdicon.selected-project-icon,
+.nerdicon.bar-indicator-icon,
+.nerdicon.bar-item-icon,
+.nerdicon.mpris-control-icon {
+  min-height: #{$panel-icon-size};
+  min-width: #{$panel-icon-size};
+  line-height: 1;
+}
+
+.nerdicon.selected-project-meta-icon {
+  min-height: #{$panel-meta-icon-size};
+  min-width: #{$panel-meta-icon-size};
+  line-height: 1;
+  font-size: 12pt;
+}
+
+.selected-project-meta-icon {
+  -gtk-icon-size: #{$panel-meta-icon-size};
+}
+
+.selected-project {
+  padding: 0 9px;
+  margin-left: 0;
+  margin-right: 6px;
+  transition:
+    background-color 160ms,
+    border-color 160ms,
+    opacity 160ms;
+
+  .selected-project-segment {
+    color: color-mix(in srgb, #{$fg} 78%, transparent);
+  }
+
+  .selected-project-main {
+    color: color-mix(in srgb, #{$fg} 90%, transparent);
+    font-weight: 700;
+  }
+
+  .selected-project-separator {
+    color: color-mix(in srgb, #{$fg} 48%, transparent);
+  }
+
+  .selected-project-branch-icon {
+    color: color-mix(in srgb, #{$fg} 76%, transparent);
+  }
+
+  .selected-project-branch-label {
+    color: color-mix(in srgb, #{$fg} 82%, transparent);
+    font-weight: 650;
+  }
+}
+
+.bar-indicator {
+  background-color: transparent;
+  color: #{$fg};
+  border: 1px solid transparent;
+  border-radius: 0;
+  box-shadow: none;
+  min-height: #{$panel-item-size};
+  min-width: #{$panel-item-size};
+  padding: 0;
+  opacity: 1;
+  transition:
+    background-color 160ms,
+    border-color 160ms,
+    opacity 160ms;
+
+  &.inactive,
+  &.disabled,
+  &.muted {
+    color: #{$panel-muted};
+    opacity: 0.72;
+  }
+
+  &.active,
+  &.current-workspace,
+  &.selected-workspace {
+    background-color: #{$indicator-fill};
+    opacity: 1;
+  }
+
+  &.inactive-selected-workspace {
+    background-color: #{$indicator-fill-muted};
+    color: color-mix(in srgb, #{$fg} 70%, transparent);
+    opacity: 0.72;
+  }
+
+  &.urgent,
+  &.failed,
+  &.attention,
+  &.has-attention {
+    background-color: #{$indicator-fill-danger};
+    opacity: 1;
+  }
+
+  &:hover {
+    background-color: #{$panel-surface-hover};
+    opacity: 1;
+  }
+}
+
+.bar-indicator-list {
+  margin: 0;
+}
+
+.bar-indicator-list-horizontal .bar-indicator {
+  margin: 0;
+}
+
+.bar-indicator-list-vertical .bar-indicator {
+  margin: 0;
+}
+
+.bar-indicator-list-vertical menubutton.workspace-icon-menu-button {
+  margin: 0;
+  padding: 0;
+}
+
+.bar-indicator-list-vertical menubutton.workspace-icon-menu-button > button {
+  min-height: #{$panel-item-size};
+  min-width: #{$panel-item-size};
+  margin: 0;
+  padding: 0;
+}
+
+
+.bar-indicator-list-horizontal .bar-indicator.active {
+  border-top-color: #{$indicator-accent};
+}
+
+.bar-indicator-list-horizontal .bar-indicator.urgent,
+.bar-indicator-list-horizontal .bar-indicator.failed,
+.bar-indicator-list-horizontal .bar-indicator.attention {
+  border-top-color: #{$indicator-danger};
+}
+
+.bar-indicator-list-horizontal .bar-indicator:hover {
+  border-top-color: #{$panel-border-strong};
+}
+
+.workspace-window-column {
+  &.stacked {
+    margin-top: 0;
+    padding-left: 3px;
+    border-left: 1px solid color-mix(in srgb, #{$accent_color} 36%, transparent);
+
+  }
+}
+
+.bar-indicator.build-progress {
+  outline: none;
+  outline-offset: 0;
+
+  >.track,
+  >.level {
+    margin: 0;
+  }
+
+  >.track {
+    color: color-mix(in srgb, #{$fg} 20%, transparent);
+  }
+
+  >.level {
+    color: #{$fg};
+
+    &.idle,
+    &.offline {
+      color: color-mix(in srgb, #{$fg} 60%, #{$bg});
+    }
+
+    &.failed {
+      color: color-mix(in srgb, #{$ws_urgent} 78%, #{$fg});
+    }
+
+    &.finished {
+      color: color-mix(in srgb, #{$sys_ok} 74%, #{$fg});
+    }
+  }
+}
+
+.bar-indicator.workspace-window-build {
+  &.idle {
+    opacity: 0.58;
+  }
+
+  &.offline {
+    color: color-mix(in srgb, #{$fg} 60%, #{$bg});
+  }
+
+  &.running image {
+    animation: bzbus-spin 1.2s linear infinite;
+  }
+
+  &.finished {
+    color: color-mix(in srgb, #{$sys_ok} 74%, #{$fg});
+  }
+}
+
+.bar-indicator.workspace-window-agent {
+  &.thinking .bar-indicator-icon:first-child {
+    animation: agent-thinking-pulse 0.5s ease-in-out infinite;
+  }
+
+  &.tool-use .bar-indicator-icon:first-child {
+    animation: agent-tool-scale 0.6s ease-in-out infinite;
+  }
+
+  &.compacting .bar-indicator-icon:first-child {
+    animation: agent-compact-shrink 1.2s ease-in-out infinite;
+  }
+
+  &.attention .bar-indicator-icon:first-child {
+    animation: agent-attention-shake 0.4s ease-in-out infinite;
+  }
+}
+
+.workspace-rail {
+  background-color: #{$panel-bg};
+  padding: 0;
+}
+
+.context-zone-revealer {
+  margin-top: 6px;
+}
+
+.context-zone-list .context-zone-item.context-zone-build.running image {
+  animation: bzbus-spin 1.2s linear infinite;
+}
+
+
+.bar-indicator-list-vertical .bar-indicator.current-workspace,
+.bar-indicator-list-vertical .bar-indicator.selected-workspace {
+  border-right-color: #{$indicator-accent};
+}
+
+.bar-indicator-list-vertical .bar-indicator.inactive-selected-workspace {
+  border-right-color: #{$indicator-muted};
+}
+
+.bar-indicator-list-vertical .bar-indicator.has-unseen {
+  animation: workspace-unseen-accent-pulse 2.8s ease-in-out infinite;
+  border-right-color: #{$indicator-accent-pulse};
+}
+
+.bar-indicator-list-vertical .bar-indicator.has-attention {
+  border-right-color: #{$indicator-danger};
+}
+
+.bar-indicator-list-vertical .bar-indicator:hover {
+  border-right-color: #{$panel-border-strong};
+}
+
+
+.bar-indicator-title {
+  background-color: transparent;
+  border-radius: 0;
+  padding: 0 8px 0 3px;
+
+  label {
+    font-weight: 700;
+  }
+}
+
+.bar-indicator.has-working:not(.has-attention) .bar-indicator-icon {
+  animation: agent-thinking-pulse 0.5s ease-in-out infinite;
+}
+
+.bar-indicator.has-attention .bar-indicator-icon {
+  animation: agent-attention-shake 0.4s ease-in-out infinite;
+}
+
+@keyframes workspace-unseen-accent-pulse {
+  0%,
+  100% {
+    background-color: color-mix(in srgb, #{$accent_color} 12%, #{$bg_tint});
+    border-color: transparent;
+    border-right-color: color-mix(in srgb, #{$accent_color} 68%, transparent);
+    box-shadow: 0 0 8px 0 #{$shadow};
+  }
+
+  50% {
+    background-color: color-mix(in srgb, #{$accent_color} 26%, #{$bg_tint});
+    border-color: transparent;
+    border-right-color: color-mix(in srgb, #{$accent_color} 92%, #{$fg});
+    box-shadow: 0 0 14px 1px color-mix(in srgb, #{$accent_color} 34%, transparent);
+  }
+}
+
+.bar-badge {
   min-width: 12px;
   margin-top: 2px;
   margin-right: -4px;
@@ -38,138 +442,74 @@ $outline-offset: $label-margin * 0.5;
   font-weight: 700;
 }
 
-.barblock-badge.workspace-number-badge {
+.bar-badge.workspace-number-badge {
   background-color: color-mix(in srgb, #{$fg} 16%, #{$bg});
   color: color-mix(in srgb, #{$fg} 72%, transparent);
 }
 
-.agent-unseen-badge {
+.bar-badge.agent-unseen-badge {
   min-width: 8px;
   min-height: 8px;
-  border-radius: 999px;
-  background-color: #{$sys_danger};
+  margin-top: 4px;
+  margin-right: 0px;
+  padding: 0;
+  background-color: #{$accent_color};
   box-shadow: 0 0 0 1px color-mix(in srgb, #{$bg} 72%, transparent);
+  outline: solid 1px color-mix(in srgb, #{$sys_critical} 72%, #{$accent_color});
 }
 
-.window-agent-unseen-badge {
-  margin-top: -2px;
-  margin-right: -2px;
-}
-
-.workspace-agent-unseen-badge {
+.bar-badge.workspace-agent-unseen-badge {
   margin-top: -2px;
   margin-right: -4px;
 }
 
-.workspace-window-frame {
-  margin-top: 4px;
+.bar-build-indicator {
+  -gtk-icon-size: 12px;
+  min-width: 12px;
+  min-height: 12px;
+  opacity: 0.96;
+  text-shadow: 0 0 2px color-mix(in srgb, #{$bg} 88%, transparent);
 
-  &.workspace-window-agent {
-    .agent-subagent-badge {
-      min-width: 12px;
-      padding: 0 3px;
-      margin-top: -7px;
-      margin-right: -7px;
-      border-radius: 999px;
-      background-color: #{$sys_warn};
-      color: #{$bg};
-      font-size: 7pt;
-      font-weight: 700;
-    }
+  &.build-running {
+    color: color-mix(in srgb, #{$accent_color} 86%, #{$fg});
+    animation: bzbus-spin 1.2s linear infinite;
+  }
+
+  &.build-failed {
+    color: color-mix(in srgb, #{$ws_urgent} 86%, #{$fg});
+  }
+
+  &.build-finished {
+    color: color-mix(in srgb, #{$sys_ok} 82%, #{$fg});
   }
 }
 
-.workspace-window-tile {
-  @include rsx-surface;
-
-  padding: 0 8px;
-  opacity: 1;
-  transition:
-    background-color 160ms,
-    border-color 160ms,
-    opacity 160ms,
-    outline-color 160ms;
-
-  &:not(.active):not(.urgent) {
-    opacity: 0.86;
+@keyframes bzbus-spin {
+  from {
+    transform: rotate(0deg);
   }
 
-  &.active {
-    @include rsx-surface-selected;
-
-    opacity: 1;
-  }
-
-  &.urgent {
-    @include rsx-surface-danger;
-
-    opacity: 1;
-  }
-
-  &.workspace-window-agent {
-    &.attention {
-      @include rsx-surface-danger;
-
-      opacity: 1;
-    }
-
-    .agent-inner {
-      padding: 0;
-    }
-
-    &.thinking materialicon:first-child,
-    &.thinking .materialicon:first-child {
-      animation: agent-thinking-pulse 0.5s ease-in-out infinite;
-    }
-
-    &.tool-use materialicon:first-child,
-    &.tool-use .materialicon:first-child {
-      animation: agent-tool-scale 0.6s ease-in-out infinite;
-    }
-
-    &.compacting materialicon:first-child,
-    &.compacting .materialicon:first-child {
-      animation: agent-compact-shrink 1.2s ease-in-out infinite;
-    }
-
-    &.attention materialicon:first-child,
-    &.attention .materialicon:first-child {
-      animation: agent-attention-shake 0.4s ease-in-out infinite;
-    }
+  to {
+    transform: rotate(360deg);
   }
 }
 
-.panel-widget {
-  margin: 0 4px;
-}
+.system-stats-widget {
+  padding-left: 0;
+  padding-right: 0;
 
-.projects-list {
-  margin-left: 8px;
-  margin-right: 8px;
-}
-
-.bar {
-  menubutton.circular > button {
-    border-radius: 999px;
+  .system-stats-button {
+    min-width: 0;
+    padding: 0;
   }
-}
 
-.power-profile-button {
-  margin: 0;
-  min-width: 0;
-  padding: 0;
-}
+  .system-stats-content {
+    margin: 0;
+  }
 
-.system-cluster {
-  margin-right: 8px;
-}
-
-.network-icon,
-.audio-icon,
-.power-profile-icon,
-.tray-icon,
-.battery-icon {
-  opacity: 0.78;
+  .levelindicator.arc {
+    padding: 0;
+  }
 }
 
 .bzbus-progress-frame {
@@ -205,7 +545,7 @@ $outline-offset: $label-margin * 0.5;
 .bzbus-widget {
   padding: 0 7px;
 
-  .materialicon {
+  .nerdicon {
     margin: 0;
   }
 
@@ -217,7 +557,7 @@ $outline-offset: $label-margin * 0.5;
     color: color-mix(in srgb, #{$fg} 60%, #{$bg});
   }
 
-  &.running .materialicon {
+  &.running .nerdicon {
     animation: bzbus-spin 1.2s linear infinite;
   }
 
@@ -227,16 +567,6 @@ $outline-offset: $label-margin * 0.5;
 
   &.finished {
     color: color-mix(in srgb, #{$sys_ok} 74%, #{$fg});
-  }
-}
-
-@keyframes bzbus-spin {
-  from {
-    transform: rotate(0deg);
-  }
-
-  to {
-    transform: rotate(360deg);
   }
 }
 
@@ -263,7 +593,6 @@ $outline-offset: $label-margin * 0.5;
 }
 
 .mpris-widget {
-
   &.paused,
   &.stopped {
     opacity: 0.72;
@@ -275,7 +604,7 @@ $outline-offset: $label-margin * 0.5;
   }
 
   .mpris-control {
-    min-width: 24px;
+    min-width: #{$panel-item-size};
     padding: 0;
     margin: 0;
 
@@ -357,7 +686,8 @@ $outline-offset: $label-margin * 0.5;
 .levelindicator {
   min-width: 8px;
 
-  >.track {
+  >.track,
+  &.track {
     color: #{$bat_track};
   }
 
@@ -371,7 +701,8 @@ $outline-offset: $label-margin * 0.5;
     padding-bottom: 6px;
   }
 
-  >.level {
+  >.level,
+  &.level {
     &.normal {
       color: #{$fg};
     }
@@ -427,11 +758,9 @@ $outline-offset: $label-margin * 0.5;
 }
 
 .bt-battery-indicator {
-  margin-left: 2px;
-}
-
-.bar .barblock.clock-widget {
-  margin-right: 0;
+  min-width: 4px;
+  margin-left: 1px;
+  padding: 0;
 }
 
 .clock-widget {
@@ -446,119 +775,5 @@ $outline-offset: $label-margin * 0.5;
     margin-right: -4px;
     border-radius: 999px;
     background-color: #{$sys_danger};
-  }
-}
-
-.projects-list {
-  margin-left: 8px;
-  margin-right: 8px;
-}
-
-.projects-project {
-  @include rsx-surface;
-
-  transition:
-    background-color 180ms,
-    border-color 180ms,
-    opacity 180ms,
-    outline-color 180ms;
-  margin-top: 4px;
-
-  &.current-workspace {
-    @include rsx-surface-selected;
-  }
-
-  &.is-empty:not(.current-workspace) {
-    opacity: 0.64;
-  }
-
-  .projects-collapsed-icon {
-    padding: 0 6px;
-    border-radius: 12px 0 0 12px;
-  }
-
-  .button-subgroup-main,
-  .projects-root-button {
-    min-width: 0;
-  }
-
-  .button-subgroup-main {
-    margin: 0;
-    padding: 0;
-  }
-
-  .projects-root-button {
-    margin: 0;
-    padding: 0;
-  }
-
-  .button-subgroup-main,
-  .button-subgroup {
-    transition: background-color 180ms, outline-color 180ms;
-  }
-
-  .button-subgroup-main.opened {
-    background-color: transparent;
-    border-radius: 12px 0 0 12px;
-  }
-
-  .button-subgroup {
-    background-color: transparent;
-  }
-
-  &.button-subgroup-expand-right .button-subgroup {
-    margin-left: -1px;
-  }
-
-  .projects-title {
-    background-color: transparent;
-    border-radius: 0 12px 12px 0;
-    padding: 0 8px 0 3px;
-  }
-
-  .projects-primary {
-    font-weight: 700;
-  }
-
-  .projects-delimiter,
-  .projects-secondary {
-    font-weight: 600;
-    opacity: 0.58;
-  }
-
-  &.has-working:not(.has-attention) .projects-collapsed-icon materialicon,
-  &.has-working:not(.has-attention) .projects-collapsed-icon .materialicon {
-    animation: agent-thinking-pulse 0.5s ease-in-out infinite;
-  }
-
-  &.has-attention .projects-collapsed-icon materialicon,
-  &.has-attention .projects-collapsed-icon .materialicon {
-    animation: agent-attention-shake 0.4s ease-in-out infinite;
-  }
-}
-
-.button-subgroup-main {
-  &.opened {
-    background-color: #{$secondary_sidebar_fg_color};
-    border-radius: 0 12px 12px 0;
-  }
-
-  transition: 100ms;
-}
-
-.button-subgroup {
-  background-color: #{$secondary_sidebar_fg_color};
-  border-radius: 12px 0 0 12px;
-}
-
-.button-subgroup-expand-right {
-  .button-subgroup-main {
-    &.opened {
-      border-radius: 12px 0 0 12px;
-    }
-  }
-
-  .button-subgroup {
-    border-radius: 0 12px 12px 0;
   }
 }

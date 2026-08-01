@@ -1,0 +1,32 @@
+#!/usr/bin/env bash
+set -u
+
+hook_name="$(basename "$0")"
+
+run_repo_local_hook() {
+  local git_dir local_hook hook_real local_real
+  git_dir="$(git rev-parse --git-dir 2>/dev/null)" || return 0
+  case "$git_dir" in
+    /*) ;;
+    *) git_dir="$PWD/$git_dir" ;;
+  esac
+  local_hook="$git_dir/hooks/$hook_name"
+  [[ -x "$local_hook" ]] || return 0
+  hook_real="$(realpath "$0" 2>/dev/null || printf '%s\n' "$0")"
+  local_real="$(realpath "$local_hook" 2>/dev/null || printf '%s\n' "$local_hook")"
+  [[ "$local_real" != "$hook_real" ]] || return 0
+  "$local_hook" "$@"
+}
+
+refresh_rsynapse_project() {
+  local proj_bin root
+  proj_bin="$(command -v proj 2>/dev/null)" || return 0
+  [[ -x "$proj_bin" ]] || return 0
+  root="$(git rev-parse --show-toplevel 2>/dev/null)" || return 0
+  "$proj_bin" update "$root" >/dev/null 2>&1 || true
+}
+
+repo_status=0
+run_repo_local_hook "$@" || repo_status=$?
+refresh_rsynapse_project
+exit "$repo_status"

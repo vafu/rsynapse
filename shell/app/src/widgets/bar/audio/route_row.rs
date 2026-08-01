@@ -1,8 +1,9 @@
+use nerd_font_symbols::fa;
 use relm4::prelude::*;
 use shell_core::gtk::{self, prelude::*};
 
 use super::{AudioRouteView, source};
-use crate::widgets::material_icon;
+use crate::widgets::nerd_icon::{NerdIcon, NerdIconLabelExt};
 
 #[derive(Debug)]
 pub(in crate::widgets::bar) struct AudioRouteRow {
@@ -26,9 +27,9 @@ impl SimpleComponent for AudioRouteRow {
                 set_orientation: gtk::Orientation::Horizontal,
                 set_spacing: 8,
 
-                gtk::Image {
-                    add_css_class: "materialicon",
-                    set_icon_name: Some(material_icon::icon_name(model.route.icon.as_str()).as_str()),
+                gtk::Label {
+                    set_css_classes: &["nerdicon", "audio-route-icon"],
+                    set_nerd_icon: model.route.icon.clone(),
                 },
 
                 gtk::Box {
@@ -50,10 +51,10 @@ impl SimpleComponent for AudioRouteRow {
                     }
                 },
 
-                gtk::Image {
-                    add_css_class: "materialicon",
+                gtk::Label {
+                    set_css_classes: &["nerdicon", "audio-route-selected-icon"],
                     set_visible: model.route.is_default,
-                    set_icon_name: Some(material_icon::icon_name("check").as_str()),
+                    set_nerd_icon: NerdIcon::new(fa::FA_CIRCLE_CHECK),
                 }
             }
         }

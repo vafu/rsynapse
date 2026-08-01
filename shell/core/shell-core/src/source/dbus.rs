@@ -245,6 +245,38 @@ where
     })
 }
 
+/// Emits a typed D-Bus property value, using an ObjectManager snapshot value as
+/// the first emission and subscribing to later `PropertiesChanged` updates.
+///
+/// This is useful for ObjectManager-backed services whose initial
+/// `GetManagedObjects` payload already includes property values. It avoids a
+/// startup burst of `org.freedesktop.DBus.Properties.Get` calls for each
+/// object/property while preserving signal-driven live updates.
+pub fn property_with_initial<T>(
+    descriptor: PropertyDescriptor,
+    initial: Option<T>,
+) -> Observable<Option<T>>
+where
+    T: TryFrom<OwnedValue> + Clone + PartialEq + Send + Sync + 'static,
+    T::Error: fmt::Display,
+{
+    let key = descriptor.key();
+    shared_by_key("dbus-property-seeded", key, move || {
+        let path = descriptor_error_path(&descriptor.key());
+        let descriptor = descriptor.clone();
+        let initial = initial.clone();
+        let observable = defer(move || {
+            from_stream_result(property_stream_with_initial::<T>(
+                descriptor.clone(),
+                initial.clone(),
+            ))
+        })
+        .distinct_until_changed()
+        .box_it();
+        log_errors("dbus-property-seeded", path, observable)
+    })
+}
+
 /// Emits a typed D-Bus property value, substituting `default` while absent.
 pub fn property_or<T>(descriptor: PropertyDescriptor, default: T) -> Observable<T>
 where
@@ -252,6 +284,21 @@ where
     T::Error: fmt::Display,
 {
     property(descriptor)
+        .map(move |value| value.unwrap_or_else(|| default.clone()))
+        .box_it()
+}
+
+/// Emits a seeded typed D-Bus property value, substituting `default` while absent.
+pub fn property_or_with_initial<T>(
+    descriptor: PropertyDescriptor,
+    initial: Option<T>,
+    default: T,
+) -> Observable<T>
+where
+    T: TryFrom<OwnedValue> + Clone + PartialEq + Send + Sync + 'static,
+    T::Error: fmt::Display,
+{
+    property_with_initial(descriptor, initial)
         .map(move |value| value.unwrap_or_else(|| default.clone()))
         .box_it()
 }
@@ -485,98 +532,6 @@ struct PropertyStreamState {
     phase: PropertyPhase,
 }
 
-fn properties_changed(object: ObjectDescriptor) -> Observable<PropertiesChanged> {
-    let key = object.key();
-    shared_by_key("dbus-properties-changed", key, move || {
-        let path = descriptor_error_path(&object.key());
-        let object = object.clone();
-        let observable =
-            defer(move || from_stream_result(properties_changed_stream(object.clone()))).box_it();
-        log_errors("dbus-properties-changed", path, observable)
-    })
-}
-
-fn properties_changed_stream(
-    object: ObjectDescriptor,
-) -> impl Stream<Item = Result<PropertiesChanged, String>> {
-    stream::unfold(
-        PropertySignalStreamState {
-            object,
-            proxy: None,
-            stream: None,
-            phase: SignalPhase::Connect,
-        },
-        |mut state| async move {
-            loop {
-                match state.phase {
-                    SignalPhase::Connect => match properties_proxy(&state.object).await {
-                        Ok(proxy) => {
-                            state.proxy = Some(proxy);
-                            state.phase = SignalPhase::Watch;
-                        }
-                        Err(error) => {
-                            state.phase = SignalPhase::Done;
-                            return Some((
-                                Err(format_dbus_error("connect PropertiesChanged source", error)),
-                                state,
-                            ));
-                        }
-                    },
-                    SignalPhase::Watch => {
-                        if state.stream.is_none() {
-                            match state.proxy().receive_signal("PropertiesChanged").await {
-                                Ok(stream) => state.stream = Some(Box::pin(stream)),
-                                Err(error) => {
-                                    state.phase = SignalPhase::Done;
-                                    return Some((
-                                        Err(format_dbus_error(
-                                            "subscribe PropertiesChanged",
-                                            error,
-                                        )),
-                                        state,
-                                    ));
-                                }
-                            }
-                        }
-
-                        let Some(message) = state
-                            .stream
-                            .as_mut()
-                            .expect("stream initialized")
-                            .next()
-                            .await
-                        else {
-                            return None;
-                        };
-
-                        match decode_properties_changed(message) {
-                            Ok(update) => return Some((Ok(update), state)),
-                            Err(error) => {
-                                state.phase = SignalPhase::Done;
-                                return Some((Err(error), state));
-                            }
-                        }
-                    }
-                    SignalPhase::Done => return None,
-                }
-            }
-        },
-    )
-}
-
-struct PropertySignalStreamState {
-    object: ObjectDescriptor,
-    proxy: Option<Proxy<'static>>,
-    stream: Option<BoxedMessageStream>,
-    phase: SignalPhase,
-}
-
-impl PropertySignalStreamState {
-    fn proxy(&self) -> &Proxy<'static> {
-        self.proxy.as_ref().expect("proxy initialized")
-    }
-}
-
 fn property_stream<T>(
     descriptor: PropertyDescriptor,
 ) -> impl Stream<Item = Result<Option<T>, String>>
@@ -597,6 +552,13 @@ where
                     PropertyPhase::Connect => {
                         match properties_proxy(&state.descriptor.object).await {
                             Ok(proxy) => {
+                                match receive_properties_changed(&proxy).await {
+                                    Ok(stream) => state.stream = Some(stream),
+                                    Err(error) => {
+                                        state.phase = PropertyPhase::Done;
+                                        return Some((Err(error), state));
+                                    }
+                                }
                                 state.proxy = Some(proxy);
                                 state.phase = PropertyPhase::InitialRead;
                             }
@@ -615,12 +577,6 @@ where
                         return Some((result, state));
                     }
                     PropertyPhase::Watch => {
-                        if state.stream.is_none() {
-                            state.stream = Some(Box::pin(
-                                properties_changed(state.descriptor.object.clone()).into_stream(),
-                            ));
-                        }
-
                         let Some(update) = state
                             .stream
                             .as_mut()
@@ -650,6 +606,86 @@ where
     )
 }
 
+fn property_stream_with_initial<T>(
+    descriptor: PropertyDescriptor,
+    initial: Option<T>,
+) -> impl Stream<Item = Result<Option<T>, String>>
+where
+    T: TryFrom<OwnedValue> + Clone + Send + 'static,
+    T::Error: fmt::Display,
+{
+    stream::unfold(
+        PropertyStreamState {
+            descriptor,
+            proxy: None,
+            stream: None,
+            phase: PropertyPhase::Connect,
+        },
+        move |mut state| {
+            let initial = initial.clone();
+            async move {
+                loop {
+                    match state.phase {
+                        PropertyPhase::Connect => {
+                            match properties_proxy(&state.descriptor.object).await {
+                                Ok(proxy) => {
+                                    match receive_properties_changed(&proxy).await {
+                                        Ok(stream) => state.stream = Some(stream),
+                                        Err(error) => {
+                                            state.phase = PropertyPhase::Done;
+                                            return Some((Err(error), state));
+                                        }
+                                    }
+                                    state.proxy = Some(proxy);
+                                    state.phase = PropertyPhase::Watch;
+                                    return Some((Ok(initial), state));
+                                }
+                                Err(error) => {
+                                    state.phase = PropertyPhase::Done;
+                                    return Some((
+                                        Err(format_dbus_error("connect property source", error)),
+                                        state,
+                                    ));
+                                }
+                            }
+                        }
+                        PropertyPhase::InitialRead => unreachable!(
+                            "seeded property stream starts from an ObjectManager snapshot"
+                        ),
+                        PropertyPhase::Watch => {
+                            let Some(update) = state
+                                .stream
+                                .as_mut()
+                                .expect("stream initialized")
+                                .next()
+                                .await
+                            else {
+                                return None;
+                            };
+
+                            let result = property_changed_value::<T>(
+                                &state.descriptor,
+                                state.proxy(),
+                                update,
+                            )
+                            .await;
+                            match result {
+                                PropertyChange::Emit(value) => return Some((value, state)),
+                                PropertyChange::Ignore => continue,
+                                PropertyChange::Error(error) => {
+                                    state.phase = PropertyPhase::Done;
+                                    return Some((Err(error), state));
+                                }
+                            }
+                        }
+                        PropertyPhase::Done => return None,
+                    }
+                }
+            }
+        },
+    )
+}
+
 impl PropertyStreamState {
     fn proxy(&self) -> &Proxy<'static> {
         self.proxy.as_ref().expect("proxy initialized")
@@ -660,6 +696,16 @@ enum PropertyChange<T> {
     Emit(Result<Option<T>, String>),
     Ignore,
     Error(String),
+}
+
+async fn receive_properties_changed(
+    proxy: &Proxy<'static>,
+) -> Result<BoxedPropertiesChangedStream, String> {
+    let stream = proxy
+        .receive_signal("PropertiesChanged")
+        .await
+        .map_err(|error| format_dbus_error("subscribe PropertiesChanged", error))?;
+    Ok(Box::pin(stream.map(decode_properties_changed)))
 }
 
 async fn property_changed_value<T>(

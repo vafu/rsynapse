@@ -22,17 +22,14 @@ pub(in crate::widgets::bar) fn window_snapshots() -> Observable<Vec<WindowSnapsh
 }
 
 fn window_snapshot(window: NiriWindow) -> Observable<WindowSnapshot> {
+    let id = window.path_id().unwrap_or(u64::MAX);
+
     combine_latest!(
-        window.workspace().switch_map(|workspace| {
-            workspace
-                .map(|workspace| workspace.id().map(Some).box_it())
-                .unwrap_or_else(|| source::once(None))
-        }),
+        window.workspace().map(|workspace| workspace.and_then(|workspace| workspace.path_id())),
         window.column_index().map(|column| column.unwrap_or(u64::MAX)),
         window.row_index().map(|row| row.unwrap_or(u64::MAX)),
-        window.id(),
         window.app_id().map(|app_id| app_id.and_then(non_empty))
-            => move |(workspace_id, column, row, id, app_id)| WindowSnapshot {
+            => move |(workspace_id, column, row, app_id)| WindowSnapshot {
                 window: window.clone(),
                 workspace_id,
                 column,

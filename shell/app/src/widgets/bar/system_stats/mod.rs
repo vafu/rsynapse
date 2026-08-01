@@ -51,6 +51,10 @@ pub(super) fn arc_root_classes() -> Vec<&'static str> {
     level_indicator::root_classes(["arc", "battery"])
 }
 
+pub(super) fn track_classes() -> &'static [&'static str] {
+    level_indicator::TRACK_CLASSES
+}
+
 pub(super) fn level_classes(level: u8) -> Vec<&'static str> {
     level_indicator::level_classes(f64::from(level), LEVEL_MIN, STAGES)
 }

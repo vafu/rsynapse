@@ -1,6 +1,8 @@
 pub(in crate::widgets::bar) mod agent;
+mod app_instance;
 mod source;
 
+use nerd_font_symbols::{dev, md, seti};
 use relm4::prelude::*;
 use shell_core::gtk::{self, prelude::*};
 
@@ -9,35 +11,7 @@ use self::{
     source::{Kind, ViewModel, window_tile_vm},
 };
 use super::WindowNode;
-use crate::widgets::{
-    BACKGROUND_BLUR_CLASS,
-    level_indicator::{self, LevelRenderStyle, LevelStage, LineStyle},
-    material_icon,
-};
-
-const CONTEXT_STYLE: LevelRenderStyle = LevelRenderStyle::Line(LineStyle::vertical(3.0));
-const CONTEXT_STAGES: &[LevelStage] = &[
-    LevelStage {
-        level: 0.0,
-        class: "normal",
-    },
-    LevelStage {
-        level: 50.0,
-        class: "warn",
-    },
-    LevelStage {
-        level: 75.0,
-        class: "high",
-    },
-    LevelStage {
-        level: 90.0,
-        class: "danger",
-    },
-    LevelStage {
-        level: 95.0,
-        class: "critical",
-    },
-];
+use crate::widgets::nerd_icon::{NerdIcon, NerdIconLabelExt};
 
 #[derive(Debug)]
 #[shell_macros::model(module = window_tile_sources)]
@@ -59,91 +33,45 @@ impl SimpleComponent for WindowTile {
     type Output = ();
 
     view! {
-        gtk::Overlay {
+        gtk::Revealer {
             #[watch]
-            set_visible: model.vm.is_some(),
-
-            add_css_class: "workspace-window-frame",
-            add_css_class: BACKGROUND_BLUR_CLASS,
-
+            set_reveal_child: window_visible(&model.vm),
+            set_transition_type: gtk::RevealerTransitionType::FadeSlideRight,
+            set_transition_duration: 140,
             set_halign: gtk::Align::Center,
-            set_valign: gtk::Align::Fill,
-            set_vexpand: true,
+            set_valign: gtk::Align::Center,
+            set_vexpand: false,
 
-            #[watch]
-            set_tooltip_text: model.vm.as_ref().map(|vm| vm.tooltip.as_str()),
-
-            gtk::Box {
+            gtk::Overlay {
                 #[watch]
                 set_css_classes: &traced_window_tile_classes(&model.vm),
+
                 set_halign: gtk::Align::Center,
-                set_valign: gtk::Align::Fill,
-                set_vexpand: true,
-
-                gtk::Image {
-                    #[watch]
-                    set_visible: !is_agent(&model.vm),
-
-                    #[watch]
-                    set_icon_name: window_icon_name(&model.vm).as_deref(),
-                },
-
-                gtk::Box {
-                    add_css_class: "agent-inner",
-                    set_valign: gtk::Align::Fill,
-                    set_vexpand: true,
-
-                    #[watch]
-                    set_visible: is_agent(&model.vm),
-
-                    gtk::Image {
-                        add_css_class: "materialicon",
-
-                        #[watch]
-                        set_icon_name: window_icon_name(&model.vm).as_deref(),
-                    },
-
-                    gtk::Overlay {
-                        #[watch]
-                        set_css_classes: &context_indicator_root_classes(),
-                        set_valign: gtk::Align::Fill,
-                        set_vexpand: true,
-
-                        add_overlay = &gtk::DrawingArea {
-                            set_css_classes: level_indicator::TRACK_CLASSES,
-                            set_content_width: 8,
-                            set_vexpand: true,
-                            set_valign: gtk::Align::Fill,
-                            set_draw_func: level_indicator::track_draw_func(CONTEXT_STYLE),
-                        },
-
-                        add_overlay = &gtk::DrawingArea {
-                            #[watch]
-                            set_css_classes: &context_indicator_level_classes(context_pct(&model.vm)),
-                            set_content_width: 8,
-                            set_vexpand: true,
-                            set_valign: gtk::Align::Fill,
-                            #[watch]
-                            set_draw_func: level_indicator::level_draw_func(
-                                f64::from(context_pct(&model.vm)),
-                                0.0,
-                                100.0,
-                                CONTEXT_STYLE,
-                            ),
-                        }
-                    }
-                }
-            },
-
-            add_overlay = &gtk::Box {
-                add_css_class: "agent-unseen-badge",
-                add_css_class: "window-agent-unseen-badge",
-                set_can_target: false,
-                set_halign: gtk::Align::End,
-                set_valign: gtk::Align::Start,
+                set_valign: gtk::Align::Center,
+                set_vexpand: false,
 
                 #[watch]
-                set_visible: agent_unseen_visible(&model.vm),
+                set_tooltip_text: model.vm.as_ref().map(|vm| vm.tooltip.as_str()),
+
+                gtk::Label {
+                    set_css_classes: &["bar-indicator-icon", "nerdicon"],
+
+                    #[watch]
+                    set_nerd_icon: window_icon(&model.vm),
+                },
+
+                add_overlay = &gtk::Box {
+                    add_css_class: "bar-badge",
+                    add_css_class: "agent-unseen-badge",
+                    set_can_target: false,
+                    set_width_request: 8,
+                    set_height_request: 8,
+                    set_halign: gtk::Align::End,
+                    set_valign: gtk::Align::Start,
+
+                    #[watch]
+                    set_visible: agent_unseen_visible(&model.vm),
+                }
             }
         }
     }
@@ -174,33 +102,27 @@ fn traced_window_tile_classes(vm: &Option<ViewModel>) -> Vec<&'static str> {
 }
 
 fn window_tile_classes(vm: &Option<ViewModel>) -> Vec<&'static str> {
+    let mut classes = vec!["bar-indicator"];
+
     let Some(vm) = vm else {
-        return vec![
-            "workspace-window-content",
-            "workspace-window-tile",
-            "workspace-window-plain",
-        ];
+        return classes;
     };
 
-    let mut classes = vec!["workspace-window-content", "workspace-window-tile"];
-    classes.push(match vm.kind {
-        Kind::Plain => "workspace-window-plain",
-        Kind::Neovim => "workspace-window-neovim",
-        Kind::Agent(_) => "workspace-window-agent",
-    });
-
-    if let Kind::Agent(agent) = &vm.kind {
-        classes.push("agent-window");
-        if agent.attention {
-            classes.push("attention");
+    match &vm.kind {
+        Kind::Agent(agent) => {
+            classes.push("workspace-window-agent");
+            if agent.attention {
+                classes.push("attention");
+            }
+            match agent.state {
+                AgentState::None => {}
+                AgentState::Idle => classes.push("idle"),
+                AgentState::Thinking => classes.push("thinking"),
+                AgentState::ToolUse => classes.push("tool-use"),
+                AgentState::Compacting => classes.push("compacting"),
+            }
         }
-        match agent.state {
-            AgentState::None => {}
-            AgentState::Idle => classes.push("idle"),
-            AgentState::Thinking => classes.push("thinking"),
-            AgentState::ToolUse => classes.push("tool-use"),
-            AgentState::Compacting => classes.push("compacting"),
-        }
+        Kind::Plain | Kind::Neovim => {}
     }
 
     if vm.active {
@@ -213,24 +135,59 @@ fn window_tile_classes(vm: &Option<ViewModel>) -> Vec<&'static str> {
     classes
 }
 
-fn window_icon_name(vm: &Option<ViewModel>) -> Option<String> {
-    vm.as_ref().map(|vm| match &vm.kind {
-        Kind::Agent(agent) => agent_icon(agent, &vm.icon),
-        Kind::Plain | Kind::Neovim => vm.icon.clone(),
-    })
+fn window_visible(vm: &Option<ViewModel>) -> bool {
+    vm.is_some()
 }
 
-fn agent_icon(agent: &Agent, fallback: &str) -> String {
+fn window_icon(vm: &Option<ViewModel>) -> NerdIcon {
+    vm.as_ref()
+        .map(|vm| {
+            let resolved = vm.icon.selected_nerd_icon();
+            match &vm.kind {
+                Kind::Agent(agent) => agent_icon(agent, &resolved),
+                Kind::Plain | Kind::Neovim => resolved,
+            }
+        })
+        .unwrap_or_else(NerdIcon::application)
+}
+
+fn agent_icon(agent: &Agent, fallback: &NerdIcon) -> NerdIcon {
     if agent.icon.is_empty() {
-        fallback.to_owned()
+        fallback.clone()
     } else {
-        material_icon::icon_name(&agent.icon)
+        [agent.icon.as_str(), agent.name.as_str()]
+            .into_iter()
+            .filter(|hint| !hint.trim().is_empty())
+            .find_map(agent_hint_icon)
+            .unwrap_or_else(|| NerdIcon::new(md::MD_ROBOT))
     }
 }
 
-fn is_agent(vm: &Option<ViewModel>) -> bool {
-    vm.as_ref()
-        .is_some_and(|vm| matches!(vm.kind, Kind::Agent(_)))
+fn agent_hint_icon(hint: &str) -> Option<NerdIcon> {
+    let hint = hint.trim().to_ascii_lowercase();
+    let icon = if hint.contains("chrome") || hint.contains("chromium") {
+        NerdIcon::new(md::MD_GOOGLE_CHROME)
+    } else if hint.contains("slack") {
+        NerdIcon::new(dev::DEV_SLACK)
+    } else if hint.contains("neovim") || hint.contains("nvim") {
+        NerdIcon::new(seti::CUSTOM_NEOVIM)
+    } else if hint.contains("ghostty") || hint.contains("terminal") || hint.contains("term") {
+        NerdIcon::new(dev::DEV_TERMINAL)
+    } else if hint.contains("codex") || hint.contains("agent") || hint.contains("cognition") {
+        NerdIcon::new(md::MD_ROBOT)
+    } else if hint.contains("workspace") || hint == "workspaces" {
+        NerdIcon::workspace()
+    } else if hint.contains("folder") || hint.contains("project") {
+        NerdIcon::folder()
+    } else if hint.contains("git") || hint.contains("branch") || hint.contains("account tree") {
+        NerdIcon::branch()
+    } else if hint.contains("application") || hint.contains("executable") || hint.contains("window")
+    {
+        NerdIcon::application()
+    } else {
+        return None;
+    };
+    Some(icon)
 }
 
 fn agent_unseen_visible(vm: &Option<ViewModel>) -> bool {
@@ -238,21 +195,4 @@ fn agent_unseen_visible(vm: &Option<ViewModel>) -> bool {
         Kind::Agent(agent) => agent.unseen,
         Kind::Plain | Kind::Neovim => false,
     })
-}
-
-fn context_pct(vm: &Option<ViewModel>) -> u32 {
-    vm.as_ref()
-        .and_then(|vm| match &vm.kind {
-            Kind::Agent(agent) => Some(agent.context_pct),
-            Kind::Plain | Kind::Neovim => None,
-        })
-        .unwrap_or(0)
-}
-
-fn context_indicator_root_classes() -> Vec<&'static str> {
-    level_indicator::root_classes(["line", "agent-context-indicator"])
-}
-
-fn context_indicator_level_classes(context_pct: u32) -> Vec<&'static str> {
-    level_indicator::level_classes(f64::from(context_pct), 0.0, CONTEXT_STAGES)
 }

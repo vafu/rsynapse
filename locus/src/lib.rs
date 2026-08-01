@@ -151,6 +151,7 @@ fn legacy_endpoint(value: &str) -> Option<RelationEndpoint> {
     let kind = match prefix {
         "agent-session" => keys::AGENT_SESSION_ID,
         "app-instance" => keys::APP_INSTANCE_ID,
+        "bazel-invocation" | "build-invocation" => keys::BAZEL_INVOCATION_ID,
         "niri-window" => keys::NIRI_WINDOW_ID,
         "niri-workspace" => keys::NIRI_WORKSPACE_ID,
         "project" => keys::PROJECT_PATH,
@@ -233,6 +234,7 @@ pub trait Relations {
 
 pub mod keys {
     pub const APP_INSTANCE_ID: &str = "org.rsynapse.app-instance.id";
+    pub const BAZEL_INVOCATION_ID: &str = "org.rsynapse.bazel.invocation.id";
     pub const NIRI_OUTPUT_NAME: &str = "org.rsynapse.niri.output.name";
     pub const NIRI_WORKSPACE_ID: &str = "org.rsynapse.niri.workspace.id";
     pub const NIRI_WORKSPACE_NAME: &str = "org.rsynapse.niri.workspace.name";
@@ -284,6 +286,13 @@ mod tests {
         assert_eq!(
             endpoint,
             RelationEndpoint::stable_key("org.rsynapse.agent.session.id", "codex/session")
+        );
+
+        let endpoint: RelationEndpoint = serde_json::from_str(r#""build-invocation:inv-1""#)
+            .expect("deserialize build invocation");
+        assert_eq!(
+            endpoint,
+            RelationEndpoint::stable_key("org.rsynapse.bazel.invocation.id", "inv-1")
         );
     }
 

@@ -3,9 +3,10 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
+use nerd_font_symbols::{fa, md};
 use shell_core::gtk::{self, prelude::*};
 
-use crate::widgets::BACKGROUND_BLUR_CLASS;
+use crate::widgets::{BACKGROUND_BLUR_CLASS, nerd_icon::NerdIcon};
 
 const ACTIVE_STALE_MS: i64 = 2 * 60 * 60 * 1000;
 
@@ -13,7 +14,7 @@ const ACTIVE_STALE_MS: i64 = 2 * 60 * 60 * 1000;
 pub(crate) struct BzBusView {
     pub(in crate::widgets::bar) classes: Vec<&'static str>,
     pub(in crate::widgets::bar) tooltip: String,
-    pub(in crate::widgets::bar) icon: &'static str,
+    pub(in crate::widgets::bar) icon: NerdIcon,
     pub(in crate::widgets::bar) progress_level_classes: Vec<&'static str>,
     pub(in crate::widgets::bar) progress_percent: u8,
     pub(in crate::widgets::bar) progress_visible: bool,
@@ -24,7 +25,7 @@ impl Default for BzBusView {
         Self {
             classes: classes_for(false, None),
             tooltip: "bzbus offline".to_owned(),
-            icon: "cloud_off",
+            icon: NerdIcon::new(md::MD_CLOUD_OFF_OUTLINE),
             progress_level_classes: progress_level_classes_for(false, None),
             progress_percent: 0,
             progress_visible: false,
@@ -67,6 +68,19 @@ pub(super) fn view(active: bool, mut invocations: Vec<Invocation>) -> BzBusView 
         progress_percent: progress_percent(invocation).unwrap_or(0),
         progress_visible: progress_percent(invocation).is_some(),
     }
+}
+
+pub(super) fn ongoing_views(active: bool, mut invocations: Vec<Invocation>) -> Vec<BzBusView> {
+    if !active {
+        return Vec::new();
+    }
+
+    invocations.retain(is_active);
+    invocations.sort_by(compare_invocations);
+    invocations
+        .into_iter()
+        .map(|invocation| view(true, vec![invocation]))
+        .collect()
 }
 
 fn compare_invocations(left: &Invocation, right: &Invocation) -> std::cmp::Ordering {
@@ -184,21 +198,25 @@ fn tooltip(invocation: Option<&Invocation>) -> String {
     lines.join("\n")
 }
 
-fn icon_for(active: bool, invocation: Option<&Invocation>) -> &'static str {
+fn icon_for(active: bool, invocation: Option<&Invocation>) -> NerdIcon {
     let Some(invocation) = invocation else {
-        return if active { "construction" } else { "cloud_off" };
+        return if active {
+            NerdIcon::new(md::MD_WRENCH)
+        } else {
+            NerdIcon::new(md::MD_CLOUD_OFF_OUTLINE)
+        };
     };
     if is_failed(invocation) {
-        "error"
+        NerdIcon::new(md::MD_ALERT)
     } else if is_finished(invocation) {
-        "check_circle"
+        NerdIcon::new(fa::FA_CIRCLE_CHECK)
     } else {
-        "build_circle"
+        NerdIcon::new(md::MD_WRENCH)
     }
 }
 
 fn classes_for(active: bool, invocation: Option<&Invocation>) -> Vec<&'static str> {
-    let mut classes = vec!["barblock", BACKGROUND_BLUR_CLASS, "bzbus-widget"];
+    let mut classes = vec!["bar-item", BACKGROUND_BLUR_CLASS, "bzbus-widget"];
     classes.push(state_class_for(active, invocation));
     classes
 }

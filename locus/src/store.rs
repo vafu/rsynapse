@@ -5,7 +5,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use locus::{RelationEndpoint, RelationRecord};
+use locus::{RelationEndpoint, RelationRecord, keys};
 
 #[derive(Debug)]
 pub struct RelationStore {
@@ -27,12 +27,17 @@ pub struct ReplaceOutcome {
 
 impl RelationStore {
     pub fn open(path: PathBuf) -> io::Result<Self> {
-        let records = match fs::read_to_string(&path) {
+        let loaded_records = match fs::read_to_string(&path) {
             Ok(contents) => serde_json::from_str(&contents).map_err(invalid_data)?,
             Err(error) if error.kind() == io::ErrorKind::NotFound => Vec::new(),
             Err(error) => return Err(error),
         };
-        Ok(Self { path, records })
+        let records = persistent_records(&loaded_records);
+        let store = Self { path, records };
+        if store.records.len() != loaded_records.len() {
+            store.persist_records(&store.records)?;
+        }
+        Ok(store)
     }
 
     pub fn set(
@@ -48,7 +53,7 @@ impl RelationStore {
 
         let mut next = self.records.clone();
         let outcome = set_in_records(&mut next, subject, relation, target, metadata);
-        self.persist_records(&next)?;
+        self.persist_changed_records(&next)?;
         self.records = next;
         Ok(outcome)
     }
@@ -77,7 +82,7 @@ impl RelationStore {
         }
 
         let set = set_in_records(&mut next, subject, relation, target, metadata);
-        self.persist_records(&next)?;
+        self.persist_changed_records(&next)?;
         self.records = next;
         Ok(ReplaceOutcome { set, removed })
     }
@@ -100,7 +105,7 @@ impl RelationStore {
 
         let mut next = self.records.clone();
         let record = next.remove(index);
-        self.persist_records(&next)?;
+        self.persist_changed_records(&next)?;
         self.records = next;
         Ok(Some(record))
     }
@@ -123,7 +128,7 @@ impl RelationStore {
             }
         }
         if !removed.is_empty() {
-            self.persist_records(&retained)?;
+            self.persist_changed_records(&retained)?;
             self.records = retained;
         }
         Ok(removed)
@@ -182,16 +187,43 @@ impl RelationStore {
         self.records.len()
     }
 
+    fn persist_changed_records(&self, records: &[RelationRecord]) -> io::Result<()> {
+        if persistent_records(&self.records) == persistent_records(records) {
+            return Ok(());
+        }
+        self.persist_records(records)
+    }
+
     fn persist_records(&self, records: &[RelationRecord]) -> io::Result<()> {
         if let Some(parent) = self.path.parent() {
             fs::create_dir_all(parent)?;
         }
 
         let tmp = self.path.with_extension("json.tmp");
-        let data = serde_json::to_vec_pretty(records).map_err(io::Error::other)?;
+        let persistent = persistent_records(records);
+        let data = serde_json::to_vec_pretty(&persistent).map_err(io::Error::other)?;
         fs::write(&tmp, data)?;
         fs::rename(tmp, &self.path)
     }
+}
+
+fn persistent_records(records: &[RelationRecord]) -> Vec<RelationRecord> {
+    records
+        .iter()
+        .filter(|record| is_persistable_record(record))
+        .cloned()
+        .collect()
+}
+
+fn is_persistable_record(record: &RelationRecord) -> bool {
+    is_persistable_endpoint(&record.subject) && is_persistable_endpoint(&record.target)
+}
+
+fn is_persistable_endpoint(endpoint: &RelationEndpoint) -> bool {
+    !matches!(
+        endpoint,
+        RelationEndpoint::StableKey { kind, .. } if kind == keys::NIRI_WINDOW_ID
+    )
 }
 
 pub fn default_store_path() -> PathBuf {
@@ -328,6 +360,21 @@ mod tests {
         key("org.rsynapse.agent.session.id", id)
     }
 
+    fn record(
+        subject: RelationEndpoint,
+        relation: &str,
+        target: RelationEndpoint,
+    ) -> RelationRecord {
+        RelationRecord {
+            subject,
+            relation: relation.to_owned(),
+            target,
+            metadata: HashMap::new(),
+            created_at_unix_ms: 1,
+            updated_at_unix_ms: 1,
+        }
+    }
+
     #[test]
     fn set_query_unset_and_reload() {
         let temp = tempfile::tempdir().expect("tempdir");
@@ -403,6 +450,114 @@ mod tests {
         assert_eq!(
             first.record.created_at_unix_ms,
             second.record.created_at_unix_ms
+        );
+    }
+
+    #[test]
+    fn window_relations_are_memory_only() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let path = temp.path().join("relations.json");
+        let mut store = RelationStore::open(path.clone()).expect("open store");
+        store
+            .set(
+                window(24),
+                "org.rsynapse.window.agent-session".to_owned(),
+                agent("codex/session"),
+                HashMap::new(),
+            )
+            .expect("set transient window relation");
+
+        assert_eq!(
+            store.targets(&window(24), "org.rsynapse.window.agent-session"),
+            vec![agent("codex/session")]
+        );
+
+        let store = RelationStore::open(path).expect("reload store");
+        assert!(
+            store
+                .targets(&window(24), "org.rsynapse.window.agent-session")
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn loading_drops_persisted_window_relations() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let path = temp.path().join("relations.json");
+        let records = vec![
+            record(
+                window(24),
+                "org.rsynapse.window.agent-session",
+                agent("codex/session"),
+            ),
+            record(
+                workspace(3),
+                "org.rsynapse.workspace.project",
+                project("rsynapse"),
+            ),
+        ];
+        fs::write(
+            &path,
+            serde_json::to_vec(&records).expect("serialize records"),
+        )
+        .expect("write records");
+
+        let store = RelationStore::open(path.clone()).expect("open store");
+
+        assert!(store.list("org.rsynapse.window.agent-session").is_empty());
+        assert_eq!(store.list("org.rsynapse.workspace.project").len(), 1);
+
+        let persisted: Vec<RelationRecord> =
+            serde_json::from_slice(&fs::read(path).expect("read cleaned persistent store"))
+                .expect("parse cleaned persistent store");
+        assert_eq!(persisted.len(), 1);
+        assert_eq!(persisted[0].relation, "org.rsynapse.workspace.project");
+    }
+
+    #[test]
+    fn transient_window_relations_do_not_require_persistence() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let path = temp.path().join("relations.json");
+        let mut store = RelationStore::open(path.clone()).expect("open store");
+        fs::create_dir(&path).expect("replace store path with directory");
+
+        store
+            .set(
+                window(24),
+                "org.rsynapse.window.agent-session".to_owned(),
+                agent("codex/session"),
+                HashMap::new(),
+            )
+            .expect("set transient window relation");
+
+        assert_eq!(
+            store.targets(&window(24), "org.rsynapse.window.agent-session"),
+            vec![agent("codex/session")]
+        );
+        assert!(
+            store
+                .unset(
+                    &window(24),
+                    "org.rsynapse.window.agent-session",
+                    &agent("codex/session"),
+                )
+                .expect("unset transient window relation")
+                .is_some()
+        );
+        store
+            .set(
+                window(24),
+                "org.rsynapse.window.agent-session".to_owned(),
+                agent("codex/session"),
+                HashMap::new(),
+            )
+            .expect("set transient window relation again");
+        assert_eq!(
+            store
+                .clear(&window(24), "org.rsynapse.window.agent-session")
+                .expect("clear transient window relation")
+                .len(),
+            1
         );
     }
 

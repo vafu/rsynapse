@@ -3,6 +3,7 @@ mod source;
 mod view;
 
 use adw::prelude::*;
+use nerd_font_symbols::md;
 use relm4::prelude::*;
 use shell_core::{gtk, list::ComponentListBoxExt, source::Observable};
 use zbus::zvariant::OwnedObjectPath;
@@ -10,7 +11,9 @@ use zbus::zvariant::OwnedObjectPath;
 use crate::widgets::level_indicator::{
     self, LevelRenderStyle, LevelStage, LineStyle, TRACK_CLASSES,
 };
-use crate::widgets::material_icon;
+use crate::widgets::nerd_icon::{NerdIcon, NerdIconLabelExt};
+
+use super::bar_item;
 
 const BATTERY_STAGES: &[LevelStage] = &[LevelStage {
     level: 5.0,
@@ -27,7 +30,7 @@ pub(crate) struct BluetoothView {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct BluetoothStatusView {
-    pub(super) icon: String,
+    pub(super) icon: NerdIcon,
     pub(super) connected_count: u8,
     pub(super) powered: bool,
     pub(super) adapter_path: Option<OwnedObjectPath>,
@@ -36,7 +39,7 @@ pub(super) struct BluetoothStatusView {
 impl Default for BluetoothStatusView {
     fn default() -> Self {
         Self {
-            icon: "bluetooth_disabled".to_owned(),
+            icon: NerdIcon::new(md::MD_BLUETOOTH_OFF),
             connected_count: 0,
             powered: false,
             adapter_path: None,
@@ -118,9 +121,9 @@ impl SimpleComponent for BluetoothDeviceRow {
             set_title: model.device.name.as_str(),
             set_subtitle: &device_subtitle(&model.device),
 
-            add_prefix = &gtk::Image {
-                add_css_class: "materialicon",
-                set_icon_name: Some(material_icon::icon_name(model.device.icon.as_str()).as_str()),
+            add_prefix = &gtk::Label {
+                set_css_classes: &["nerdicon", "bt-device-icon"],
+                set_nerd_icon: model.device.icon.clone(),
             }
         }
     }
@@ -152,7 +155,7 @@ pub(super) fn toggle_power(status: &BluetoothStatusView) {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct DeviceGroupView {
     pub(super) visible: bool,
-    pub(super) icon: String,
+    pub(super) icon: NerdIcon,
     pub(super) tinted: bool,
     pub(super) tooltip: String,
     pub(super) battery: Option<u8>,
@@ -163,7 +166,7 @@ impl Default for DeviceGroupView {
     fn default() -> Self {
         Self {
             visible: false,
-            icon: "bluetooth".to_owned(),
+            icon: NerdIcon::new(md::MD_BLUETOOTH),
             tinted: true,
             tooltip: String::new(),
             battery: None,
@@ -177,7 +180,7 @@ pub(crate) struct BluetoothDeviceView {
     pub(super) path: OwnedObjectPath,
     pub(super) name: String,
     pub(super) address: String,
-    pub(super) icon: String,
+    pub(super) icon: NerdIcon,
     pub(super) connected: bool,
     pub(super) connecting: bool,
     pub(super) battery: Option<u8>,
@@ -201,12 +204,16 @@ pub(super) fn status_tooltip(status: &BluetoothStatusView) -> String {
     }
 }
 
-pub(super) fn group_classes(group: &DeviceGroupView) -> Vec<&'static str> {
-    let mut classes = vec!["flat", "circular", "panel-widget", "bt-device-button"];
+pub(super) fn group_item_classes(group: &DeviceGroupView) -> Vec<&'static str> {
+    let mut classes = bar_item::classes(&[bar_item::SQUARE_CLASS, "bt-device-item"]);
     if group.tinted {
-        classes.push("tinted");
+        classes.push("muted");
     }
     classes
+}
+
+pub(super) fn group_button_classes() -> Vec<&'static str> {
+    bar_item::action_classes(&["bt-device-button"])
 }
 
 pub(super) fn battery_root_classes() -> Vec<&'static str> {

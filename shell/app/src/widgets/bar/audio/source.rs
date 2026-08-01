@@ -1,3 +1,4 @@
+use nerd_font_symbols::md;
 use serde_json::Value;
 use shell_core::source::{self, Observable, rx::Observable as _};
 use tokio::{
@@ -6,6 +7,7 @@ use tokio::{
 };
 
 use super::{AudioRouteView, AudioView};
+use crate::widgets::nerd_icon::NerdIcon;
 
 const AUDIO_SOURCE_KEY: &str = "default-output";
 
@@ -203,7 +205,7 @@ fn pipewire_sink_route(object: &Value, default_sink: Option<&str>) -> Option<Aud
         name: name.to_owned(),
         title: title.to_owned(),
         subtitle: route_subtitle(volume, muted, is_default),
-        icon: "speaker".to_owned(),
+        icon: NerdIcon::new(md::MD_SPEAKER),
         is_default,
     })
 }

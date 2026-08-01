@@ -67,17 +67,16 @@ impl SimpleComponent for NotificationCard {
                 }
             },
 
-            gtk::Separator {},
-
             gtk::Box {
                 add_css_class: "notification-content",
                 set_orientation: gtk::Orientation::Horizontal,
                 set_spacing: 10,
 
+                #[name = "content_image"]
                 gtk::Image {
                     add_css_class: "notification-image",
                     set_valign: gtk::Align::Start,
-                    set_icon_name: Some(notification_icon_name(&model.notification)),
+                    set_visible: model.notification.has_image(),
                     set_pixel_size: 42,
                 },
 
@@ -134,6 +133,10 @@ impl SimpleComponent for NotificationCard {
             request_close_notification(notification_id);
         });
 
+        if let Some(image_path) = model.notification.image_path.as_deref() {
+            widgets.content_image.set_from_file(Some(image_path));
+        }
+
         for action in &model.notification.actions {
             let button = notification_action_button(action);
             let action_id = model.notification.id;
@@ -188,6 +191,10 @@ fn request_action_invoked(id: u32, action_key: String) {
     relm4::spawn_local(async move {
         if let Err(error) = action_invoked(id, action_key.as_str()).await {
             eprintln!("[notifications] failed to invoke notification action {id}: {error}");
+            return;
+        }
+        if let Err(error) = close_notification(id).await {
+            eprintln!("[notifications] failed to close notification {id}: {error}");
         }
     });
 }

@@ -14,7 +14,5 @@ fn main() {
 
     init_tracing();
 
-    rsynapse_app("org.rsynapse.Shell").run_async::<MainBar>(MainBarInit {
-        title: "Rsynapse Shell",
-    });
+    rsynapse_app("org.rsynapse.Shell").run_async::<MainBar>(MainBarInit::primary("Rsynapse Shell"));
 }
