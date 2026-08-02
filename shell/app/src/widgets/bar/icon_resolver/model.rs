@@ -1,8 +1,7 @@
 use std::collections::BTreeSet;
 
-use nerd_font_symbols::{cod, md};
-
 use crate::widgets::nerd_icon::NerdIcon;
+use crate::widgets::nerd_icon::{cod, md};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(in crate::widgets::bar) struct IconChoice {

@@ -1,5 +1,53 @@
-use nerd_font_symbols::{cod, fa, md, ple, seti};
 use shell_core::gtk::{self, prelude::*};
+
+pub(crate) mod cod {
+    pub(crate) const COD_MOVE: &str = "\u{eb22}";
+    pub(crate) const COD_WORKSPACE_UNKNOWN: &str = "\u{ebc3}";
+}
+
+pub(crate) mod dev {
+    pub(crate) const DEV_RUST: &str = "\u{e7a8}";
+    pub(crate) const DEV_SLACK: &str = "\u{e8a4}";
+    pub(crate) const DEV_TERMINAL: &str = "\u{e795}";
+}
+
+pub(crate) mod fa {
+    pub(crate) const FA_BACKWARD_STEP: &str = "\u{f048}";
+    pub(crate) const FA_CIRCLE_CHECK: &str = "\u{f05d}";
+    pub(crate) const FA_FIREFOX: &str = "\u{f269}";
+    pub(crate) const FA_FORWARD_STEP: &str = "\u{f051}";
+    pub(crate) const FA_PLAY: &str = "\u{f04b}";
+    pub(crate) const FA_WAND_MAGIC: &str = "\u{f0d0}";
+}
+
+pub(crate) mod md {
+    pub(crate) const MD_ALERT: &str = "\u{f0026}";
+    pub(crate) const MD_APPLICATION: &str = "\u{f08c6}";
+    pub(crate) const MD_BLUETOOTH: &str = "\u{f00af}";
+    pub(crate) const MD_BLUETOOTH_CONNECT: &str = "\u{f00b1}";
+    pub(crate) const MD_BLUETOOTH_OFF: &str = "\u{f00b2}";
+    pub(crate) const MD_CAR_TURBOCHARGER: &str = "\u{f101a}";
+    pub(crate) const MD_CELLPHONE_INFORMATION: &str = "\u{f0f41}";
+    pub(crate) const MD_CLOUD_OFF_OUTLINE: &str = "\u{f0164}";
+    pub(crate) const MD_GOOGLE_CHROME: &str = "\u{f02af}";
+    pub(crate) const MD_HEADPHONES_SETTINGS: &str = "\u{f02cd}";
+    pub(crate) const MD_KEYBOARD_RETURN: &str = "\u{f0311}";
+    pub(crate) const MD_LEAF: &str = "\u{f032a}";
+    pub(crate) const MD_MOUSE_VARIANT: &str = "\u{f037f}";
+    pub(crate) const MD_ROBOT: &str = "\u{f06a9}";
+    pub(crate) const MD_SPEEDOMETER: &str = "\u{f04c5}";
+    pub(crate) const MD_SPEAKER: &str = "\u{f04c3}";
+    pub(crate) const MD_WRENCH: &str = "\u{f05b7}";
+}
+
+pub(crate) mod ple {
+    pub(crate) const PL_BRANCH: &str = "\u{e0a0}";
+}
+
+pub(crate) mod seti {
+    pub(crate) const CUSTOM_FOLDER: &str = "\u{e5ff}";
+    pub(crate) const CUSTOM_NEOVIM: &str = "\u{e6ae}";
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct NerdIcon {

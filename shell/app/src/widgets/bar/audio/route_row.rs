@@ -1,4 +1,4 @@
-use nerd_font_symbols::fa;
+use crate::widgets::nerd_icon::fa;
 use relm4::prelude::*;
 use shell_core::gtk::{self, prelude::*};
 

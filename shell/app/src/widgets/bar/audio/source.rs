@@ -1,4 +1,4 @@
-use nerd_font_symbols::md;
+use crate::widgets::nerd_icon::md;
 use serde_json::Value;
 use shell_core::source::{self, Observable, rx::Observable as _};
 use tokio::{

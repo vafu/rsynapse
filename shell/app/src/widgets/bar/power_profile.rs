@@ -1,6 +1,5 @@
 use std::thread;
 
-use nerd_font_symbols::md;
 use shell_core::source::{
     self, Observable,
     dbus::{self, Bus, ObjectDescriptor, PropertyDescriptor},
@@ -8,6 +7,7 @@ use shell_core::source::{
 };
 
 use crate::widgets::nerd_icon::NerdIcon;
+use crate::widgets::nerd_icon::md;
 
 const POWER_PROFILE_ORDER: &[&str] = &["power-saver", "balanced", "performance"];
 const POWER_PROFILE_BUS: &str = "net.hadess.PowerProfiles";

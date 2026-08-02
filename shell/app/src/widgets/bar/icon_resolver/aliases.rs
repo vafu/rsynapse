@@ -1,6 +1,6 @@
 use std::collections::BTreeSet;
 
-use nerd_font_symbols::{dev, fa, md, seti};
+use crate::widgets::nerd_icon::{dev, fa, md, seti};
 
 use super::{IconCandidate, IconCandidateSource, IconChoice, IconEvidence, IconEvidenceKind};
 

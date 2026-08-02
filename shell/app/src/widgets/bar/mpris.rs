@@ -1,7 +1,7 @@
-use nerd_font_symbols::fa;
 use shell_core::source::{self, Observable};
 
 use crate::widgets::nerd_icon::NerdIcon;
+use crate::widgets::nerd_icon::fa;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct MprisView {

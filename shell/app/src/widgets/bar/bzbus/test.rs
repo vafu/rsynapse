@@ -3,7 +3,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use nerd_font_symbols::md;
+use crate::widgets::nerd_icon::md;
 use zbus::zvariant::{OwnedObjectPath, OwnedValue, Value};
 
 use super::{

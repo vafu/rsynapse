@@ -1,4 +1,4 @@
-use nerd_font_symbols::cod;
+use crate::widgets::nerd_icon::cod;
 
 use super::agent::workspace_agent_state_from_agents;
 use super::build::{workspace_build_state_from_builds, WorkspaceBuildState};

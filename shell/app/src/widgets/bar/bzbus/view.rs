@@ -3,10 +3,12 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use nerd_font_symbols::{fa, md};
 use shell_core::gtk::{self, prelude::*};
 
-use crate::widgets::{BACKGROUND_BLUR_CLASS, nerd_icon::NerdIcon};
+use crate::widgets::{
+    BACKGROUND_BLUR_CLASS,
+    nerd_icon::{NerdIcon, fa, md},
+};
 
 const ACTIVE_STALE_MS: i64 = 2 * 60 * 60 * 1000;
 

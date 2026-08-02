@@ -2,7 +2,6 @@ pub(in crate::widgets::bar) mod agent;
 mod app_instance;
 mod source;
 
-use nerd_font_symbols::{dev, md, seti};
 use relm4::prelude::*;
 use shell_core::gtk::{self, prelude::*};
 
@@ -15,6 +14,7 @@ use super::{
     bar_indicator::{self, BarIndicatorExt},
 };
 use crate::widgets::nerd_icon::{NerdIcon, NerdIconLabelExt};
+use crate::widgets::nerd_icon::{dev, md, seti};
 
 #[derive(Debug)]
 #[shell_macros::model(module = window_tile_sources)]

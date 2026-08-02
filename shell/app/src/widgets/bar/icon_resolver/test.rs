@@ -1,4 +1,4 @@
-use nerd_font_symbols::{dev, fa};
+use crate::widgets::nerd_icon::{dev, fa};
 
 use super::{
     IconCandidate, IconCandidateSource, IconChoice, IconEvidence, IconEvidenceKind, IconPolicy,

@@ -33,7 +33,6 @@ use std::{
     thread,
 };
 
-use nerd_font_symbols::{fa, md};
 use relm4::component::ComponentController;
 use relm4::prelude::*;
 use shell_core::{
@@ -46,7 +45,7 @@ use shell_core::{
 
 use crate::widgets::{
     BACKGROUND_BLUR_CLASS,
-    nerd_icon::{NerdIcon, NerdIconLabelExt},
+    nerd_icon::{NerdIcon, NerdIconLabelExt, fa, md},
 };
 
 use self::audio::{AudioRoutePopover, AudioView, audio_status};

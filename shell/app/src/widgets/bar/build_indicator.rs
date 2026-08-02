@@ -1,7 +1,7 @@
-use nerd_font_symbols::{fa, md};
 use shell_core::gtk::{self, prelude::*};
 
 use crate::widgets::nerd_icon::{NerdIcon, NerdIconLabelExt};
+use crate::widgets::nerd_icon::{fa, md};
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(in crate::widgets::bar) enum BuildIndicatorState {

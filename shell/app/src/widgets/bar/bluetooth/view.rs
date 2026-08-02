@@ -1,10 +1,10 @@
-use nerd_font_symbols::md;
 use zbus::zvariant::OwnedObjectPath;
 
 use super::{
     BluetoothDeviceGroup, BluetoothDeviceView, BluetoothStatusView, BluetoothView, DeviceGroupView,
 };
 use crate::widgets::nerd_icon::NerdIcon;
+use crate::widgets::nerd_icon::md;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct AdapterSnapshot {
@@ -233,7 +233,7 @@ fn present_string(value: Option<String>) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use nerd_font_symbols::md;
+    use crate::widgets::nerd_icon::md;
 
     use super::{BluetoothDeviceGroup, device_group, status_icon};
 

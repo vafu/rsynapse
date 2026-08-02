@@ -3,7 +3,6 @@ mod source;
 mod view;
 
 use adw::prelude::*;
-use nerd_font_symbols::md;
 use relm4::prelude::*;
 use shell_core::{gtk, list::ComponentListBoxExt, source::Observable};
 use zbus::zvariant::OwnedObjectPath;
@@ -12,6 +11,7 @@ use crate::widgets::level_indicator::{
     self, LevelRenderStyle, LevelStage, LineStyle, TRACK_CLASSES,
 };
 use crate::widgets::nerd_icon::{NerdIcon, NerdIconLabelExt};
+use crate::widgets::nerd_icon::md;
 
 use super::bar_item;
 
