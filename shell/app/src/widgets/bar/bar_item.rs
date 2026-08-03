@@ -20,7 +20,9 @@ pub(super) fn action_classes(extra: &[&'static str]) -> Vec<&'static str> {
 }
 
 pub(super) fn container(extra: &[&'static str]) -> gtk::Box {
-    let widget = gtk::Box::new(gtk::Orientation::Horizontal, 4);
+    let widget = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
+        .build();
     widget.add_css_class(ITEM_CLASS);
     widget.add_css_class(BACKGROUND_BLUR_CLASS);
     for class in extra {

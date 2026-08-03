@@ -222,7 +222,6 @@ impl SimpleAsyncComponent for MainBar {
                     add_css_class: "bar-indicator-list-horizontal",
                     set_halign: gtk::Align::Start,
                     set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 4,
                     set_valign: gtk::Align::Center,
                     set_vexpand: false,
 
@@ -250,7 +249,6 @@ impl SimpleAsyncComponent for MainBar {
                         set_widget_name: "workspace-window-list",
                         set_halign: gtk::Align::Start,
                         set_orientation: gtk::Orientation::Horizontal,
-                        set_spacing: 4,
                         set_valign: gtk::Align::Center,
                         set_vexpand: false,
                     }
@@ -275,7 +273,6 @@ impl SimpleAsyncComponent for MainBar {
                         set_halign: gtk::Align::Center,
                         set_valign: gtk::Align::Center,
                         set_orientation: gtk::Orientation::Horizontal,
-                        set_spacing: 4,
 
                         gtk::Box {
                             add_css_class: "selected-project-segment",
@@ -283,7 +280,6 @@ impl SimpleAsyncComponent for MainBar {
                             set_halign: gtk::Align::Center,
                             set_valign: gtk::Align::Center,
                             set_orientation: gtk::Orientation::Horizontal,
-                            set_spacing: 4,
 
                             gtk::Label {
                                 set_css_classes: &["selected-project-icon", "nerdicon"],
@@ -319,7 +315,6 @@ impl SimpleAsyncComponent for MainBar {
                             set_halign: gtk::Align::Center,
                             set_valign: gtk::Align::Center,
                             set_orientation: gtk::Orientation::Horizontal,
-                            set_spacing: 4,
 
                             gtk::Label {
                                 set_css_classes: &[
@@ -353,7 +348,6 @@ impl SimpleAsyncComponent for MainBar {
                     add_css_class: "system-cluster",
                     set_halign: gtk::Align::End,
                     set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 0,
                     set_valign: gtk::Align::Fill,
                     set_vexpand: true,
 
@@ -367,7 +361,6 @@ impl SimpleAsyncComponent for MainBar {
                         set_tooltip_text: Some(model.mpris.tooltip.as_str()),
                         set_halign: gtk::Align::End,
                         set_orientation: gtk::Orientation::Horizontal,
-                        set_spacing: 4,
 
                         #[name = "mpris_details_revealer"]
                         gtk::Revealer {
@@ -433,7 +426,6 @@ impl SimpleAsyncComponent for MainBar {
                         set_orientation: gtk::Orientation::Horizontal,
                         #[watch]
                         set_tooltip_text: Some(system_stats::tooltip(&model.system_stats).as_str()),
-                        set_spacing: 4,
 
                         #[name = "power_profile_button"]
                         gtk::Button {
@@ -451,7 +443,6 @@ impl SimpleAsyncComponent for MainBar {
                                 set_halign: gtk::Align::Center,
                                 set_valign: gtk::Align::Center,
                                 set_orientation: gtk::Orientation::Horizontal,
-                                set_spacing: 0,
 
                                 gtk::Overlay {
                                     #[watch]
@@ -524,13 +515,11 @@ impl SimpleAsyncComponent for MainBar {
                         add_css_class: "system-indicators",
                         set_halign: gtk::Align::End,
                         set_orientation: gtk::Orientation::Horizontal,
-                        set_spacing: 0,
 
                         #[bind_list(tray_items, row = TrayItem)]
                         tray_items -> gtk::Box {
                             add_css_class: "tray-widget",
                             set_orientation: gtk::Orientation::Horizontal,
-                            set_spacing: 0,
                         },
 
                         // TODO(rsynapse-shell): split this into a right-cluster
@@ -832,7 +821,6 @@ impl SimpleAsyncComponent for MainBar {
                         #[wrap(Some)]
                         set_child = &gtk::Box {
                             set_orientation: gtk::Orientation::Horizontal,
-                            set_spacing: 4,
 
                             gtk::Label {
                                 set_css_classes: &[
@@ -857,12 +845,10 @@ impl SimpleAsyncComponent for MainBar {
                             gtk::Box {
                                 add_css_class: "source-error-popover",
                                 set_orientation: gtk::Orientation::Vertical,
-                                set_spacing: 8,
 
                                 #[bind_list(source_error_items, row = SourceErrorRow)]
                                 source_error_items -> gtk::Box {
                                     set_orientation: gtk::Orientation::Vertical,
-                                    set_spacing: 8,
                                 }
                             }
                         }
@@ -1016,7 +1002,9 @@ impl SimpleAsyncComponent for MainBar {
         let audio_route_popover = gtk::Popover::new();
         audio_route_popover.add_css_class("menu");
         audio_route_popover.add_css_class("audio-route-popover");
-        let audio_route_mount = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        let audio_route_mount = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .build();
         audio_route_popover.set_child(Some(&audio_route_mount));
         widgets
             .audio_route_button
@@ -1312,7 +1300,9 @@ fn mount_popover_component<C>(
 }
 
 fn mount_bluetooth_group_popover(popover: &gtk::Popover, group: BluetoothDeviceGroup) {
-    let mount = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    let mount = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .build();
     popover.set_child(Some(&mount));
     let controller = Rc::new(RefCell::new(None));
     mount_popover_component::<BluetoothGroupPopover>(popover, &mount, &controller, group);

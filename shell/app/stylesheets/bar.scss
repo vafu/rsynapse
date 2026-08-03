@@ -22,27 +22,15 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
 }
 
 .bar {
+  // background-color: #fff;
   background-color: #{$panel-bg};
-  padding: 0 5px 0 0;
   transition: 100ms;
-  min-height: #{$panel-item-size};
-
-  .bar-zone {
-    min-height: #{$panel-item-size};
-  }
-
-  .bar-zone-start,
-  .bar-zone-status {
-    min-width: 0;
-  }
 
   .bar-item {
     background-color: transparent;
     color: #{$fg};
-    border: 1px solid transparent;
     border-radius: 0;
     box-shadow: none;
-    min-height: #{$panel-item-size};
     margin: 0;
     padding: 0 6px;
     transition:
@@ -52,7 +40,7 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
   }
 
   button.bar-action,
-  menubutton.bar-action > button {
+  menubutton.bar-action>button {
     color: inherit;
     min-height: #{$panel-item-size};
     min-width: #{$panel-item-size};
@@ -72,7 +60,7 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
   }
 
   .bar-item-square button.bar-action,
-  .bar-item-square menubutton.bar-action > button {
+  .bar-item-square menubutton.bar-action>button {
     min-width: #{$panel-item-size};
     padding-left: 0;
     padding-right: 0;
@@ -83,31 +71,12 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
   }
 }
 
-.bar-zone-windows {
-  margin-left: 0;
-  margin-right: 12px;
-}
-
-.bar-zone-title {
-  min-width: 360px;
-}
-
-.bar-zone-title .selected-project {
-  margin: 0;
-  padding: 0 12px;
-}
-
-.bar-zone-status .bar-item,
-.bar-zone-status .bar-item button {
-  color: #{$fg};
-}
-
 
 .bar-zone-status .bar-item.disabled,
 .bar-zone-status .bar-item.inactive,
 .bar-zone-status .bar-item.muted,
 .bar-zone-status button.bar-action:disabled,
-.bar-zone-status menubutton.bar-action:disabled > button {
+.bar-zone-status menubutton.bar-action:disabled>button {
   color: #{$panel-muted};
   opacity: 0.72;
 }
@@ -118,7 +87,6 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
 }
 
 .bar-corner-indicator {
-  min-width: #{$workspace-rail-width};
   color: color-mix(in srgb, #{$accent_color} 70%, #{$fg});
 }
 
@@ -129,21 +97,8 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
 }
 
 .nerdicon {
-  font-family: "FiraCode Nerd Font Mono", "0xProto Nerd Font Mono", monospace;
-  font-weight: 500;
-  margin: 0;
-  padding: 0;
+  font-family: "FiraCode Nerd Font Mono";
   font-size: 18pt;
-}
-
-.nerdicon.bar-corner-icon,
-.nerdicon.selected-project-icon,
-.nerdicon.bar-indicator-icon,
-.nerdicon.bar-item-icon,
-.nerdicon.mpris-control-icon {
-  min-height: #{$panel-icon-size};
-  min-width: #{$panel-icon-size};
-  line-height: 1;
 }
 
 .nerdicon.selected-project-meta-icon {
@@ -158,9 +113,6 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
 }
 
 .selected-project {
-  padding: 0 9px;
-  margin-left: 0;
-  margin-right: 6px;
   transition:
     background-color 160ms,
     border-color 160ms,
@@ -190,15 +142,12 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
 }
 
 .bar-indicator {
+  padding: 0px;
   background-color: transparent;
   color: #{$fg};
   border: 1px solid transparent;
   border-radius: 0;
   box-shadow: none;
-  min-height: #{$panel-item-size};
-  min-width: #{$panel-item-size};
-  padding: 0;
-  opacity: 1;
   transition:
     background-color 160ms,
     border-color 160ms,
@@ -255,7 +204,7 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
   padding: 0;
 }
 
-.bar-indicator-list-vertical menubutton.workspace-icon-menu-button > button {
+.bar-indicator-list-vertical menubutton.workspace-icon-menu-button>button {
   min-height: #{$panel-item-size};
   min-width: #{$panel-item-size};
   margin: 0;
@@ -312,15 +261,6 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
 
 .bar-indicator-list-horizontal .bar-indicator:hover {
   border-top-color: #{$panel-border-strong};
-}
-
-.workspace-window-column {
-  &.stacked {
-    margin-top: 0;
-    padding-left: 3px;
-    border-left: 1px solid color-mix(in srgb, #{$accent_color} 36%, transparent);
-
-  }
 }
 
 .bar-indicator.build-progress {
@@ -390,16 +330,11 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
   }
 }
 
-.workspace-rail {
-  background-color: #{$panel-bg};
-  padding: 0;
-}
-
 .context-zone-revealer {
   margin-top: 6px;
 }
 
-.context-zone-list .context-zone-item.context-zone-build.running image {
+.context-zone-list .context-zone-item.context-zone-build.running .bar-indicator-icon {
   animation: bzbus-spin 1.2s linear infinite;
 }
 
@@ -411,11 +346,6 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
 
 .bar-indicator-list-vertical .bar-indicator.inactive-selected-workspace {
   border-right-color: #{$indicator-muted};
-}
-
-.bar-indicator-list-vertical .bar-indicator.has-unseen {
-  animation: workspace-unseen-accent-pulse 2.8s ease-in-out infinite;
-  border-right-color: #{$indicator-accent-pulse};
 }
 
 .bar-indicator-list-vertical .bar-indicator.has-attention {
@@ -446,6 +376,7 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
 }
 
 @keyframes workspace-unseen-accent-pulse {
+
   0%,
   100% {
     background-color: color-mix(in srgb, #{$accent_color} 12%, #{$bg_tint});
@@ -463,12 +394,11 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
 }
 
 .bar-badge {
-  min-width: 12px;
   margin-top: 2px;
-  margin-right: -4px;
+  margin-right: 4px;
   padding: 0 3px;
   border-radius: 999px;
-  background-color: color-mix(in srgb, #{$accent_color} 74%, #{$panel-bg});
+  background-color: #{$accent_color};
   color: #{$bg};
   font-size: 7pt;
   font-weight: 700;
@@ -477,22 +407,6 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
 .bar-badge.workspace-number-badge {
   background-color: color-mix(in srgb, #{$fg} 16%, #{$panel-bg});
   color: color-mix(in srgb, #{$fg} 72%, transparent);
-}
-
-.bar-badge.agent-unseen-badge {
-  min-width: 8px;
-  min-height: 8px;
-  margin-top: 4px;
-  margin-right: 0px;
-  padding: 0;
-  background-color: #{$accent_color};
-  box-shadow: 0 0 0 1px color-mix(in srgb, #{$bg} 72%, transparent);
-  outline: solid 1px color-mix(in srgb, #{$sys_critical} 72%, #{$accent_color});
-}
-
-.bar-badge.workspace-agent-unseen-badge {
-  margin-top: -2px;
-  margin-right: -4px;
 }
 
 .bar-build-indicator {
@@ -545,6 +459,7 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
 }
 
 .bzbus-progress-frame {
+
   >.track,
   >.level {
     margin-top: 4px;
@@ -625,6 +540,7 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
 }
 
 .mpris-widget {
+
   &.paused,
   &.stopped {
     opacity: 0.72;

@@ -45,7 +45,6 @@ impl SimpleComponent for ContextZone {
                 set_halign: gtk::Align::Center,
                 set_valign: gtk::Align::Start,
                 set_orientation: gtk::Orientation::Vertical,
-                set_spacing: 0,
 
                 #[bind_list(items, row = ContextZoneItem)]
                 items -> gtk::Box {
@@ -55,7 +54,6 @@ impl SimpleComponent for ContextZone {
                     set_halign: gtk::Align::Center,
                     set_valign: gtk::Align::Start,
                     set_orientation: gtk::Orientation::Vertical,
-                    set_spacing: 4,
                 }
             }
         }

@@ -45,7 +45,7 @@ impl SimpleComponent for WorkspaceBar {
 
             gtk::CenterBox {
                 set_widget_name: "rsynapse-workspace-rail",
-                add_css_class: "workspace-rail",
+                add_css_class: "bar",
                 set_width_request: WORKSPACE_RAIL_WIDTH,
                 set_orientation: gtk::Orientation::Vertical,
                 set_vexpand: true,
@@ -74,7 +74,6 @@ impl SimpleComponent for WorkspaceBar {
                         set_halign: gtk::Align::Center,
                         set_valign: gtk::Align::End,
                         set_orientation: gtk::Orientation::Vertical,
-                        set_spacing: 4,
                     },
                 },
             }

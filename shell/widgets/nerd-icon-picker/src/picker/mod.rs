@@ -35,7 +35,6 @@ impl NerdIconPicker {
         let root = gtk::Box::builder()
             .css_classes(["nerd-icon-picker"])
             .orientation(gtk::Orientation::Vertical)
-            .spacing(8)
             .build();
         let search = gtk::SearchEntry::builder()
             .placeholder_text("Search Nerd Font icons")
@@ -227,8 +226,6 @@ fn icon_button(state: &Rc<PickerState>, icon: NerdIcon, kind: &str) -> gtk::Butt
 
 fn icon_flow() -> gtk::FlowBox {
     gtk::FlowBox::builder()
-        .column_spacing(4)
-        .row_spacing(4)
         .homogeneous(true)
         .max_children_per_line(ICONS_PER_ROW)
         .min_children_per_line(ICONS_PER_ROW)

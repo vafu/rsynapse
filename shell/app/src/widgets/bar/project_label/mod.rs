@@ -95,7 +95,6 @@ impl SimpleComponent for ProjectLabel {
                         set_valign: gtk::Align::Center,
                         set_hexpand: false,
                         set_orientation: gtk::Orientation::Horizontal,
-                        set_spacing: 1,
 
                         #[name = "project_icon_label"]
                         gtk::Label {
@@ -122,7 +121,6 @@ impl SimpleComponent for ProjectLabel {
                                 set_halign: gtk::Align::Start,
                                 set_hexpand: false,
                                 set_orientation: gtk::Orientation::Horizontal,
-                                set_spacing: 4,
 
                                 gtk::Label {
                                     set_ellipsize: gtk::pango::EllipsizeMode::End,

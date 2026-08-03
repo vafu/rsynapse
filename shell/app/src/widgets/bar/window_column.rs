@@ -37,7 +37,6 @@ impl SimpleComponent for WindowColumn {
             set_valign: gtk::Align::Center,
             set_vexpand: false,
             set_orientation: gtk::Orientation::Vertical,
-            set_spacing: 3,
 
             #[name = "window_tiles"]
             gtk::Box {
@@ -45,7 +44,6 @@ impl SimpleComponent for WindowColumn {
                 set_valign: gtk::Align::Center,
                 set_vexpand: false,
                 set_orientation: gtk::Orientation::Vertical,
-                set_spacing: 3,
             }
         }
     }
