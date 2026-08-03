@@ -5,6 +5,7 @@ mod view;
 #[cfg(test)]
 mod test;
 
+use nerd_icon_picker::NerdIconPicker;
 use relm4::prelude::*;
 use shell_core::gtk::{self, prelude::*};
 
@@ -21,15 +22,13 @@ use super::{
     WorkspaceNode,
     bar_indicator::{self, BarIndicatorExt},
 };
-use crate::{
-    hints::hints_active,
-    widgets::nerd_icon::{NerdIcon, NerdIconLabelExt},
-};
+use crate::{hints::hints_active, widgets::nerd_icon::NerdIconLabelExt};
 
 #[derive(Debug)]
 #[shell_macros::model(module = project_label_sources)]
 pub(super) struct ProjectLabel {
     pub workspace: WorkspaceNode,
+    icon_picker: NerdIconPicker,
 
     #[source(project_label_vm(workspace.workspace.clone()))]
     pub vm: ProjectLabelVm,
@@ -75,108 +74,12 @@ impl SimpleComponent for ProjectLabel {
                     set_tooltip_text: Some(project_tooltip(&model.vm, &model.workspace).as_str()),
 
                     #[wrap(Some)]
+                    #[name = "icon_popover"]
                     set_popover = &gtk::Popover {
                         add_css_class: "menu",
 
-                        gtk::Box {
-                            add_css_class: "workspace-icon-picker",
-                            set_orientation: gtk::Orientation::Horizontal,
-                            set_spacing: 2,
-
-                            #[name = "icon_auto_button"]
-                            gtk::Button {
-                                set_css_classes: &auto_icon_button_classes(&model.vm),
-                                #[watch]
-                                set_visible: auto_icon_visible(&model.vm),
-
-                                gtk::Label {
-                                    set_css_classes: &["bar-indicator-icon", "nerdicon"],
-                                    set_halign: gtk::Align::Center,
-                                    set_valign: gtk::Align::Center,
-                                    set_nerd_icon: NerdIcon::automatic(),
-                                }
-                            },
-
-                            #[name = "icon_candidate_0"]
-                            gtk::Button {
-                                #[watch]
-                                set_visible: icon_candidate_visible(&model.vm, 0),
-                                #[watch]
-                                set_css_classes: &icon_candidate_button_classes(&model.vm, 0),
-
-                                gtk::Label {
-                                    set_css_classes: &["bar-indicator-icon", "nerdicon"],
-                                    set_halign: gtk::Align::Center,
-                                    set_valign: gtk::Align::Center,
-                                    #[watch]
-                                    set_nerd_icon: icon_candidate_render(&model.vm, 0),
-                                }
-                            },
-
-                            #[name = "icon_candidate_1"]
-                            gtk::Button {
-                                #[watch]
-                                set_visible: icon_candidate_visible(&model.vm, 1),
-                                #[watch]
-                                set_css_classes: &icon_candidate_button_classes(&model.vm, 1),
-
-                                gtk::Label {
-                                    set_css_classes: &["bar-indicator-icon", "nerdicon"],
-                                    set_halign: gtk::Align::Center,
-                                    set_valign: gtk::Align::Center,
-                                    #[watch]
-                                    set_nerd_icon: icon_candidate_render(&model.vm, 1),
-                                }
-                            },
-
-                            #[name = "icon_candidate_2"]
-                            gtk::Button {
-                                #[watch]
-                                set_visible: icon_candidate_visible(&model.vm, 2),
-                                #[watch]
-                                set_css_classes: &icon_candidate_button_classes(&model.vm, 2),
-
-                                gtk::Label {
-                                    set_css_classes: &["bar-indicator-icon", "nerdicon"],
-                                    set_halign: gtk::Align::Center,
-                                    set_valign: gtk::Align::Center,
-                                    #[watch]
-                                    set_nerd_icon: icon_candidate_render(&model.vm, 2),
-                                }
-                            },
-
-                            #[name = "icon_candidate_3"]
-                            gtk::Button {
-                                #[watch]
-                                set_visible: icon_candidate_visible(&model.vm, 3),
-                                #[watch]
-                                set_css_classes: &icon_candidate_button_classes(&model.vm, 3),
-
-                                gtk::Label {
-                                    set_css_classes: &["bar-indicator-icon", "nerdicon"],
-                                    set_halign: gtk::Align::Center,
-                                    set_valign: gtk::Align::Center,
-                                    #[watch]
-                                    set_nerd_icon: icon_candidate_render(&model.vm, 3),
-                                }
-                            },
-
-                            #[name = "icon_candidate_4"]
-                            gtk::Button {
-                                #[watch]
-                                set_visible: icon_candidate_visible(&model.vm, 4),
-                                #[watch]
-                                set_css_classes: &icon_candidate_button_classes(&model.vm, 4),
-
-                                gtk::Label {
-                                    set_css_classes: &["bar-indicator-icon", "nerdicon"],
-                                    set_halign: gtk::Align::Center,
-                                    set_valign: gtk::Align::Center,
-                                    #[watch]
-                                    set_nerd_icon: icon_candidate_render(&model.vm, 4),
-                                }
-                            }
-                        }
+                        #[local_ref]
+                        icon_picker_root -> gtk::Box {},
                     },
 
                     #[wrap(Some)]
@@ -269,35 +172,41 @@ impl SimpleComponent for ProjectLabel {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let model = ProjectLabel::new(init);
+        let icon_picker = NerdIconPicker::new();
+        let icon_picker_root = icon_picker.widget().clone();
+        let model = ProjectLabel::new(init, icon_picker);
         let widgets = view_output!();
 
         let input_sender = sender.input_sender().clone();
-        let auto_button = widgets.icon_auto_button.clone();
-        let auto_button_for_signal = auto_button.clone();
-        auto_button.connect_clicked(move |_| {
-            close_button_popover(&auto_button_for_signal);
+        let icon_popover = widgets.icon_popover.clone();
+        model.icon_picker.connect_icon_selected(move |icon| {
+            icon_popover.popdown();
+            input_sender.emit(ProjectLabelInput::SetIconOverride(icon.glyph().to_owned()));
+        });
+        let input_sender = sender.input_sender().clone();
+        let icon_popover = widgets.icon_popover.clone();
+        model.icon_picker.connect_reset(move || {
+            icon_popover.popdown();
             input_sender.emit(ProjectLabelInput::ClearIconOverride);
         });
-        connect_icon_candidate_button(&widgets.icon_candidate_0, sender.input_sender().clone(), 0);
-        connect_icon_candidate_button(&widgets.icon_candidate_1, sender.input_sender().clone(), 1);
-        connect_icon_candidate_button(&widgets.icon_candidate_2, sender.input_sender().clone(), 2);
-        connect_icon_candidate_button(&widgets.icon_candidate_3, sender.input_sender().clone(), 3);
-        connect_icon_candidate_button(&widgets.icon_candidate_4, sender.input_sender().clone(), 4);
+        sync_icon_picker(&model);
 
         ComponentParts { model, widgets }
     }
 
     fn update(&mut self, msg: Self::Input, _sender: ComponentSender<Self>) {
         match msg {
-            ProjectLabelInput::Source(msg) => ProjectLabel::update(self, msg),
-            ProjectLabelInput::SetIconOverride(index) => {
-                let Some(candidate) = self.vm.project_icon_candidates.get(index) else {
+            ProjectLabelInput::Source(msg) => {
+                ProjectLabel::update(self, msg);
+                sync_icon_picker(self);
+            }
+            ProjectLabelInput::SetIconOverride(glyph) => {
+                let Some(icon) = WorkspaceIconChoice::new(glyph) else {
                     return;
                 };
                 set_project_icon_override(
                     self.vm.workspace_id,
-                    WorkspaceIconChoice::from(candidate),
+                    icon,
                     self.vm.project_icon_input.clone(),
                 );
             }
@@ -306,4 +215,26 @@ impl SimpleComponent for ProjectLabel {
             }
         }
     }
+}
+
+fn sync_icon_picker(model: &ProjectLabel) {
+    let icons = model
+        .vm
+        .project_icon_candidates
+        .iter()
+        .enumerate()
+        .filter_map(|(index, candidate)| {
+            nerd_icon_picker::NerdIcon::specific(
+                format!("Suggested icon {}", index + 1),
+                candidate.glyph.clone(),
+            )
+        })
+        .collect();
+    model.icon_picker.set_specific_icons(icons);
+    model
+        .icon_picker
+        .set_selected_glyph(Some(&model.vm.project_icon_glyph));
+    model
+        .icon_picker
+        .set_reset_visible(model.vm.project_icon_overridden);
 }

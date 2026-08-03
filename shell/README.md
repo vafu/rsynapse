@@ -18,6 +18,10 @@ GTK4/Relm4 framework crates plus concrete Rsynapse UI surfaces.
 - `core/rx-macros`
   Small RxRust composition macros.
 
+- `widgets/nerd-icon-picker`
+  Reusable searchable GTK picker for Nerd Font glyphs and consumer-supplied
+  specific icon rows.
+
 - `app`
   The current combined `rsynapse-shell` package. It owns the bar, OSD,
   notifications bridge, request socket, styles, and Rsynapse-specific UI
@@ -48,6 +52,16 @@ env CARGO_TARGET_DIR=/tmp/rsynapse-shell-target cargo fmt --check
 env CARGO_TARGET_DIR=/tmp/rsynapse-shell-target cargo run -p rsynapse-shell --bin rsynapse-shell
 env CARGO_TARGET_DIR=/tmp/rsynapse-shell-target cargo run -p rsynapse-shell --bin rsynapse-notifications
 ```
+
+Launch either UI with the GTK inspector opened at startup by passing `inspect`:
+
+```sh
+env CARGO_TARGET_DIR=/tmp/rsynapse-shell-target cargo run -p rsynapse-shell --bin rsynapse-shell -- inspect
+env CARGO_TARGET_DIR=/tmp/rsynapse-shell-target cargo run -p rsynapse-shell --bin rsynapse-notifications -- inspect
+```
+
+Stop the corresponding systemd user service first when it is already running;
+GTK applications use a single instance per application ID.
 
 The launcher is a nested workspace:
 

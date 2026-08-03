@@ -1,7 +1,7 @@
 #[derive(Debug)]
 pub(in crate::widgets::bar) enum ProjectLabelInput {
     Source(super::project_label_sources::Msg),
-    SetIconOverride(usize),
+    SetIconOverride(String),
     ClearIconOverride,
 }
 

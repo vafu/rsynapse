@@ -11,6 +11,7 @@ use crate::css::{
 
 pub struct ShellApp {
     app_id: String,
+    args: Option<Vec<String>>,
     stylesheets: Vec<StylesheetRegistration>,
     watch_stylesheets: bool,
     sass_config: SassConfig,
@@ -22,12 +23,19 @@ impl ShellApp {
     pub fn new(app_id: impl Into<String>) -> Self {
         Self {
             app_id: app_id.into(),
+            args: None,
             stylesheets: Vec::new(),
             watch_stylesheets: false,
             sass_config: SassConfig::default(),
             startup_handlers: Vec::new(),
             relm_threads: None,
         }
+    }
+
+    /// Override the process arguments passed to GTK when the application runs.
+    pub fn with_args(mut self, args: impl IntoIterator<Item = String>) -> Self {
+        self.args = Some(args.into_iter().collect());
+        self
     }
 
     pub fn with_stylesheet(mut self, path: impl Into<PathBuf>) -> Self {
@@ -115,6 +123,7 @@ impl ShellApp {
     {
         let Self {
             app_id,
+            args,
             stylesheets,
             watch_stylesheets,
             sass_config,
@@ -124,6 +133,10 @@ impl ShellApp {
 
         Self::configure_relm_threads(relm_threads);
         let app = RelmApp::<C::Input>::new(&app_id);
+        let app = match args {
+            Some(args) => app.with_args(args),
+            None => app,
+        };
         let stylesheets = Self::prepare_stylesheets(stylesheets, sass_config)
             .expect("failed to initialize shell app stylesheets");
         let gtk_app = relm4::main_application();
@@ -166,6 +179,7 @@ impl ShellApp {
     {
         let Self {
             app_id,
+            args,
             stylesheets,
             watch_stylesheets,
             sass_config,
@@ -175,6 +189,10 @@ impl ShellApp {
 
         Self::configure_relm_threads(relm_threads);
         let app = RelmApp::<C::Input>::new(&app_id);
+        let app = match args {
+            Some(args) => app.with_args(args),
+            None => app,
+        };
         let stylesheets = Self::prepare_stylesheets(stylesheets, sass_config)
             .expect("failed to initialize shell app stylesheets");
         let gtk_app = relm4::main_application();
@@ -248,6 +266,7 @@ impl Debug for ShellApp {
         formatter
             .debug_struct("ShellApp")
             .field("app_id", &self.app_id)
+            .field("args", &self.args)
             .field("stylesheets", &self.stylesheets)
             .field("watch_stylesheets", &self.watch_stylesheets)
             .field("sass_config", &self.sass_config)

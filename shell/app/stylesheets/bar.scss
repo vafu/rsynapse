@@ -262,6 +262,43 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
   padding: 0;
 }
 
+.nerd-icon-picker {
+  min-width: 360px;
+  padding: 8px;
+}
+
+.nerd-icon-picker-section-label {
+  color: color-mix(in srgb, #{$fg} 76%, transparent);
+  font-size: 0.82em;
+  font-weight: 600;
+}
+
+.nerd-icon-picker flowboxchild {
+  padding: 0;
+}
+
+.nerd-icon-picker-choice {
+  padding: 7px;
+
+  &.selected {
+    background-color: #{$indicator-fill};
+    color: #{$fg};
+  }
+}
+
+.nerd-icon-picker-glyph {
+  font-size: 1.25em;
+}
+
+.nerd-icon-picker-reset {
+  padding-left: 0;
+  padding-right: 0;
+}
+
+.nerd-icon-picker-status {
+  margin: 6px 2px;
+}
+
 
 .bar-indicator-list-horizontal .bar-indicator.active {
   border-top-color: #{$indicator-accent};

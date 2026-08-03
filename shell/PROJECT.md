@@ -39,6 +39,8 @@ rsynapse/shell/
 │   ├── background-effect/ # package: gtk4-background-effect
 │   ├── macros/            # package: shell-macros
 │   └── rx-macros/         # package: shell-rx-macros
+├── widgets/
+│   └── nerd-icon-picker/  # package: nerd-icon-picker
 ├── app/                   # package: rsynapse-shell
 └── launcher/              # nested launcher workspace
 ```
@@ -221,6 +223,17 @@ Responsibilities:
   binary operators, for example `combine_latest!`.
 - Stay independent from product-specific widgets and backend transports.
 
+### `nerd-icon-picker`
+
+Reusable GTK picker for named Nerd Font glyphs.
+
+Responsibilities:
+
+- Search the bundled Nerd Font catalog by icon name.
+- Render consumer-supplied specific icons in a dedicated row.
+- Report icon and reset selections without owning consumer persistence policy.
+- Stay independent from Rsynapse workspace, project, and Locus types.
+
 ### User-facing UI crates
 
 User-facing shell crates or binaries such as bars, OSDs, and notifications.
@@ -242,6 +255,7 @@ Responsibilities:
   background blur setup.
 - `core/macros` for Relm4 source/model bindings.
 - `core/rx-macros` for lightweight RxRust composition macros.
+- `widgets/nerd-icon-picker` for reusable Nerd Font catalog search and GTK UI.
 - `shell_core::source` for the current Observable binding facade.
 - `SOURCE_API.md` for the Observable-first source API.
 - `app/` for the current combined `rsynapse-shell` bar, OSD, notifications,

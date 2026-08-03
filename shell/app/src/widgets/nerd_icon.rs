@@ -17,7 +17,6 @@ pub(crate) mod fa {
     pub(crate) const FA_FIREFOX: &str = "\u{f269}";
     pub(crate) const FA_FORWARD_STEP: &str = "\u{f051}";
     pub(crate) const FA_PLAY: &str = "\u{f04b}";
-    pub(crate) const FA_WAND_MAGIC: &str = "\u{f0d0}";
 }
 
 pub(crate) mod md {
@@ -66,10 +65,6 @@ impl NerdIcon {
 
     pub(crate) fn workspace() -> Self {
         Self::new(cod::COD_WORKSPACE_UNKNOWN)
-    }
-
-    pub(crate) fn automatic() -> Self {
-        Self::new(fa::FA_WAND_MAGIC)
     }
 
     pub(crate) fn move_handle() -> Self {
