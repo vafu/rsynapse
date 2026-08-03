@@ -7,7 +7,10 @@ mod test;
 
 use nerd_icon_picker::NerdIconPicker;
 use relm4::prelude::*;
-use shell_core::gtk::{self, prelude::*};
+use shell_core::{
+    gtk::{self, prelude::*},
+    gtk4_layer_shell::{KeyboardMode, LayerShell},
+};
 
 use self::{
     input::ProjectLabelInput,
@@ -188,6 +191,22 @@ impl SimpleComponent for ProjectLabel {
         model.icon_picker.connect_reset(move || {
             icon_popover.popdown();
             input_sender.emit(ProjectLabelInput::ClearIconOverride);
+        });
+        let icon_picker = model.icon_picker.clone();
+        widgets.icon_popover.connect_visible_notify(move |popover| {
+            let visible = popover.is_visible();
+            if let Some(window) = popover.root().and_downcast::<gtk::Window>() {
+                window.set_keyboard_mode(if visible {
+                    KeyboardMode::Exclusive
+                } else {
+                    KeyboardMode::None
+                });
+            }
+
+            if visible {
+                let icon_picker = icon_picker.clone();
+                gtk::glib::idle_add_local_once(move || icon_picker.focus_search());
+            }
         });
         sync_icon_picker(&model);
 

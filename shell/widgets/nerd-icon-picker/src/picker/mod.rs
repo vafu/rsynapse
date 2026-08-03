@@ -93,6 +93,11 @@ impl NerdIconPicker {
         self.state.search.set_text(query);
     }
 
+    /// Move keyboard focus to the search entry.
+    pub fn focus_search(&self) {
+        self.state.search.grab_focus();
+    }
+
     /// Replace the icons displayed in the dedicated specific-icons row.
     pub fn set_specific_icons(&self, icons: Vec<NerdIcon>) {
         *self.state.specific_icons.borrow_mut() = icons;
