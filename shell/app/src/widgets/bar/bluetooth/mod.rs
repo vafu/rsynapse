@@ -10,8 +10,8 @@ use zbus::zvariant::OwnedObjectPath;
 use crate::widgets::level_indicator::{
     self, LevelRenderStyle, LevelStage, LineStyle, TRACK_CLASSES,
 };
-use crate::widgets::nerd_icon::{NerdIcon, NerdIconLabelExt};
 use crate::widgets::nerd_icon::md;
+use crate::widgets::nerd_icon::{NerdIcon, NerdIconLabelExt};
 
 use super::bar_item;
 

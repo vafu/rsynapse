@@ -1,11 +1,7 @@
-use std::sync::OnceLock;
+use std::{ffi::OsString, path::PathBuf};
 
-const NERD_ICON_PREFIXES: &[&str] = &[
-    "cod-", "custom-", "dev-", "fa-", "fae-", "iec-", "linux-", "md-", "oct-", "ple-", "pom-",
-    "seti-", "weather-",
-];
-
-static ICONS: OnceLock<Vec<NerdIcon>> = OnceLock::new();
+use gtk::gio;
+use serde::Deserialize;
 
 /// A named Nerd Font glyph that can be displayed or selected.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -33,63 +29,81 @@ impl NerdIcon {
     }
 }
 
-/// Search the bundled Nerd Font catalog, ordered by name relevance.
-pub fn search_icons(query: &str, limit: usize) -> Vec<NerdIcon> {
-    let terms = search_terms(query);
-    if terms.is_empty() || limit == 0 {
-        return Vec::new();
+#[derive(Debug, Deserialize)]
+struct PickIconResult {
+    icon: String,
+    glyph: String,
+}
+
+pub(crate) async fn search_icons(query: &str, limit: usize) -> Result<Vec<NerdIcon>, String> {
+    if query.trim().is_empty() || limit == 0 {
+        return Ok(Vec::new());
     }
 
-    let mut matches = icons()
+    let arguments = pick_icon_arguments(query, limit);
+    let argv = arguments
         .iter()
-        .filter_map(|icon| search_rank(icon.name(), &terms).map(|rank| (rank, icon)))
+        .map(OsString::as_os_str)
         .collect::<Vec<_>>();
-    matches.sort_by(|(left_rank, left), (right_rank, right)| {
-        left_rank
-            .cmp(right_rank)
-            .then_with(|| left.name.cmp(&right.name))
-    });
-    matches
+    let process = gio::Subprocess::newv(
+        &argv,
+        gio::SubprocessFlags::STDOUT_PIPE | gio::SubprocessFlags::STDERR_SILENCE,
+    )
+    .map_err(|error| format!("failed to start pick-icon: {error}"))?;
+    let (stdout, _) = process
+        .communicate_utf8_future(None)
+        .await
+        .map_err(|error| format!("failed to query pick-icon: {error}"))?;
+    if process.exit_status() != 0 {
+        return Err(format!(
+            "pick-icon exited with status {}",
+            process.exit_status()
+        ));
+    }
+
+    Ok(parse_pick_icon_output(
+        stdout.as_deref().unwrap_or_default().as_bytes(),
+        limit,
+    ))
+}
+
+fn pick_icon_arguments(query: &str, limit: usize) -> Vec<OsString> {
+    vec![
+        pick_icon_executable().into_os_string(),
+        "--family".into(),
+        "nerd".into(),
+        "--string".into(),
+        query.into(),
+        "--top".into(),
+        limit.to_string().into(),
+        "--json".into(),
+    ]
+}
+
+fn parse_pick_icon_output(output: &[u8], limit: usize) -> Vec<NerdIcon> {
+    serde_json::from_slice::<Vec<PickIconResult>>(output)
+        .unwrap_or_default()
         .into_iter()
+        .filter_map(|result| {
+            let name = non_empty(result.icon)?;
+            let glyph = non_empty(result.glyph)?;
+            Some(NerdIcon { name, glyph })
+        })
         .take(limit)
-        .map(|(_, icon)| icon.clone())
         .collect()
 }
 
-fn icons() -> &'static [NerdIcon] {
-    ICONS.get_or_init(|| {
-        nerd_font::load_font()
-            .glyphs()
-            .iter()
-            .filter(|glyph| {
-                NERD_ICON_PREFIXES
-                    .iter()
-                    .any(|prefix| glyph.name().starts_with(prefix))
-            })
-            .map(|glyph| NerdIcon {
-                name: glyph.name().to_owned(),
-                glyph: glyph.char().to_string(),
-            })
-            .collect()
-    })
-}
-
-fn search_terms(query: &str) -> Vec<String> {
-    query
-        .split(|character: char| character.is_whitespace() || character == '-' || character == '_')
-        .filter_map(|term| non_empty(term.to_lowercase()))
-        .collect()
-}
-
-fn search_rank(name: &str, terms: &[String]) -> Option<(usize, usize)> {
-    let searchable = name.replace(['-', '_'], " ").to_lowercase();
-    let positions = terms
-        .iter()
-        .map(|term| searchable.find(term))
-        .collect::<Option<Vec<_>>>()?;
-    let first = positions.iter().copied().min().unwrap_or_default();
-    let distance = positions.into_iter().sum();
-    Some((first, distance))
+fn pick_icon_executable() -> PathBuf {
+    if let Some(path) = std::env::var_os("RSYNAPSE_PICK_ICON") {
+        return PathBuf::from(path);
+    }
+    if let Some(home) = std::env::var_os("HOME") {
+        let path = PathBuf::from(home).join(".cargo/bin/pick-icon");
+        if path.exists() {
+            return path;
+        }
+    }
+    PathBuf::from("pick-icon")
 }
 
 fn non_empty(value: String) -> Option<String> {

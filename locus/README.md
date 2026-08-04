@@ -28,6 +28,9 @@ rather than a general RDF/SPARQL database.
 - `Clear` emits each removed record and then a coarse completion signal.
 - Persists records atomically to `$LOCUS_RELATIONS_PATH` or
   `$XDG_STATE_HOME/rsynapse/locus/relations.json`.
+- Durable workspace preferences such as icon overrides should use the named
+  workspace key `org.rsynapse.niri.workspace.name`; numeric workspace IDs are
+  suitable only as a compatibility fallback for unnamed workspaces.
 
 The typed endpoint change intentionally changes the JSON persistence format.
 Existing local `relations.json` files from the earlier string endpoint format

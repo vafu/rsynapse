@@ -27,7 +27,7 @@ fn build_demo(app: &gtk::Application) {
     );
     picker.set_selected_glyph(Some("\u{e7a8}"));
     picker.set_reset_visible(true);
-    picker.set_query("rust");
+    picker.set_query("rstu");
 
     let window = gtk::ApplicationWindow::builder()
         .application(app)

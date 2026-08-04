@@ -1,9 +1,9 @@
-use shell_core::source::{self, rx::Observable as _, Observable};
+use shell_core::source::{self, Observable, rx::Observable as _};
 
 use crate::widgets::bar::{
-    bzbus::{bzbus_for_window, BzBusView},
+    bzbus::{BzBusView, bzbus_for_window},
     niri::NiriWorkspace,
-    window_source::{window_snapshots, WindowSnapshot},
+    window_source::{WindowSnapshot, window_snapshots},
 };
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]

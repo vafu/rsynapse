@@ -229,7 +229,7 @@ Reusable GTK picker for named Nerd Font glyphs.
 
 Responsibilities:
 
-- Search the bundled Nerd Font catalog by icon name.
+- Fuzzy-search Nerd Font glyphs through `pick-icon` without blocking GTK.
 - Render consumer-supplied specific icons in a dedicated row.
 - Report icon and reset selections without owning consumer persistence policy.
 - Stay independent from Rsynapse workspace, project, and Locus types.

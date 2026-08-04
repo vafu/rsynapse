@@ -1,19 +1,19 @@
-use shell_core::source::{self, rx::Observable as _, Observable};
+use shell_core::source::{self, Observable, rx::Observable as _};
 
-pub(super) use crate::widgets::bar::icon_resolver::{
-    clear_workspace_icon_override, set_workspace_icon_override,
-};
 pub(in crate::widgets::bar::project_label) use crate::widgets::bar::icon_resolver::{
     IconCandidate as WorkspaceIconCandidate, IconChoice as WorkspaceIconChoice,
 };
+pub(super) use crate::widgets::bar::icon_resolver::{
+    clear_workspace_icon_override, set_workspace_icon_override,
+};
 use crate::widgets::bar::{
     icon_resolver::{
-        resolve_icon, workspace_icon_override_source, IconChoice, IconEvidence, IconEvidenceKind,
-        IconPolicy, IconRequest, IconResolution,
+        IconChoice, IconEvidence, IconEvidenceKind, IconPolicy, IconRequest, IconResolution,
+        resolve_icon, workspace_icon_override_source,
     },
     niri::NiriWorkspace,
-    project::{project_details, ProjectDetails},
-    window_source::{window_snapshots, WindowSnapshot},
+    project::{ProjectDetails, project_details},
+    window_source::{WindowSnapshot, window_snapshots},
 };
 
 #[cfg(test)]

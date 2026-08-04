@@ -223,12 +223,13 @@ impl SimpleComponent for ProjectLabel {
                 };
                 set_project_icon_override(
                     self.vm.workspace_id,
+                    self.vm.workspace_name.clone(),
                     icon,
                     self.vm.project_icon_input.clone(),
                 );
             }
             ProjectLabelInput::ClearIconOverride => {
-                clear_project_icon_override(self.vm.workspace_id)
+                clear_project_icon_override(self.vm.workspace_id, self.vm.workspace_name.clone())
             }
         }
     }

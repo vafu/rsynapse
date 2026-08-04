@@ -19,8 +19,8 @@ GTK4/Relm4 framework crates plus concrete Rsynapse UI surfaces.
   Small RxRust composition macros.
 
 - `widgets/nerd-icon-picker`
-  Reusable searchable GTK picker for Nerd Font glyphs and consumer-supplied
-  specific icon rows.
+  Reusable `pick-icon`-backed fuzzy GTK picker for Nerd Font glyphs and
+  consumer-supplied specific icon rows.
 
 - `app`
   The current combined `rsynapse-shell` package. It owns the bar, OSD,

@@ -11,6 +11,8 @@ use std::collections::BTreeSet;
 use shell_core::source::{self, Observable, rx::Observable as _};
 
 #[cfg(test)]
+pub(in crate::widgets::bar) use self::override_store::workspace_icon_subjects_for_test;
+#[cfg(test)]
 pub(in crate::widgets::bar) use self::picker::{
     parse_pick_icon_output, picker_cache_key_for_request, picker_strings_for_request,
 };
