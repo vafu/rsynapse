@@ -1,8 +1,12 @@
-use std::{cell::RefCell, fmt, rc::Rc};
+use std::{
+    cell::{Cell, RefCell},
+    fmt,
+    rc::Rc,
+};
 
-use gtk::{self, prelude::*};
+use gtk::{self, glib, prelude::*};
 
-use crate::{NerdIcon, search_icons};
+use crate::{NerdIcon, catalog::search_icons};
 
 const MAX_SEARCH_RESULTS: usize = 24;
 const ICONS_PER_ROW: u32 = 6;
@@ -24,7 +28,9 @@ struct PickerState {
     results_status: gtk::Label,
     reset_button: gtk::Button,
     specific_icons: RefCell<Vec<NerdIcon>>,
+    results: RefCell<Vec<NerdIcon>>,
     selected_glyph: RefCell<Option<String>>,
+    search_generation: Cell<u64>,
     selection_handlers: RefCell<Vec<SelectionHandler>>,
     reset_handlers: RefCell<Vec<ResetHandler>>,
 }
@@ -61,7 +67,7 @@ impl NerdIconPicker {
         root.append(&results_flow);
         let results_status = gtk::Label::builder()
             .css_classes(["dim-label", "nerd-icon-picker-status"])
-            .label("Type a name to search the Nerd Font catalog")
+            .label("Type a name to fuzzy-search with pick-icon")
             .halign(gtk::Align::Start)
             .wrap(true)
             .build();
@@ -74,7 +80,9 @@ impl NerdIconPicker {
             results_status,
             reset_button,
             specific_icons: RefCell::new(Vec::new()),
+            results: RefCell::new(Vec::new()),
             selected_glyph: RefCell::new(None),
+            search_generation: Cell::new(0),
             selection_handlers: RefCell::new(Vec::new()),
             reset_handlers: RefCell::new(Vec::new()),
         });
@@ -93,6 +101,11 @@ impl NerdIconPicker {
         self.state.search.set_text(query);
     }
 
+    /// Move keyboard focus to the search field.
+    pub fn focus_search(&self) -> bool {
+        self.state.search.grab_focus()
+    }
+
     /// Replace the icons displayed in the dedicated specific-icons row.
     pub fn set_specific_icons(&self, icons: Vec<NerdIcon>) {
         *self.state.specific_icons.borrow_mut() = icons;
@@ -103,7 +116,7 @@ impl NerdIconPicker {
     pub fn set_selected_glyph(&self, glyph: Option<&str>) {
         *self.state.selected_glyph.borrow_mut() = glyph.map(str::to_owned);
         refresh_specific_icons(&self.state);
-        refresh_results(&self.state);
+        render_results(&self.state);
     }
 
     /// Show or hide the action that restores automatic icon selection.
@@ -146,9 +159,9 @@ impl fmt::Debug for NerdIconPicker {
 
 fn connect_signals(state: &Rc<PickerState>) {
     let weak_state = Rc::downgrade(state);
-    state.search.connect_search_changed(move |_| {
+    state.search.connect_search_changed(move |search| {
         if let Some(state) = weak_state.upgrade() {
-            refresh_results(&state);
+            begin_search(&state, search.text().to_string());
         }
     });
 
@@ -172,22 +185,63 @@ fn refresh_specific_icons(state: &Rc<PickerState>) {
     }
 }
 
-fn refresh_results(state: &Rc<PickerState>) {
+fn begin_search(state: &Rc<PickerState>, query: String) {
+    let generation = state.search_generation.get().wrapping_add(1);
+    state.search_generation.set(generation);
+    state.results.borrow_mut().clear();
+    render_results(state);
+
+    if query.trim().is_empty() {
+        state
+            .results_status
+            .set_label("Type a name to fuzzy-search with pick-icon");
+        state.results_status.set_visible(true);
+        return;
+    }
+
+    state.results_status.set_label("Searching with pick-icon…");
+    state.results_status.set_visible(true);
+    let weak_state = Rc::downgrade(state);
+    glib::spawn_future_local(async move {
+        let result = search_icons(&query, MAX_SEARCH_RESULTS).await;
+        let Some(state) = weak_state.upgrade() else {
+            return;
+        };
+        if state.search_generation.get() != generation {
+            return;
+        }
+
+        match result {
+            Ok(results) => {
+                *state.results.borrow_mut() = results;
+                render_results(&state);
+                state
+                    .results_status
+                    .set_label("No matching Nerd Font icons");
+                state
+                    .results_status
+                    .set_visible(state.results.borrow().is_empty());
+            }
+            Err(error) => {
+                eprintln!("[nerd-icon-picker] {error}");
+                state.results.borrow_mut().clear();
+                render_results(&state);
+                state
+                    .results_status
+                    .set_label("pick-icon search is unavailable");
+                state.results_status.set_visible(true);
+            }
+        }
+    });
+}
+
+fn render_results(state: &Rc<PickerState>) {
     state.results_flow.remove_all();
-    let query = state.search.text();
-    let results = search_icons(query.as_str(), MAX_SEARCH_RESULTS);
-    for icon in results.iter().cloned() {
+    for icon in state.results.borrow().iter().cloned() {
         state
             .results_flow
             .append(&icon_button(state, icon, "result"));
     }
-
-    state.results_status.set_visible(results.is_empty());
-    state.results_status.set_label(if query.trim().is_empty() {
-        "Type a name to search the Nerd Font catalog"
-    } else {
-        "No matching Nerd Font icons"
-    });
 }
 
 fn icon_button(state: &Rc<PickerState>, icon: NerdIcon, kind: &str) -> gtk::Button {

@@ -1,7 +1,7 @@
-//! Searchable GTK picker for Nerd Font glyphs.
+//! Fuzzy-searchable GTK picker for Nerd Font glyphs, backed by `pick-icon`.
 
 mod catalog;
 mod picker;
 
-pub use catalog::{NerdIcon, search_icons};
+pub use catalog::NerdIcon;
 pub use picker::NerdIconPicker;

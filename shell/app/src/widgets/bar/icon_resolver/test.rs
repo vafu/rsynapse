@@ -1,10 +1,26 @@
 use crate::widgets::nerd_icon::{dev, fa};
+use locus::{RelationEndpoint, keys};
 
 use super::{
     IconCandidate, IconCandidateSource, IconChoice, IconEvidence, IconEvidenceKind, IconPolicy,
     IconRequest, parse_pick_icon_output, picker_cache_key_for_request, picker_input_for_request,
-    resolve_icon_for_test,
+    resolve_icon_for_test, workspace_icon_subjects_for_test,
 };
+
+#[test]
+fn named_workspace_icon_identity_prefers_durable_name_with_id_fallback() {
+    assert_eq!(
+        workspace_icon_subjects_for_test(42, Some(" coding ")),
+        vec![
+            RelationEndpoint::stable_key(keys::NIRI_WORKSPACE_NAME, "coding"),
+            RelationEndpoint::stable_key(keys::NIRI_WORKSPACE_ID, "42"),
+        ]
+    );
+    assert_eq!(
+        workspace_icon_subjects_for_test(42, None),
+        vec![RelationEndpoint::stable_key(keys::NIRI_WORKSPACE_ID, "42")]
+    );
+}
 
 #[test]
 fn app_alias_resolves_firefox_without_picker() {

@@ -80,6 +80,7 @@ pub(super) fn project_label_vm(workspace: NiriWorkspace) -> Observable<ProjectLa
 
 pub(super) fn set_project_icon_override(
     workspace_id: Option<u64>,
+    workspace_name: String,
     icon: WorkspaceIconChoice,
     picker_input: String,
 ) {
@@ -87,13 +88,13 @@ pub(super) fn set_project_icon_override(
         eprintln!("[project-label] cannot set icon override without workspace id");
         return;
     };
-    set_workspace_icon_override(workspace_id, icon, picker_input);
+    set_workspace_icon_override(workspace_id, workspace_name, icon, picker_input);
 }
 
-pub(super) fn clear_project_icon_override(workspace_id: Option<u64>) {
+pub(super) fn clear_project_icon_override(workspace_id: Option<u64>, workspace_name: String) {
     let Some(workspace_id) = workspace_id else {
         eprintln!("[project-label] cannot clear icon override without workspace id");
         return;
     };
-    clear_workspace_icon_override(workspace_id);
+    clear_workspace_icon_override(workspace_id, workspace_name);
 }

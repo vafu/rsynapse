@@ -7,7 +7,10 @@ mod test;
 
 use nerd_icon_picker::NerdIconPicker;
 use relm4::prelude::*;
-use shell_core::gtk::{self, prelude::*};
+use shell_core::{
+    gtk::{self, prelude::*},
+    gtk4_layer_shell::{KeyboardMode, LayerShell},
+};
 
 use self::{
     input::ProjectLabelInput,
@@ -189,6 +192,18 @@ impl SimpleComponent for ProjectLabel {
             icon_popover.popdown();
             input_sender.emit(ProjectLabelInput::ClearIconOverride);
         });
+        let icon_picker = model.icon_picker.clone();
+        widgets.icon_popover.connect_visible_notify(move |popover| {
+            let Some(window) = popover.root().and_downcast::<gtk::Window>() else {
+                return;
+            };
+            if popover.is_visible() {
+                window.set_keyboard_mode(KeyboardMode::Exclusive);
+                icon_picker.focus_search();
+            } else {
+                window.set_keyboard_mode(KeyboardMode::None);
+            }
+        });
         sync_icon_picker(&model);
 
         ComponentParts { model, widgets }
@@ -206,12 +221,13 @@ impl SimpleComponent for ProjectLabel {
                 };
                 set_project_icon_override(
                     self.vm.workspace_id,
+                    self.vm.workspace_name.clone(),
                     icon,
                     self.vm.project_icon_input.clone(),
                 );
             }
             ProjectLabelInput::ClearIconOverride => {
-                clear_project_icon_override(self.vm.workspace_id)
+                clear_project_icon_override(self.vm.workspace_id, self.vm.workspace_name.clone())
             }
         }
     }

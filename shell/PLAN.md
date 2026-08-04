@@ -51,8 +51,9 @@ Framework crates under `core/` own:
 - `shell-macros` subscribes to Observable-compatible source expressions through `shell_core::source`.
 - `shell-rx-macros` exposes lightweight declarative macros that expand to
   ordinary RxRust operators for source composition ergonomics.
-- `widgets/nerd-icon-picker` owns reusable Nerd Font catalog search and picker
-  UI; workspace-specific suggestions and override persistence remain in `app`.
+- `widgets/nerd-icon-picker` owns reusable `pick-icon`-backed fuzzy search and
+  picker UI; workspace-specific suggestions and Locus relation policy remain
+  in `app`, while durable relation storage remains in `locus`.
 - `app/` contains the current combined `rsynapse-shell` app for bar, OSD,
   notifications, request bridge, and styles.
 - `launcher/` contains the launcher workspace. Package and binary renames such

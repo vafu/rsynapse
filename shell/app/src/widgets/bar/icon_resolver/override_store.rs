@@ -1,29 +1,39 @@
+mod identity;
+
 use std::collections::HashMap;
 
 use futures_util::StreamExt;
-use locus::{RelationEndpoint, RelationRecord, keys};
+use locus::{RelationEndpoint, RelationRecord};
 use shell_core::source::{self, Observable, rx::Observable as _};
 use zbus::{Connection, Proxy};
 
 use super::IconChoice;
 use crate::widgets::bar::niri::NiriWorkspace;
+use identity::{WorkspaceIconIdentity, icon_choice_from_record, icon_target};
+
+#[cfg(test)]
+pub(in crate::widgets::bar) use identity::workspace_icon_subjects_for_test;
 
 const WORKSPACE_ICON_OVERRIDE_RELATION: &str = "org.rsynapse.workspace.icon-override";
-const ICON_GLYPH_KIND: &str = "org.rsynapse.icon.glyph";
 const PICKER_INPUT_METADATA: &str = "pick-icon-input";
 
 pub(in crate::widgets::bar) fn workspace_icon_override_source(
     workspace: NiriWorkspace,
 ) -> Observable<Option<IconChoice>> {
-    source::switch_map(workspace.id().map(workspace_subject).box_it(), |subject| {
-        locus_workspace_icon_override(subject)
-    })
-    .distinct_until_changed()
-    .box_it()
+    let identity = workspace
+        .id()
+        .combine_latest(workspace.name(), |id, name| {
+            WorkspaceIconIdentity::new(id, name.as_deref())
+        })
+        .box_it();
+    source::switch_map(identity, locus_workspace_icon_override)
+        .distinct_until_changed()
+        .box_it()
 }
 
 pub(in crate::widgets::bar) fn set_workspace_icon_override(
     workspace_id: u64,
+    workspace_name: String,
     icon: IconChoice,
     picker_input: String,
 ) {
@@ -40,6 +50,7 @@ pub(in crate::widgets::bar) fn set_workspace_icon_override(
         };
         if let Err(error) = runtime.block_on(set_workspace_icon_override_async(
             workspace_id,
+            workspace_name,
             icon,
             picker_input,
         )) {
@@ -48,7 +59,10 @@ pub(in crate::widgets::bar) fn set_workspace_icon_override(
     });
 }
 
-pub(in crate::widgets::bar) fn clear_workspace_icon_override(workspace_id: u64) {
+pub(in crate::widgets::bar) fn clear_workspace_icon_override(
+    workspace_id: u64,
+    workspace_name: String,
+) {
     std::thread::spawn(move || {
         let runtime = match tokio::runtime::Builder::new_current_thread()
             .enable_all()
@@ -60,25 +74,31 @@ pub(in crate::widgets::bar) fn clear_workspace_icon_override(workspace_id: u64) 
                 return;
             }
         };
-        if let Err(error) = runtime.block_on(clear_workspace_icon_override_async(workspace_id)) {
+        if let Err(error) = runtime.block_on(clear_workspace_icon_override_async(
+            workspace_id,
+            workspace_name,
+        )) {
             eprintln!("[workspace-icon-override] failed to clear override: {error}");
         }
     });
 }
 
-fn locus_workspace_icon_override(subject: RelationEndpoint) -> Observable<Option<IconChoice>> {
-    let key = format!("{subject:?}");
+fn locus_workspace_icon_override(
+    identity: WorkspaceIconIdentity,
+) -> Observable<Option<IconChoice>> {
+    let key = format!("{:?}", identity.subjects);
     source::shared_by_key("rsynapse.workspace-icon-override", key, move || {
-        let subject = subject.clone();
+        let identity = identity.clone();
         source::from_task(move |sender| {
-            let subject = subject.clone();
+            let identity = identity.clone();
             async move {
-                let Err(error) = run_locus_workspace_icon_override(sender, subject.clone()).await
+                let Err(error) = run_locus_workspace_icon_override(sender, identity.clone()).await
                 else {
                     return;
                 };
                 eprintln!(
-                    "[workspace-icon-override] failed to watch locus override for {subject:?}: {error}"
+                    "[workspace-icon-override] failed to watch locus override for {:?}: {error}",
+                    identity.subjects
                 );
             }
         })
@@ -89,7 +109,7 @@ fn locus_workspace_icon_override(subject: RelationEndpoint) -> Observable<Option
 
 async fn run_locus_workspace_icon_override(
     sender: async_channel::Sender<Result<Option<IconChoice>, String>>,
-    subject: RelationEndpoint,
+    identity: WorkspaceIconIdentity,
 ) -> Result<(), String> {
     let connection = Connection::session()
         .await
@@ -98,7 +118,7 @@ async fn run_locus_workspace_icon_override(
         .await
         .map_err(|error| format!("connect locus proxy: {error}"))?;
 
-    send_override(&sender, &proxy, &subject).await?;
+    send_override(&sender, &proxy, &identity.subjects).await?;
 
     macro_rules! signal {
         ($name:literal) => {
@@ -114,26 +134,26 @@ async fn run_locus_workspace_icon_override(
         tokio::select! {
             message = added.next() => {
                 let Some(message) = message else { return Ok(()); };
-                if relation_record_matches(&message, &subject)? {
-                    send_override(&sender, &proxy, &subject).await?;
+                if relation_record_matches(&message, &identity.subjects)? {
+                    send_override(&sender, &proxy, &identity.subjects).await?;
                 }
             }
             message = updated.next() => {
                 let Some(message) = message else { return Ok(()); };
-                if relation_record_matches(&message, &subject)? {
-                    send_override(&sender, &proxy, &subject).await?;
+                if relation_record_matches(&message, &identity.subjects)? {
+                    send_override(&sender, &proxy, &identity.subjects).await?;
                 }
             }
             message = removed.next() => {
                 let Some(message) = message else { return Ok(()); };
-                if relation_record_matches(&message, &subject)? {
-                    send_override(&sender, &proxy, &subject).await?;
+                if relation_record_matches(&message, &identity.subjects)? {
+                    send_override(&sender, &proxy, &identity.subjects).await?;
                 }
             }
             message = cleared.next() => {
                 let Some(message) = message else { return Ok(()); };
-                if clear_matches(&message, &subject)? {
-                    send_override(&sender, &proxy, &subject).await?;
+                if clear_matches(&message, &identity.subjects)? {
+                    send_override(&sender, &proxy, &identity.subjects).await?;
                 }
             }
         }
@@ -143,7 +163,7 @@ async fn run_locus_workspace_icon_override(
 async fn send_override(
     sender: &async_channel::Sender<Result<Option<IconChoice>, String>>,
     proxy: &Proxy<'_>,
-    subject: &RelationEndpoint,
+    subjects: &[RelationEndpoint],
 ) -> Result<(), String> {
     let records = match proxy
         .call::<_, _, Vec<RelationRecord>>("List", &(WORKSPACE_ICON_OVERRIDE_RELATION,))
@@ -153,10 +173,12 @@ async fn send_override(
         Err(error) if is_locus_unavailable(&error) => Vec::new(),
         Err(error) => return Err(format!("read locus icon override relations: {error}")),
     };
-    let icon = records
-        .into_iter()
-        .find(|record| record.subject == *subject)
-        .and_then(|record| icon_choice_from_record(&record));
+    let icon = subjects.iter().find_map(|subject| {
+        records
+            .iter()
+            .find(|record| record.subject == *subject)
+            .and_then(icon_choice_from_record)
+    });
     sender
         .send(Ok(icon))
         .await
@@ -165,6 +187,7 @@ async fn send_override(
 
 async fn set_workspace_icon_override_async(
     workspace_id: u64,
+    workspace_name: String,
     icon: IconChoice,
     picker_input: String,
 ) -> Result<(), String> {
@@ -175,8 +198,8 @@ async fn set_workspace_icon_override_async(
     let proxy = locus_proxy(&connection)
         .await
         .map_err(|error| format!("connect locus proxy: {error}"))?;
-    let subject = workspace_subject(workspace_id);
-    let target = RelationEndpoint::stable_key(ICON_GLYPH_KIND, glyph);
+    let identity = WorkspaceIconIdentity::new(workspace_id, Some(&workspace_name));
+    let target = icon_target(glyph);
     let mut metadata = HashMap::new();
     if let Some(input) = non_empty(picker_input) {
         metadata.insert(PICKER_INPUT_METADATA.to_owned(), input);
@@ -184,21 +207,39 @@ async fn set_workspace_icon_override_async(
     proxy
         .call::<_, _, RelationRecord>(
             "SetOne",
-            &(subject, WORKSPACE_ICON_OVERRIDE_RELATION, target, metadata),
+            &(
+                identity.primary().clone(),
+                WORKSPACE_ICON_OVERRIDE_RELATION,
+                target,
+                metadata,
+            ),
         )
         .await
-        .map(|_| ())
-        .map_err(|error| format!("set locus icon override relation: {error}"))
+        .map_err(|error| format!("set locus icon override relation: {error}"))?;
+    for legacy_subject in identity.subjects.iter().skip(1) {
+        clear_subject(&proxy, legacy_subject.clone()).await?;
+    }
+    Ok(())
 }
 
-async fn clear_workspace_icon_override_async(workspace_id: u64) -> Result<(), String> {
+async fn clear_workspace_icon_override_async(
+    workspace_id: u64,
+    workspace_name: String,
+) -> Result<(), String> {
     let connection = Connection::session()
         .await
         .map_err(|error| format!("connect session bus: {error}"))?;
     let proxy = locus_proxy(&connection)
         .await
         .map_err(|error| format!("connect locus proxy: {error}"))?;
-    let subject = workspace_subject(workspace_id);
+    let identity = WorkspaceIconIdentity::new(workspace_id, Some(&workspace_name));
+    for subject in identity.subjects {
+        clear_subject(&proxy, subject).await?;
+    }
+    Ok(())
+}
+
+async fn clear_subject(proxy: &Proxy<'_>, subject: RelationEndpoint) -> Result<(), String> {
     proxy
         .call::<_, _, u32>("Clear", &(subject, WORKSPACE_ICON_OVERRIDE_RELATION))
         .await
@@ -218,38 +259,21 @@ async fn locus_proxy(connection: &Connection) -> zbus::Result<Proxy<'_>> {
 
 fn relation_record_matches(
     message: &zbus::Message,
-    subject: &RelationEndpoint,
+    subjects: &[RelationEndpoint],
 ) -> Result<bool, String> {
     let record = message
         .body()
         .deserialize::<RelationRecord>()
         .map_err(|error| format!("decode locus relation signal: {error}"))?;
-    Ok(record.subject == *subject && record.relation == WORKSPACE_ICON_OVERRIDE_RELATION)
+    Ok(subjects.contains(&record.subject) && record.relation == WORKSPACE_ICON_OVERRIDE_RELATION)
 }
 
-fn clear_matches(message: &zbus::Message, subject: &RelationEndpoint) -> Result<bool, String> {
+fn clear_matches(message: &zbus::Message, subjects: &[RelationEndpoint]) -> Result<bool, String> {
     let (cleared_subject, cleared_relation, _count) = message
         .body()
         .deserialize::<(RelationEndpoint, String, u32)>()
         .map_err(|error| format!("decode locus clear signal: {error}"))?;
-    Ok(cleared_subject == *subject && cleared_relation == WORKSPACE_ICON_OVERRIDE_RELATION)
-}
-
-fn icon_choice_from_record(record: &RelationRecord) -> Option<IconChoice> {
-    IconChoice::new(glyph_from_endpoint(&record.target)?)
-}
-
-fn glyph_from_endpoint(endpoint: &RelationEndpoint) -> Option<String> {
-    match endpoint {
-        RelationEndpoint::StableKey { kind, id } if kind == ICON_GLYPH_KIND => {
-            non_empty(id.clone())
-        }
-        _ => None,
-    }
-}
-
-fn workspace_subject(id: u64) -> RelationEndpoint {
-    RelationEndpoint::stable_key(keys::NIRI_WORKSPACE_ID, id.to_string())
+    Ok(subjects.contains(&cleared_subject) && cleared_relation == WORKSPACE_ICON_OVERRIDE_RELATION)
 }
 
 fn non_empty(value: String) -> Option<String> {

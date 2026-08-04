@@ -360,6 +360,10 @@ mod tests {
         key("org.rsynapse.agent.session.id", id)
     }
 
+    fn icon(glyph: &str) -> RelationEndpoint {
+        key("org.rsynapse.icon.glyph", glyph)
+    }
+
     fn record(
         subject: RelationEndpoint,
         relation: &str,
@@ -416,6 +420,28 @@ mod tests {
                 .targets(&workspace(5), "org.rsynapse.WorkspaceProject")
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn named_workspace_icon_override_survives_reload() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let path = temp.path().join("relations.json");
+        let subject = key(keys::NIRI_WORKSPACE_NAME, "coding");
+        let relation = "org.rsynapse.workspace.icon-override";
+        let target = icon("glyph");
+        let mut store = RelationStore::open(path.clone()).expect("open store");
+
+        store
+            .set_one(
+                subject.clone(),
+                relation.to_owned(),
+                target.clone(),
+                HashMap::from([("pick-icon-input".to_owned(), "rust".to_owned())]),
+            )
+            .expect("set icon override");
+
+        let store = RelationStore::open(path).expect("reload store");
+        assert_eq!(store.targets(&subject, relation), vec![target]);
     }
 
     #[test]
