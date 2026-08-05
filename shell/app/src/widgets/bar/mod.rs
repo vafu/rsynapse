@@ -20,7 +20,6 @@ mod source_errors;
 mod system_stats;
 mod systray;
 mod time;
-mod window_column;
 mod window_source;
 mod window_tile;
 mod workspace_bar;
@@ -63,9 +62,9 @@ use self::source_errors::{SourceErrorRow, source_error_count, source_error_items
 use self::system_stats::{ArcSide, SysStatsView, sys_stats};
 use self::systray::{TrayItem, systray_items};
 use self::time::{ClockView, clock};
-use self::window_column::{WindowColumn, WindowColumnNode};
+use self::window_tile::WindowTile;
 use self::workspace_bar::{WorkspaceBar, WorkspaceBarInit};
-use self::workspaces::{WorkspaceNode, selected_workspace_window_columns};
+use self::workspaces::{WorkspaceNode, selected_workspace_windows};
 use super::{
     OsdAudioView, OsdBrightnessView, OsdInit, OsdInput, OsdWindow, has_notification_items,
 };
@@ -150,8 +149,8 @@ pub struct MainBar {
     _brightness_osd_ready: bool,
     output_name: Option<String>,
 
-    #[source(selected_workspace_window_columns(output_name.clone()))]
-    window_columns: Vec<WindowColumnNode>,
+    #[source(selected_workspace_windows(output_name.clone()))]
+    windows: Vec<WindowNode>,
 
     #[source(selected_project_status(output_name.clone()))]
     selected_project: SelectedProjectView,
@@ -244,8 +243,8 @@ impl SimpleAsyncComponent for MainBar {
                         }
                     },
 
-                    #[bind_list(window_columns, row = WindowColumn)]
-                    window_columns -> gtk::Box {
+                    #[bind_list(windows, row = WindowTile)]
+                    windows -> gtk::Box {
                         set_widget_name: "workspace-window-list",
                         set_halign: gtk::Align::Start,
                         set_orientation: gtk::Orientation::Horizontal,
