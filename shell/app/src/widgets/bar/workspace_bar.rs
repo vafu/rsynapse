@@ -69,7 +69,6 @@ impl SimpleComponent for WorkspaceBar {
                     #[bind_list(project_labels, row = ProjectLabel)]
                     project_labels -> gtk::Box {
                         set_widget_name: "workspace-rail-list",
-                        add_css_class: "bar-indicator-list",
                         add_css_class: "bar-indicator-list-vertical",
                         set_halign: gtk::Align::Center,
                         set_valign: gtk::Align::End,

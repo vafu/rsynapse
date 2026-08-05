@@ -4,12 +4,10 @@ use crate::widgets::{bar::WorkspaceNode, nerd_icon::NerdIcon};
 pub(super) fn project_group_classes(vm: &ProjectLabelVm, selected: bool) -> Vec<&'static str> {
     let mut classes = vec!["bar-indicator"];
 
-    if selected {
+    if selected || vm.active {
         classes.push("selected-workspace");
     }
-    if vm.active {
-        classes.push("current-workspace");
-    } else if selected {
+    if selected && !vm.active {
         classes.push("inactive-selected-workspace");
     }
     if vm.urgent || vm.agent.has_attention {

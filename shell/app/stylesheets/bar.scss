@@ -1,18 +1,14 @@
 $panel-bg: #{$secondary_sidebar_bg_color};
 $panel-surface: color-mix(in srgb, #{$fg} 6%, #{$panel-bg});
 $panel-surface-hover: color-mix(in srgb, #{$fg} 10%, #{$panel-bg});
-$panel-border: color-mix(in srgb, #{$fg} 9%, transparent);
 $panel-border-strong: color-mix(in srgb, #{$fg} 18%, transparent);
 $panel-muted: color-mix(in srgb, #{$fg} 62%, transparent);
 $panel-icon-size: 18px;
 $panel-meta-icon-size: 14px;
 $panel-item-size: 28px;
-$workspace-rail-width: $panel-item-size;
 $indicator-fill: color-mix(in srgb, #{$accent_color} 18%, #{$panel-bg});
-$indicator-fill-muted: color-mix(in srgb, #{$fg} 10%, #{$panel-bg});
 $indicator-fill-danger: color-mix(in srgb, #{$sys_danger} 8%, #{$panel-bg});
 $indicator-accent: color-mix(in srgb, #{$accent_color} 88%, transparent);
-$indicator-accent-pulse: color-mix(in srgb, #{$accent_color} 82%, transparent);
 $indicator-muted: color-mix(in srgb, #{$fg} 46%, transparent);
 $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
 
@@ -118,6 +114,10 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
     border-color 160ms,
     opacity 160ms;
 
+  .selected-project-icon {
+    margin-right: 4px;
+  }
+
   .selected-project-segment {
     color: color-mix(in srgb, #{$fg} 78%, transparent);
   }
@@ -161,14 +161,12 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
   }
 
   &.active,
-  &.current-workspace,
   &.selected-workspace {
     background-color: #{$indicator-fill};
     opacity: 1;
   }
 
   &.inactive-selected-workspace {
-    background-color: #{$indicator-fill-muted};
     color: color-mix(in srgb, #{$fg} 70%, transparent);
     opacity: 0.72;
   }
@@ -187,17 +185,6 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
   }
 }
 
-.bar-indicator-list {
-  margin: 0;
-}
-
-.bar-indicator-list-horizontal .bar-indicator {
-  margin: 0;
-}
-
-.bar-indicator-list-vertical .bar-indicator {
-  margin: 0;
-}
 
 .bar-indicator-list-vertical menubutton.workspace-icon-menu-button {
   margin: 0;
@@ -339,7 +326,6 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
 }
 
 
-.bar-indicator-list-vertical .bar-indicator.current-workspace,
 .bar-indicator-list-vertical .bar-indicator.selected-workspace {
   border-right-color: #{$indicator-accent};
 }

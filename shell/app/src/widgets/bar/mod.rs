@@ -217,7 +217,6 @@ impl SimpleAsyncComponent for MainBar {
                     add_css_class: "bar-zone",
                     add_css_class: "bar-zone-start",
                     add_css_class: "bar-zone-windows",
-                    add_css_class: "bar-indicator-list",
                     add_css_class: "bar-indicator-list-horizontal",
                     set_halign: gtk::Align::Start,
                     set_orientation: gtk::Orientation::Horizontal,
@@ -289,8 +288,6 @@ impl SimpleAsyncComponent for MainBar {
                             },
 
                             gtk::Label {
-                                add_css_class: "selected-project-text",
-                                add_css_class: "selected-project-title",
                                 set_ellipsize: gtk::pango::EllipsizeMode::End,
                                 set_valign: gtk::Align::Center,
                                 set_xalign: 0.0,
@@ -308,7 +305,6 @@ impl SimpleAsyncComponent for MainBar {
 
                         gtk::Box {
                             add_css_class: "selected-project-segment",
-                            add_css_class: "selected-project-branch",
                             #[watch]
                             set_visible: selected_project::branch_visible(&model.selected_project),
                             set_halign: gtk::Align::Center,
@@ -327,7 +323,6 @@ impl SimpleAsyncComponent for MainBar {
                             },
 
                             gtk::Label {
-                                add_css_class: "selected-project-text",
                                 add_css_class: "selected-project-branch-label",
                                 set_ellipsize: gtk::pango::EllipsizeMode::End,
                                 set_valign: gtk::Align::Center,
