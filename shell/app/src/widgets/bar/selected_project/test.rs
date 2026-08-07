@@ -36,6 +36,16 @@ fn selected_project_uses_root_cwd_name_without_relative_cwd() {
     );
 }
 
+#[test]
+fn selected_project_exposes_branch_for_clipboard() {
+    let view = split_project();
+
+    assert_eq!(
+        super::branch_for_clipboard(view.branch.as_deref()),
+        Some("codex/android-core-isol")
+    );
+}
+
 fn split_project() -> ProjectDetails {
     ProjectDetails {
         has_project: true,

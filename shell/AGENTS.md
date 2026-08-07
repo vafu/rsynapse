@@ -27,7 +27,6 @@ framework-boundary work.
 - `core/shell-core` owns generic GTK/layer-shell app setup, window primitives,
   stylesheet loading, reusable Observable source primitives, and D-Bus source
   helpers.
-- `core/background-effect` owns reusable GTK4 `ext-background-effect-v1`
   helpers.
 - `core/macros` owns Relm4/model/source binding macros.
 - `core/rx-macros` owns small RxRust composition macros only.

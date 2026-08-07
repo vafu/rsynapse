@@ -63,7 +63,7 @@ pub(super) fn project_label_vm(workspace: NiriWorkspace) -> Observable<ProjectLa
                     urgent,
                     active,
                     project_name: project.display_main,
-                    project_branch: project.display_secondary,
+                    project_branch: project.branch,
                     project_icon_glyph: workspace_icon.glyph,
                     project_icon_input: workspace_icon.picker_input,
                     project_icon_candidates: workspace_icon.candidates,

@@ -29,8 +29,6 @@ use model::NotificationView;
 pub use model::{NotificationClosedReason, NotificationRequest};
 use policy::{NotificationCenterContext, NotificationCenterPolicy};
 
-const NOTIFICATION_BACKGROUND_BLUR_CLASSES: &[&str] = &[BACKGROUND_BLUR_CLASS];
-const NOTIFICATION_BACKGROUND_BLUR_RADIUS: i32 = 12;
 const NOTIFICATION_PANEL_WIDTH: i32 = 432;
 const NOTIFICATION_CONTENT_WIDTH: i32 = 400;
 const NOTIFICATION_CENTER_MAX_HEIGHT: i32 = 520;
@@ -456,8 +454,4 @@ const fn notifications_window_config() -> WindowConfig {
             left: 0,
         })
         .with_namespace("rsynapse-notifications")
-        .with_rounded_background_blur_for_css_classes(
-            NOTIFICATION_BACKGROUND_BLUR_CLASSES,
-            NOTIFICATION_BACKGROUND_BLUR_RADIUS,
-        )
 }

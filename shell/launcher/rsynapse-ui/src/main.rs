@@ -1,6 +1,5 @@
 mod dbus;
 
-use gtk4_background_effect::{BackgroundEffect, BackgroundEffectRegion, apply_background_effect};
 use gtk4_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
 use relm4::adw;
 use relm4::adw::prelude::*;
@@ -10,10 +9,6 @@ use relm4::gtk::glib;
 use relm4::prelude::*;
 
 const MAX_ITEMS: usize = 10;
-const RSYNAPSE_PANEL_BLUR_CLASS: &str = "rsynapse-blur";
-const RSYNAPSE_PANEL_BLUR_CLASSES: &[&str] = &[RSYNAPSE_PANEL_BLUR_CLASS];
-const RSYNAPSE_PANEL_BLUR_RADIUS: i32 = 12;
-const RSYNAPSE_PANEL_BLUR_CORNER_GUARD: i32 = 2;
 const RSYNAPSE_UI_CSS_PRIORITY: u32 = gtk::STYLE_PROVIDER_PRIORITY_USER + 1;
 
 struct App {
@@ -61,14 +56,6 @@ impl SimpleComponent for App {
         root.set_anchor(Edge::Right, false);
         root.set_decorated(false);
         root.add_css_class("rsynapse-window");
-        apply_background_effect(
-            &root,
-            BackgroundEffect::Blur(BackgroundEffectRegion::CornerGuardRoundedCssClasses {
-                classes: RSYNAPSE_PANEL_BLUR_CLASSES,
-                radius: RSYNAPSE_PANEL_BLUR_RADIUS,
-                corner_guard: RSYNAPSE_PANEL_BLUR_CORNER_GUARD,
-            }),
-        );
 
         let widgets = view_output!();
 
@@ -94,7 +81,7 @@ impl SimpleComponent for App {
         let container = gtk::Box::builder()
             .orientation(gtk::Orientation::Vertical)
             .valign(gtk::Align::End)
-            .css_classes(["rsynapse", RSYNAPSE_PANEL_BLUR_CLASS])
+            .css_classes(["rsynapse"])
             .build();
         container.append(&scrolled);
         container.append(&search_entry);

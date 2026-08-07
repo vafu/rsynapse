@@ -303,32 +303,41 @@ impl SimpleAsyncComponent for MainBar {
                             set_visible: selected_project::first_separator_visible(&model.selected_project),
                         },
 
-                        gtk::Box {
-                            add_css_class: "selected-project-segment",
+                        #[name = "branch_copy_button"]
+                        gtk::Button {
+                            add_css_class: "flat",
+                            add_css_class: "selected-project-branch-button",
+                            set_has_frame: false,
                             #[watch]
                             set_visible: selected_project::branch_visible(&model.selected_project),
-                            set_halign: gtk::Align::Center,
-                            set_valign: gtk::Align::Center,
-                            set_orientation: gtk::Orientation::Horizontal,
 
-                            gtk::Label {
-                                set_css_classes: &[
-                                    "selected-project-meta-icon",
-                                    "selected-project-branch-icon",
-                                    "nerdicon",
-                                ],
+                            #[wrap(Some)]
+                            set_child = &gtk::Box {
+                                add_css_class: "selected-project-segment",
                                 set_halign: gtk::Align::Center,
                                 set_valign: gtk::Align::Center,
-                                set_nerd_icon: selected_project::branch_icon(),
-                            },
+                                set_orientation: gtk::Orientation::Horizontal,
 
-                            gtk::Label {
-                                add_css_class: "selected-project-branch-label",
-                                set_ellipsize: gtk::pango::EllipsizeMode::End,
-                                set_valign: gtk::Align::Center,
-                                set_xalign: 0.0,
-                                #[watch]
-                                set_label: selected_project::branch_label(&model.selected_project),
+                                gtk::Label {
+                                    set_css_classes: &[
+                                        "selected-project-meta-icon",
+                                        "selected-project-branch-icon",
+                                        "nerdicon",
+                                    ],
+                                    set_halign: gtk::Align::Center,
+                                    set_valign: gtk::Align::Center,
+                                    set_nerd_icon: selected_project::branch_icon(),
+                                },
+
+                                #[name = "branch_copy_label"]
+                                gtk::Label {
+                                    add_css_class: "selected-project-branch-label",
+                                    set_ellipsize: gtk::pango::EllipsizeMode::End,
+                                    set_valign: gtk::Align::Center,
+                                    set_xalign: 0.0,
+                                    #[watch]
+                                    set_label: selected_project::branch_label(&model.selected_project),
+                                }
                             }
                         },
 
@@ -959,6 +968,14 @@ impl SimpleAsyncComponent for MainBar {
         let battery_item = bar_item::container(&[bar_item::SQUARE_CLASS, "battery-item"]);
 
         let widgets = view_output!();
+
+        let branch_label = widgets.branch_copy_label.clone();
+        widgets.branch_copy_button.connect_clicked(move |button| {
+            let branch = branch_label.text();
+            if let Some(branch) = selected_project::branch_for_clipboard(Some(branch.as_str())) {
+                button.display().clipboard().set_text(branch);
+            }
+        });
         let input_sender = sender.input_sender().clone();
         widgets.clock_button.connect_clicked(move |_| {
             input_sender.emit(MainBarInput::ToggleNotificationCenter);

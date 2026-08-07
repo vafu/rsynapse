@@ -90,6 +90,10 @@ pub(super) fn branch_label(view: &SelectedProjectView) -> &str {
     view.branch.as_deref().unwrap_or_default()
 }
 
+pub(super) fn branch_for_clipboard(branch: Option<&str>) -> Option<&str> {
+    branch.and_then(non_empty)
+}
+
 pub(super) fn first_separator_visible(view: &SelectedProjectView) -> bool {
     branch_visible(view)
 }

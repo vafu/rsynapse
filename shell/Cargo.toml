@@ -1,7 +1,6 @@
 [workspace]
 members = [
     "core/shell-core",
-    "core/background-effect",
     "core/macros",
     "core/rx-macros",
     "app",
@@ -19,7 +18,6 @@ license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
 gtk = { package = "gtk4", version = "0.11.3", features = ["v4_22"] }
-gtk4-background-effect = { path = "core/background-effect" }
 gtk4-layer-shell = "0.8.0"
 relm4 = "0.11.0"
 rxrust = "1.0.0-rc.5"

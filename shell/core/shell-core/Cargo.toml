@@ -9,7 +9,6 @@ license.workspace = true
 async-channel = "2.5.0"
 futures-util = "0.3.32"
 gtk.workspace = true
-gtk4-background-effect.workspace = true
 gtk4-layer-shell.workspace = true
 notify = "6.1.1"
 relm4.workspace = true

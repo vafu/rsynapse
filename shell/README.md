@@ -9,8 +9,6 @@ GTK4/Relm4 framework crates plus concrete Rsynapse UI surfaces.
   Generic app startup, stylesheet loading, layer-shell window setup, and
   Observable source primitives.
 
-- `core/background-effect`
-  Reusable GTK4 `ext-background-effect-v1` helpers.
 
 - `core/macros`
   Relm4 model/source binding procedural macros.
