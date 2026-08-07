@@ -5,6 +5,8 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 prefix="${PREFIX:-"$HOME/.local"}"
 local_bin="$prefix/bin"
 dbus_dir="$prefix/share/dbus-1/services"
+applications_dir="$prefix/share/applications"
+script_dir="$HOME/.config/scripts"
 plugin_dir="$prefix/lib/rsynapse/plugins"
 git_hooks_dir="$prefix/share/rsynapse/git-hooks"
 systemd_user_dir="$HOME/.config/systemd/user"
@@ -23,7 +25,7 @@ install_templates() {
     for template in "$source_dir"/*"$suffix"; do
         local name
         name="$(basename "$template" "$suffix")"
-        sed "s|@LOCAL_BIN@|$local_bin|g" "$template" > "$target_dir/$name"
+        sed -e "s|@LOCAL_BIN@|$local_bin|g" -e "s|@SCRIPT_DIR@|$script_dir|g" "$template" > "$target_dir/$name"
         chmod 0644 "$target_dir/$name"
     done
 }
@@ -37,8 +39,9 @@ cargo_install "$repo_root/shell/launcher/rsynapse-cli"
 cargo_install "$repo_root/shell/launcher/rsynapse-ui"
 
 echo "Installing helper scripts to $local_bin"
-install -d "$local_bin"
+install -d "$local_bin" "$script_dir"
 install -m 0755 "$repo_root/install/bin/proj" "$local_bin/proj"
+install -m 0755 "$repo_root/install/bin/rsynapse-open-url" "$script_dir/rsynapse-open-url"
 
 echo "Installing Rsynapse git hooks to $git_hooks_dir"
 install -d "$git_hooks_dir"
@@ -69,6 +72,15 @@ find "$plugin_target" -maxdepth 1 -type f -name 'librsynapse_plugin_*.so' \
 
 echo "Installing D-Bus activation files to $dbus_dir"
 install_templates "$repo_root/install/dbus-1/services" "$dbus_dir" ".in"
+
+echo "Installing desktop entries to $applications_dir"
+install_templates "$repo_root/install/applications" "$applications_dir" ".in"
+if command -v xdg-mime >/dev/null 2>&1; then
+    xdg-mime default rsynapse-open-url.desktop x-scheme-handler/http
+    xdg-mime default rsynapse-open-url.desktop x-scheme-handler/https
+else
+    echo "xdg-mime is not available; skipped URL handler activation"
+fi
 
 echo "Installing systemd user units to $systemd_user_dir"
 install_templates "$repo_root/install/systemd/user" "$systemd_user_dir" ".in"
