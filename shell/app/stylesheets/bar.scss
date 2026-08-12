@@ -84,6 +84,15 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
 
 .bar-corner-indicator {
   color: color-mix(in srgb, #{$accent_color} 70%, #{$fg});
+
+  &.workspace-sync-mirror {
+    border-color: color-mix(in srgb, #{$accent_color} 62%, transparent);
+  }
+
+  &.workspace-sync-agent {
+    background-color: #{$indicator-fill};
+    border-color: color-mix(in srgb, #{$accent_color} 72%, transparent);
+  }
 }
 
 .bar-corner-icon,

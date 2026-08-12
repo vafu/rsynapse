@@ -23,6 +23,7 @@ mod time;
 mod window_source;
 mod window_tile;
 mod workspace_bar;
+mod workspace_sync;
 mod workspaces;
 
 use std::{
@@ -82,6 +83,7 @@ pub struct MainBarInit {
     pub title: &'static str,
     monitor: Option<gtk::gdk::Monitor>,
     output_name: Option<String>,
+    primary_output_name: Option<String>,
     primary: bool,
 }
 
@@ -91,14 +93,20 @@ impl MainBarInit {
             title,
             monitor: None,
             output_name: None,
+            primary_output_name: None,
             primary: true,
         }
     }
 
-    fn secondary(title: &'static str, monitor: gtk::gdk::Monitor) -> Self {
+    fn secondary(
+        title: &'static str,
+        monitor: gtk::gdk::Monitor,
+        primary_output_name: Option<String>,
+    ) -> Self {
         Self {
             title,
             output_name: monitor_output_name(Some(&monitor)),
+            primary_output_name,
             monitor: Some(monitor),
             primary: false,
         }
@@ -111,6 +119,7 @@ impl std::fmt::Debug for MainBarInit {
             .debug_struct("MainBarInit")
             .field("title", &self.title)
             .field("output_name", &self.output_name)
+            .field("primary_output_name", &self.primary_output_name)
             .field("primary", &self.primary)
             .finish_non_exhaustive()
     }
@@ -122,6 +131,7 @@ pub enum MainBarInput {
     Media(MediaAction),
     ToggleBluetooth,
     CyclePowerProfile,
+    CycleWorkspaceSync,
     ToggleNotificationCenter,
     Request(request::PendingRequest),
 }
@@ -148,6 +158,8 @@ pub struct MainBar {
     _audio_osd_ready: bool,
     _brightness_osd_ready: bool,
     output_name: Option<String>,
+    primary_output_name: Option<String>,
+    workspace_sync_sidecar_output_name: Option<String>,
 
     #[source(selected_workspace_windows(output_name.clone()))]
     windows: Vec<WindowNode>,
@@ -184,6 +196,15 @@ pub struct MainBar {
 
     #[source(clock())]
     clock: ClockView,
+
+    #[source(workspace_sync::mode())]
+    workspace_sync_mode: workspace_sync::WorkspaceSyncMode,
+
+    #[source(workspace_sync::manager(
+        primary_output_name.clone(),
+        workspace_sync_sidecar_output_name.clone(),
+    ))]
+    _workspace_sync_manager: workspace_sync::ManagerStatus,
 
     #[source(has_notification_items())]
     has_notifications: bool,
@@ -223,18 +244,18 @@ impl SimpleAsyncComponent for MainBar {
                     set_valign: gtk::Align::Center,
                     set_vexpand: false,
 
-                    gtk::CenterBox {
-                        add_css_class: "bar-indicator",
-                        add_css_class: "bar-corner-indicator",
+                    #[name = "workspace_sync_button"]
+                    gtk::Button {
                         #[watch]
-                        set_tooltip_text: Some(selected_project::tooltip(&model.selected_project).as_str()),
+                        set_css_classes: &workspace_sync::corner_classes(model.workspace_sync_mode),
+                        #[watch]
+                        set_tooltip_text: Some(workspace_sync::tooltip(model.workspace_sync_mode)),
                         set_width_request: WORKSPACE_RAIL_WIDTH,
                         set_halign: gtk::Align::Start,
                         set_valign: gtk::Align::Center,
-                        set_orientation: gtk::Orientation::Horizontal,
+                        set_has_frame: false,
 
-                        #[wrap(Some)]
-                        set_center_widget = &gtk::Label {
+                        gtk::Label {
                             set_css_classes: &["bar-corner-icon", "nerdicon"],
                             set_halign: gtk::Align::Center,
                             set_valign: gtk::Align::Center,
@@ -904,6 +925,17 @@ impl SimpleAsyncComponent for MainBar {
             .output_name
             .clone()
             .or_else(|| monitor_output_name(monitor.as_ref()));
+        let (workspace_sync_primary_output_name, workspace_sync_sidecar_output_name) =
+            if init.primary {
+                workspace_sync_output_names(&monitors)
+            } else {
+                (None, None)
+            };
+        let primary_output_name = init
+            .primary_output_name
+            .clone()
+            .or(workspace_sync_primary_output_name)
+            .or_else(|| output_name.clone());
         log_bar_monitor(init.primary, monitor.as_ref(), output_name.as_deref());
 
         window::apply_layer_shell_config(&root, bar_window_config());
@@ -945,9 +977,14 @@ impl SimpleAsyncComponent for MainBar {
             "Rsynapse Workspace Rail",
             monitor.clone(),
             output_name.clone(),
+            primary_output_name.clone(),
         );
         let child_bars = if init.primary {
-            launch_secondary_bars(init.title, monitors.into_iter().skip(1))
+            launch_secondary_bars(
+                init.title,
+                monitors.into_iter().skip(1),
+                primary_output_name.clone(),
+            )
         } else {
             Vec::new()
         };
@@ -960,6 +997,8 @@ impl SimpleAsyncComponent for MainBar {
             false,
             false,
             output_name,
+            primary_output_name,
+            workspace_sync_sidecar_output_name,
         );
         let system_stats_item = bar_item::container(&["system-stats-widget"]);
         let ethernet_item =
@@ -975,6 +1014,10 @@ impl SimpleAsyncComponent for MainBar {
             if let Some(branch) = selected_project::branch_for_clipboard(Some(branch.as_str())) {
                 button.display().clipboard().set_text(branch);
             }
+        });
+        let input_sender = sender.input_sender().clone();
+        widgets.workspace_sync_button.connect_clicked(move |_| {
+            input_sender.emit(MainBarInput::CycleWorkspaceSync);
         });
         let input_sender = sender.input_sender().clone();
         widgets.clock_button.connect_clicked(move |_| {
@@ -1116,6 +1159,7 @@ impl SimpleAsyncComponent for MainBar {
             MainBarInput::CyclePowerProfile => {
                 power_profile::cycle_power_profile(&self.power_profile.profile)
             }
+            MainBarInput::CycleWorkspaceSync => workspace_sync::cycle(),
             MainBarInput::ToggleNotificationCenter => request_notification_center_toggle(),
             MainBarInput::Request(request) => handle_request(request),
         }
@@ -1163,6 +1207,7 @@ fn main_bar_input_name(msg: &MainBarInput) -> &'static str {
         MainBarInput::Media(_) => "media",
         MainBarInput::ToggleBluetooth => "toggle-bluetooth",
         MainBarInput::CyclePowerProfile => "cycle-power-profile",
+        MainBarInput::CycleWorkspaceSync => "cycle-workspace-sync",
         MainBarInput::ToggleNotificationCenter => "toggle-notification-center",
         MainBarInput::Request(_) => "request",
     }
@@ -1180,11 +1225,30 @@ fn handle_request(request: request::PendingRequest) {
             hints::apply(action);
             request::RequestResponse::Ok
         }
+        request::ShellRequest::WorkspaceSync(action) => {
+            apply_workspace_sync_request(action);
+            request::RequestResponse::Ok
+        }
         request::ShellRequest::Notifications(_) => request::RequestResponse::Error(
             "notification requests are handled by rsynapse-notifications".to_owned(),
         ),
     };
     request.respond(response);
+}
+
+fn apply_workspace_sync_request(action: request::WorkspaceSyncAction) {
+    match action {
+        request::WorkspaceSyncAction::Off => {
+            workspace_sync::set(workspace_sync::WorkspaceSyncMode::Off)
+        }
+        request::WorkspaceSyncAction::MirrorBar => {
+            workspace_sync::set(workspace_sync::WorkspaceSyncMode::MirrorBar)
+        }
+        request::WorkspaceSyncAction::AgentSidecar => {
+            workspace_sync::set(workspace_sync::WorkspaceSyncMode::AgentSidecar)
+        }
+        request::WorkspaceSyncAction::Toggle => workspace_sync::cycle(),
+    }
 }
 
 fn request_notification_center_toggle() {
@@ -1216,6 +1280,7 @@ fn launch_workspace_bar(
     title: &'static str,
     monitor: Option<gtk::gdk::Monitor>,
     output_name: Option<String>,
+    primary_output_name: Option<String>,
 ) -> Option<Controller<WorkspaceBar>> {
     let builder = WorkspaceBar::builder();
     let root = builder.root.clone();
@@ -1225,6 +1290,7 @@ fn launch_workspace_bar(
             title,
             monitor,
             output_name,
+            primary_output_name,
         })
         .detach();
     root.present();
@@ -1234,6 +1300,7 @@ fn launch_workspace_bar(
 fn launch_secondary_bars(
     title: &'static str,
     monitors: impl Iterator<Item = gtk::gdk::Monitor>,
+    primary_output_name: Option<String>,
 ) -> Vec<AsyncController<MainBar>> {
     monitors
         .map(|monitor| {
@@ -1241,12 +1308,35 @@ fn launch_secondary_bars(
             let root = builder.root.clone();
             relm4::main_application().add_window(&root);
             let controller = builder
-                .launch(MainBarInit::secondary(title, monitor))
+                .launch(MainBarInit::secondary(
+                    title,
+                    monitor,
+                    primary_output_name.clone(),
+                ))
                 .detach();
             root.present();
             controller
         })
         .collect()
+}
+
+fn workspace_sync_output_names(monitors: &[gtk::gdk::Monitor]) -> (Option<String>, Option<String>) {
+    let mut outputs = monitors
+        .iter()
+        .filter_map(|monitor| {
+            let name = monitor_output_name(Some(monitor))?;
+            Some((monitor.geometry().x(), name))
+        })
+        .collect::<Vec<_>>();
+    outputs.sort_by_key(|(x, _)| *x);
+
+    let sidecar_output_name = outputs.first().map(|(_, name)| name.clone());
+    let primary_output_name = outputs.last().map(|(_, name)| name.clone());
+    if primary_output_name == sidecar_output_name {
+        (primary_output_name, None)
+    } else {
+        (primary_output_name, sidecar_output_name)
+    }
 }
 
 fn monitor_output_name(monitor: Option<&gtk::gdk::Monitor>) -> Option<String> {

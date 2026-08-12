@@ -280,7 +280,8 @@ impl NotificationsWindow {
             }
             request::ShellRequest::SchemeToggle
             | request::ShellRequest::FrostMode(_)
-            | request::ShellRequest::Hints(_) => request::RequestResponse::Error(
+            | request::ShellRequest::Hints(_)
+            | request::ShellRequest::WorkspaceSync(_) => request::RequestResponse::Error(
                 "shell requests are handled by rsynapse-shell".to_owned(),
             ),
         };

@@ -42,6 +42,13 @@ pub(super) fn agent_for_window(window: WindowNode) -> Observable<Option<Agent>> 
     .box_it()
 }
 
+pub(super) fn agent_window_ids() -> Observable<Vec<u64>> {
+    dbus::object_manager(agent_dbus())
+        .map(|objects| agent_window_ids_from_objects(&objects))
+        .distinct_until_changed()
+        .box_it()
+}
+
 fn agent_for_window_status(window_id: u64, window: WindowNode) -> Observable<Option<Agent>> {
     source::from_task(move |sender| {
         let window = window.clone();
@@ -97,6 +104,20 @@ fn agent_session_for_window_id(window_id: u64) -> Observable<Option<AgentSession
         .map(move |objects| find_agent_session_by_window_id(&objects, window_id))
         .distinct_until_changed()
         .box_it()
+}
+
+pub(super) fn agent_window_ids_from_objects(objects: &[DbusObject]) -> Vec<u64> {
+    let mut ids = objects
+        .iter()
+        .filter(|object| has_interface(object, AGENT_SESSION_INTERFACE))
+        .filter_map(|object| {
+            snapshot_property::<String>(object, AGENT_SESSION_INTERFACE, "WindowId")
+        })
+        .filter_map(|window_id| window_id.parse::<u64>().ok())
+        .collect::<Vec<_>>();
+    ids.sort_unstable();
+    ids.dedup();
+    ids
 }
 
 pub(super) fn find_agent_session_by_window_id(

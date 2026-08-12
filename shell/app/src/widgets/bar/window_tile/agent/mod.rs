@@ -1,6 +1,6 @@
 mod source;
 
-pub(in crate::widgets::bar) use source::agent_for_window;
+pub(in crate::widgets::bar) use source::{agent_for_window, agent_window_ids};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(in crate::widgets::bar) struct Agent {

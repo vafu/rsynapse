@@ -8,8 +8,8 @@ use zbus::{
 
 use super::super::{Agent, State};
 use super::actual::{
-    AgentSeenState, agent_icon, agent_with_seen_state, find_agent_session_by_window_id,
-    session_state,
+    AgentSeenState, agent_icon, agent_window_ids_from_objects, agent_with_seen_state,
+    find_agent_session_by_window_id, session_state,
 };
 
 #[test]
@@ -34,6 +34,21 @@ fn maps_agent_dbus_state() {
     assert_eq!(session_state("tool-use"), State::ToolUse);
     assert_eq!(session_state("compacting"), State::Compacting);
     assert_eq!(session_state(""), State::None);
+}
+
+#[test]
+fn extracts_agent_window_ids_from_snapshot() {
+    let objects = vec![
+        session_object("/io/github/AgentDBus/sessions/codex/one", "42"),
+        session_object("/io/github/AgentDBus/sessions/codex/two", "17"),
+        session_object("/io/github/AgentDBus/sessions/codex/duplicate", "42"),
+        session_object(
+            "/io/github/AgentDBus/sessions/codex/invalid",
+            "not-a-window",
+        ),
+    ];
+
+    assert_eq!(agent_window_ids_from_objects(&objects), vec![17, 42]);
 }
 
 #[test]

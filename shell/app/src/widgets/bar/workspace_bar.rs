@@ -16,14 +16,16 @@ pub(super) struct WorkspaceBarInit {
     pub(super) title: &'static str,
     pub(super) monitor: Option<gtk::gdk::Monitor>,
     pub(super) output_name: Option<String>,
+    pub(super) primary_output_name: Option<String>,
 }
 
 #[shell_macros::model(module = workspace_bar_sources)]
 pub(super) struct WorkspaceBar {
     _context_zone: Controller<ContextZone>,
     output_name: Option<String>,
+    primary_output_name: Option<String>,
 
-    #[source(workspaces(output_name.clone()))]
+    #[source(workspaces(output_name.clone(), primary_output_name.clone()))]
     project_labels: Vec<WorkspaceNode>,
 }
 
@@ -94,7 +96,7 @@ impl SimpleComponent for WorkspaceBar {
         let context_zone_builder = ContextZone::builder();
         let context_zone_root = context_zone_builder.root.clone();
         let context_zone = context_zone_builder.launch(()).detach();
-        let model = WorkspaceBar::new(context_zone, init.output_name);
+        let model = WorkspaceBar::new(context_zone, init.output_name, init.primary_output_name);
         let widgets = view_output!();
         ComponentParts { model, widgets }
     }

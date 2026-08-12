@@ -4,6 +4,7 @@ use shell_rx_macros::combine_latest;
 use super::WindowNode;
 use super::niri::{self, NiriWorkspace};
 use super::window_source::{WindowSnapshot, window_snapshots};
+use super::workspace_sync::{self, WorkspaceSyncMode};
 
 pub(super) type WorkspaceNode = WorkspaceEntry;
 
@@ -14,10 +15,23 @@ pub(super) struct WorkspaceEntry {
     output_path: Option<String>,
 }
 
-pub(super) fn workspaces(output_name: Option<String>) -> Observable<Vec<WorkspaceNode>> {
+pub(super) fn workspaces(
+    output_name: Option<String>,
+    primary_output_name: Option<String>,
+) -> Observable<Vec<WorkspaceNode>> {
     let output_path = output_name.as_deref().map(niri::output_path_for_name);
+    let primary_output_path = primary_output_name
+        .as_deref()
+        .map(niri::output_path_for_name);
     source::switch_map_list(niri::workspaces(), workspace_entry)
-        .map(move |workspaces| filter_workspaces_for_output(workspaces, output_path.as_deref()))
+        .combine_latest(workspace_sync::mode(), move |workspaces, mode| {
+            let output_path = effective_workspace_output_path(
+                output_path.as_deref(),
+                primary_output_path.as_deref(),
+                mode,
+            );
+            filter_workspaces_for_output(workspaces, output_path)
+        })
         .distinct_until_changed()
         .box_it()
 }
@@ -108,6 +122,21 @@ fn filter_workspaces_for_output(
     }
 }
 
+fn effective_workspace_output_path<'a>(
+    output_path: Option<&'a str>,
+    primary_output_path: Option<&'a str>,
+    mode: WorkspaceSyncMode,
+) -> Option<&'a str> {
+    if mode.mirrors_workspace_rail()
+        && primary_output_path.is_some()
+        && output_path != primary_output_path
+    {
+        primary_output_path
+    } else {
+        output_path
+    }
+}
+
 fn workspace_matches_output(
     workspace_output_path: Option<&str>,
     filter_path: Option<&str>,
@@ -126,11 +155,13 @@ fn sort_workspaces(workspaces: &mut [WorkspaceEntry]) {
 #[cfg(test)]
 mod tests {
     use super::{
-        filter_workspaces_for_output, selected_workspace_sorted_windows, workspace_matches_output,
+        effective_workspace_output_path, filter_workspaces_for_output,
+        selected_workspace_sorted_windows, workspace_matches_output,
     };
     use crate::widgets::bar::{
         niri::{NiriWindow, NiriWorkspace},
         window_source::WindowSnapshot,
+        workspace_sync::WorkspaceSyncMode,
     };
     use shell_core::source::dbus::ObjectModel;
     use zbus::zvariant::OwnedObjectPath;
@@ -170,6 +201,42 @@ mod tests {
                 Some("/org/rsynapse/Niri/Outputs/x4D49534D41544348")
             ),
             workspaces
+        );
+    }
+
+    #[test]
+    fn mirror_modes_use_primary_output_for_secondary_rails() {
+        assert_eq!(
+            effective_workspace_output_path(
+                Some("secondary"),
+                Some("primary"),
+                WorkspaceSyncMode::Off,
+            ),
+            Some("secondary")
+        );
+        assert_eq!(
+            effective_workspace_output_path(
+                Some("secondary"),
+                Some("primary"),
+                WorkspaceSyncMode::MirrorBar,
+            ),
+            Some("primary")
+        );
+        assert_eq!(
+            effective_workspace_output_path(
+                Some("secondary"),
+                Some("primary"),
+                WorkspaceSyncMode::AgentSidecar,
+            ),
+            Some("primary")
+        );
+        assert_eq!(
+            effective_workspace_output_path(
+                Some("primary"),
+                Some("primary"),
+                WorkspaceSyncMode::MirrorBar
+            ),
+            Some("primary")
         );
     }
 

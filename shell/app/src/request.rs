@@ -31,13 +31,16 @@ pub enum ShellRequest {
     SchemeToggle,
     FrostMode(FrostMode),
     Hints(HintsAction),
+    WorkspaceSync(WorkspaceSyncAction),
     Notifications(NotificationCenterAction),
 }
 
 impl ShellRequest {
     pub const fn target(&self) -> RequestTarget {
         match self {
-            Self::SchemeToggle | Self::FrostMode(_) | Self::Hints(_) => RequestTarget::Shell,
+            Self::SchemeToggle | Self::FrostMode(_) | Self::Hints(_) | Self::WorkspaceSync(_) => {
+                RequestTarget::Shell
+            }
             Self::Notifications(_) => RequestTarget::Notifications,
         }
     }
@@ -67,6 +70,14 @@ pub enum HintsAction {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NotificationCenterAction {
     Set(bool),
+    Toggle,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum WorkspaceSyncAction {
+    Off,
+    MirrorBar,
+    AgentSidecar,
     Toggle,
 }
 
@@ -283,6 +294,9 @@ fn parse_request(args: &[String]) -> Result<ShellRequest, String> {
         }
         "frost-mode" => parse_frost_mode_request(&args[1..]).map(ShellRequest::FrostMode),
         "hints" => parse_hints_request(&args[1..]).map(ShellRequest::Hints),
+        "workspace-sync" => {
+            parse_workspace_sync_request(&args[1..]).map(ShellRequest::WorkspaceSync)
+        }
         "notifications" | "notification-center" => {
             parse_notification_center_request(&args[1..]).map(ShellRequest::Notifications)
         }
@@ -309,6 +323,21 @@ fn parse_notification_center_request(args: &[String]) -> Result<NotificationCent
         }
         [] => Err("notifications requires open <bool>, show, hide, or toggle".to_owned()),
         _ => Err("invalid notifications request".to_owned()),
+    }
+}
+
+fn parse_workspace_sync_request(args: &[String]) -> Result<WorkspaceSyncAction, String> {
+    match args {
+        [action] if action == "toggle" => Ok(WorkspaceSyncAction::Toggle),
+        [action] if action == "off" => Ok(WorkspaceSyncAction::Off),
+        [action] if action == "mirror" || action == "mirror-bar" => {
+            Ok(WorkspaceSyncAction::MirrorBar)
+        }
+        [action] if action == "agent" || action == "agent-sidecar" => {
+            Ok(WorkspaceSyncAction::AgentSidecar)
+        }
+        [] => Err("workspace-sync requires off, mirror, agent, or toggle".to_owned()),
+        _ => Err("invalid workspace-sync request".to_owned()),
     }
 }
 
@@ -390,8 +419,8 @@ fn runtime_dir() -> PathBuf {
 mod tests {
     use super::{
         FrostMode, HintsAction, NotificationCenterAction, RequestResponse, RequestTarget,
-        ShellRequest, decode_args, encode_args, notification_center_request_args, parse_request,
-        parse_response, socket_path,
+        ShellRequest, WorkspaceSyncAction, decode_args, encode_args,
+        notification_center_request_args, parse_request, parse_response, socket_path,
     };
 
     fn args(values: &[&str]) -> Vec<String> {
@@ -423,6 +452,26 @@ mod tests {
         assert_eq!(
             parse_request(&args(&["hints", "toggle"])).unwrap(),
             ShellRequest::Hints(HintsAction::Toggle)
+        );
+    }
+
+    #[test]
+    fn parses_workspace_sync_actions() {
+        assert_eq!(
+            parse_request(&args(&["workspace-sync", "toggle"])).unwrap(),
+            ShellRequest::WorkspaceSync(WorkspaceSyncAction::Toggle)
+        );
+        assert_eq!(
+            parse_request(&args(&["workspace-sync", "mirror"])).unwrap(),
+            ShellRequest::WorkspaceSync(WorkspaceSyncAction::MirrorBar)
+        );
+        assert_eq!(
+            parse_request(&args(&["workspace-sync", "agent"])).unwrap(),
+            ShellRequest::WorkspaceSync(WorkspaceSyncAction::AgentSidecar)
+        );
+        assert_eq!(
+            parse_request(&args(&["workspace-sync", "off"])).unwrap(),
+            ShellRequest::WorkspaceSync(WorkspaceSyncAction::Off)
         );
     }
 
@@ -468,6 +517,12 @@ mod tests {
         );
         assert_eq!(
             parse_request(&args(&["frost-mode", "frosted"]))
+                .unwrap()
+                .target(),
+            RequestTarget::Shell
+        );
+        assert_eq!(
+            parse_request(&args(&["workspace-sync", "toggle"]))
                 .unwrap()
                 .target(),
             RequestTarget::Shell
