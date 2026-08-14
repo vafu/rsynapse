@@ -321,8 +321,25 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
   margin-top: 6px;
 }
 
-.context-zone-list .context-zone-item.context-zone-build.running .bar-indicator-icon {
-  animation: bzbus-spin 1.2s linear infinite;
+.context-zone-list .context-zone-item.context-zone-build {
+  min-width: #{$panel-item-size};
+  min-height: #{$panel-item-size};
+  padding: 0;
+  color: #{$fg};
+
+  .bar-indicator-icon {
+    -gtk-icon-size: #{$panel-icon-size};
+    margin: 0;
+  }
+
+  &.build-progress > .track,
+  &.build-progress > .level {
+    margin: 0;
+  }
+
+  &.running .bar-indicator-icon {
+    animation: bzbus-spin 1.2s linear infinite;
+  }
 }
 
 
@@ -463,9 +480,7 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
 
   >.track,
   >.level {
-    margin-top: 4px;
-    margin-left: 8px;
-    margin-right: 8px;
+    margin: 0;
   }
 
   >.track {
