@@ -76,6 +76,11 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
   opacity: 0.72;
 }
 
+.bar-zone-status .bar-item {
+  padding-left: 3px;
+  padding-right: 3px;
+}
+
 .bar-zone-status .bar-item image,
 .bar-zone-status .bar-item .nerdicon {
   color: inherit;
@@ -444,17 +449,15 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
 }
 
 .disk-stats-widget {
-  padding-left: 1px;
-  padding-right: 3px;
+  padding-left: 0;
+  padding-right: 2px;
 
   .disk-stats-icon {
-    margin-right: 2px;
     font-size: 14pt;
   }
 
-  .levelindicator.line {
-    padding-top: 0;
-    padding-bottom: 0;
+  .levelindicator.arc {
+    padding: 0;
   }
 }
 

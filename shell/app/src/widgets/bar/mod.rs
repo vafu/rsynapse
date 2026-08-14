@@ -76,8 +76,8 @@ const BT_BATTERY_INDICATOR_WIDTH: i32 = 4;
 const BT_BATTERY_INDICATOR_HEIGHT: i32 = 18;
 const SYSTEM_STATS_ARC_WIDTH: i32 = 10;
 const SYSTEM_STATS_ARC_HEIGHT: i32 = 18;
-const DISK_STATS_LINE_WIDTH: i32 = 4;
-const DISK_STATS_LINE_HEIGHT: i32 = 18;
+const DISK_STATS_ARC_WIDTH: i32 = 10;
+const DISK_STATS_ARC_HEIGHT: i32 = 18;
 
 #[derive(Clone)]
 pub struct MainBarInit {
@@ -525,6 +525,33 @@ impl SimpleAsyncComponent for MainBar {
                         #[watch]
                         set_tooltip_text: Some(system_stats::disk_tooltip(&model.system_stats.disk).as_str()),
 
+                        gtk::Overlay {
+                            #[watch]
+                            set_css_classes: &system_stats::arc_root_classes(),
+                            set_halign: gtk::Align::Center,
+                            set_valign: gtk::Align::Center,
+                            set_width_request: DISK_STATS_ARC_WIDTH,
+                            set_height_request: DISK_STATS_ARC_HEIGHT,
+
+                            add_overlay = &gtk::DrawingArea {
+                                set_css_classes: system_stats::track_classes(),
+                                set_can_target: false,
+                                set_content_width: DISK_STATS_ARC_WIDTH,
+                                set_content_height: DISK_STATS_ARC_HEIGHT,
+                                set_draw_func: system_stats::track_draw_func(ArcSide::End),
+                            },
+
+                            add_overlay = &gtk::DrawingArea {
+                                #[watch]
+                                set_css_classes: &system_stats::level_classes(model.system_stats.disk.busy),
+                                set_can_target: false,
+                                set_content_width: DISK_STATS_ARC_WIDTH,
+                                set_content_height: DISK_STATS_ARC_HEIGHT,
+                                #[watch]
+                                set_draw_func: system_stats::level_draw_func(model.system_stats.disk.busy, ArcSide::End),
+                            }
+                        },
+
                         gtk::Label {
                             set_css_classes: &[
                                 "nerdicon",
@@ -536,28 +563,28 @@ impl SimpleAsyncComponent for MainBar {
 
                         gtk::Overlay {
                             #[watch]
-                            set_css_classes: &system_stats::line_root_classes(),
+                            set_css_classes: &system_stats::arc_root_classes(),
                             set_halign: gtk::Align::Center,
                             set_valign: gtk::Align::Center,
-                            set_width_request: DISK_STATS_LINE_WIDTH,
-                            set_height_request: DISK_STATS_LINE_HEIGHT,
+                            set_width_request: DISK_STATS_ARC_WIDTH,
+                            set_height_request: DISK_STATS_ARC_HEIGHT,
 
                             add_overlay = &gtk::DrawingArea {
                                 set_css_classes: system_stats::track_classes(),
                                 set_can_target: false,
-                                set_content_width: DISK_STATS_LINE_WIDTH,
-                                set_content_height: DISK_STATS_LINE_HEIGHT,
-                                set_draw_func: system_stats::line_track_draw_func(),
+                                set_content_width: DISK_STATS_ARC_WIDTH,
+                                set_content_height: DISK_STATS_ARC_HEIGHT,
+                                set_draw_func: system_stats::track_draw_func(ArcSide::Start),
                             },
 
                             add_overlay = &gtk::DrawingArea {
                                 #[watch]
                                 set_css_classes: &system_stats::level_classes(model.system_stats.disk.percent),
                                 set_can_target: false,
-                                set_content_width: DISK_STATS_LINE_WIDTH,
-                                set_content_height: DISK_STATS_LINE_HEIGHT,
+                                set_content_width: DISK_STATS_ARC_WIDTH,
+                                set_content_height: DISK_STATS_ARC_HEIGHT,
                                 #[watch]
-                                set_draw_func: system_stats::line_level_draw_func(model.system_stats.disk.percent),
+                                set_draw_func: system_stats::level_draw_func(model.system_stats.disk.percent, ArcSide::Start),
                             }
                         }
                     },

@@ -3,7 +3,7 @@ mod source;
 use shell_core::source::Observable;
 
 use crate::widgets::{
-    level_indicator::{self, ArcStyle, CurveDirection, LevelRenderStyle, LevelStage, LineStyle},
+    level_indicator::{self, ArcStyle, CurveDirection, LevelRenderStyle, LevelStage},
     nerd_icon::{NerdIcon, md},
 };
 
@@ -35,6 +35,7 @@ const STAGES: &[LevelStage] = &[
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(crate) struct DiskStats {
     pub(super) percent: u8,
+    pub(super) busy: u8,
     pub(super) used: u64,
     pub(super) free: u64,
     pub(super) total: u64,
@@ -79,8 +80,9 @@ pub(super) fn disk_icon() -> NerdIcon {
 
 pub(super) fn disk_tooltip(stats: &DiskStats) -> String {
     format!(
-        "Disk {}%\nUsed: {}\nFree: {}\nTotal: {}",
+        "Disk {}%\nI/O busy: {}%\nUsed: {}\nFree: {}\nTotal: {}",
         stats.percent,
+        stats.busy,
         human_bytes(stats.used),
         human_bytes(stats.free),
         human_bytes(stats.total),
@@ -98,26 +100,6 @@ pub(super) fn level_draw_func(
     side: ArcSide,
 ) -> impl Fn(&shell_core::gtk::DrawingArea, &shell_core::gtk::cairo::Context, i32, i32) + 'static {
     level_indicator::level_draw_func(f64::from(level), LEVEL_MIN, LEVEL_MAX, style(side))
-}
-
-pub(super) fn line_root_classes() -> Vec<&'static str> {
-    level_indicator::root_classes(["line"])
-}
-
-pub(super) fn line_track_draw_func()
--> impl Fn(&shell_core::gtk::DrawingArea, &shell_core::gtk::cairo::Context, i32, i32) + 'static {
-    level_indicator::track_draw_func(LevelRenderStyle::Line(LineStyle::vertical(3.0)))
-}
-
-pub(super) fn line_level_draw_func(
-    level: u8,
-) -> impl Fn(&shell_core::gtk::DrawingArea, &shell_core::gtk::cairo::Context, i32, i32) + 'static {
-    level_indicator::level_draw_func(
-        f64::from(level),
-        LEVEL_MIN,
-        LEVEL_MAX,
-        LevelRenderStyle::Line(LineStyle::vertical(3.0)),
-    )
 }
 
 fn human_bytes(bytes: u64) -> String {

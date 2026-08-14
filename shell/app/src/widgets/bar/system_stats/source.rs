@@ -3,7 +3,7 @@ use std::{
     fs, io,
     os::unix::ffi::OsStrExt,
     path::{Path, PathBuf},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use shell_core::source::{
@@ -21,11 +21,18 @@ struct CpuSample {
     total: u64,
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct SystemSample {
+    sampled_at: Instant,
     cpu: CpuSample,
     ram: u8,
     disk: DiskStats,
+    disk_io: DiskIoSample,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+struct DiskIoSample {
+    busy_ms: u64,
 }
 
 pub(super) fn sys_stats() -> Observable<SysStatsView> {
@@ -41,10 +48,19 @@ pub(super) fn sys_stats() -> Observable<SysStatsView> {
         .start_with(vec![0])
         .filter_map(|_| read_system_sample().ok())
         .pairwise()
-        .map(|(previous, current)| SysStatsView {
-            cpu: cpu_percent(previous.cpu, current.cpu),
-            ram: current.ram,
-            disk: current.disk,
+        .map(|(previous, current)| {
+            let mut disk = current.disk;
+            disk.busy = disk_busy_percent(
+                previous.disk_io,
+                current.disk_io,
+                previous.sampled_at,
+                current.sampled_at,
+            );
+            SysStatsView {
+                cpu: cpu_percent(previous.cpu, current.cpu),
+                ram: current.ram,
+                disk,
+            }
         })
         .start_with(vec![initial])
         .map_err(|error| error.to_string())
@@ -54,9 +70,11 @@ pub(super) fn sys_stats() -> Observable<SysStatsView> {
 
 fn read_system_sample() -> Result<SystemSample, String> {
     Ok(SystemSample {
+        sampled_at: Instant::now(),
         cpu: read_cpu_sample()?,
         ram: read_ram_percent()?,
         disk: read_disk_stats().unwrap_or_default(),
+        disk_io: read_disk_io_sample().unwrap_or_default(),
     })
 }
 
@@ -123,6 +141,45 @@ fn read_disk_stats() -> Result<DiskStats, String> {
         .ok_or_else(|| format!("missing mount for {DISK_DEVICE} in /proc/mounts"))?;
 
     disk_stats(&mountpoint)
+}
+
+fn read_disk_io_sample() -> Result<DiskIoSample, String> {
+    let device = diskstats_device_name()?;
+    let diskstats = fs::read_to_string("/proc/diskstats")
+        .map_err(|error| format!("failed to read /proc/diskstats: {error}"))?;
+    parse_disk_io_sample(&diskstats, device.as_str())
+}
+
+fn diskstats_device_name() -> Result<String, String> {
+    let path = fs::canonicalize(DISK_DEVICE)
+        .map_err(|error| format!("failed to resolve {DISK_DEVICE}: {error}"))?;
+    path.file_name()
+        .and_then(|name| name.to_str())
+        .map(str::to_owned)
+        .ok_or_else(|| format!("failed to get diskstats device name for {}", path.display()))
+}
+
+fn parse_disk_io_sample(diskstats: &str, device: &str) -> Result<DiskIoSample, String> {
+    for line in diskstats.lines() {
+        let mut fields = line.split_whitespace();
+        let _major = fields.next();
+        let _minor = fields.next();
+        if fields.next() != Some(device) {
+            continue;
+        }
+
+        let values = fields
+            .map(str::parse::<u64>)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| format!("failed to parse /proc/diskstats for {device}: {error}"))?;
+        let busy_ms = values
+            .get(9)
+            .copied()
+            .ok_or_else(|| format!("/proc/diskstats row for {device} has too few fields"))?;
+        return Ok(DiskIoSample { busy_ms });
+    }
+
+    Err(format!("missing /proc/diskstats row for {device}"))
 }
 
 fn mountpoint_for_device(mounts: &str, device: &str) -> Option<PathBuf> {
@@ -199,6 +256,7 @@ fn disk_stats_from_blocks(
 
     let used = total.saturating_sub(free);
     DiskStats {
+        busy: 0,
         percent: (((used as f64 / total as f64) * 100.0)
             .round()
             .clamp(0.0, 100.0) as u8),
@@ -220,11 +278,32 @@ fn cpu_percent(previous: CpuSample, current: CpuSample) -> u8 {
         .clamp(0.0, 100.0) as u8
 }
 
+fn disk_busy_percent(
+    previous: DiskIoSample,
+    current: DiskIoSample,
+    previous_at: Instant,
+    current_at: Instant,
+) -> u8 {
+    let elapsed_ms = current_at.duration_since(previous_at).as_millis();
+    if elapsed_ms == 0 {
+        return 0;
+    }
+
+    ((u128::from(current.busy_ms.saturating_sub(previous.busy_ms)) * 100 / elapsed_ms).min(100))
+        as u8
+}
+
 #[cfg(test)]
 mod tests {
-    use std::path::PathBuf;
+    use std::{
+        path::PathBuf,
+        time::{Duration, Instant},
+    };
 
-    use super::{disk_stats_from_blocks, mountpoint_for_device};
+    use super::{
+        DiskIoSample, disk_busy_percent, disk_stats_from_blocks, mountpoint_for_device,
+        parse_disk_io_sample,
+    };
 
     #[test]
     fn mountpoint_for_device_decodes_proc_mount_escapes() {
@@ -244,6 +323,32 @@ mod tests {
         assert_eq!(
             mountpoint_for_device("/dev/sda1 / ext4 rw 0 0", "/dev/dm-0"),
             None
+        );
+    }
+
+    #[test]
+    fn parse_disk_io_sample_reads_busy_ms() {
+        let diskstats = "   8       0 sda 1 0 2 3 4 5 6 7 0 9 10 0 0 0 0 0\n 253       0 dm-0 1 0 2 3 4 5 6 7 0 1234 10 0 0 0 0 0\n";
+
+        assert_eq!(
+            parse_disk_io_sample(diskstats, "dm-0"),
+            Ok(DiskIoSample { busy_ms: 1234 })
+        );
+    }
+
+    #[test]
+    fn disk_busy_percent_uses_elapsed_wall_time() {
+        let start = Instant::now();
+        let end = start + Duration::from_millis(2_000);
+
+        assert_eq!(
+            disk_busy_percent(
+                DiskIoSample { busy_ms: 1_000 },
+                DiskIoSample { busy_ms: 1_500 },
+                start,
+                end,
+            ),
+            25
         );
     }
 
