@@ -1742,6 +1742,7 @@ dependencies = [
  "futures-util",
  "gtk4",
  "libadwaita",
+ "libc",
  "locus",
  "nerd-icon-picker",
  "notify",

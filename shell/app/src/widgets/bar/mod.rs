@@ -76,6 +76,8 @@ const BT_BATTERY_INDICATOR_WIDTH: i32 = 4;
 const BT_BATTERY_INDICATOR_HEIGHT: i32 = 18;
 const SYSTEM_STATS_ARC_WIDTH: i32 = 10;
 const SYSTEM_STATS_ARC_HEIGHT: i32 = 18;
+const DISK_STATS_LINE_WIDTH: i32 = 4;
+const DISK_STATS_LINE_HEIGHT: i32 = 18;
 
 #[derive(Clone)]
 pub struct MainBarInit {
@@ -509,10 +511,57 @@ impl SimpleAsyncComponent for MainBar {
                                         #[watch]
                                         set_draw_func: system_stats::level_draw_func(model.system_stats.ram, ArcSide::Start),
                                     }
-                                }
+                                },
                             }
                         }
                     },
+
+                    #[local_ref]
+                    disk_stats_item -> gtk::Box {
+                        add_css_class: "bar-item",
+                        set_halign: gtk::Align::End,
+                        set_valign: gtk::Align::Center,
+                        set_orientation: gtk::Orientation::Horizontal,
+                        #[watch]
+                        set_tooltip_text: Some(system_stats::disk_tooltip(&model.system_stats.disk).as_str()),
+
+                        gtk::Label {
+                            set_css_classes: &[
+                                "nerdicon",
+                                bar_item::ICON_CLASS,
+                                "disk-stats-icon",
+                            ],
+                            set_nerd_icon: system_stats::disk_icon(),
+                        },
+
+                        gtk::Overlay {
+                            #[watch]
+                            set_css_classes: &system_stats::line_root_classes(),
+                            set_halign: gtk::Align::Center,
+                            set_valign: gtk::Align::Center,
+                            set_width_request: DISK_STATS_LINE_WIDTH,
+                            set_height_request: DISK_STATS_LINE_HEIGHT,
+
+                            add_overlay = &gtk::DrawingArea {
+                                set_css_classes: system_stats::track_classes(),
+                                set_can_target: false,
+                                set_content_width: DISK_STATS_LINE_WIDTH,
+                                set_content_height: DISK_STATS_LINE_HEIGHT,
+                                set_draw_func: system_stats::line_track_draw_func(),
+                            },
+
+                            add_overlay = &gtk::DrawingArea {
+                                #[watch]
+                                set_css_classes: &system_stats::level_classes(model.system_stats.disk.percent),
+                                set_can_target: false,
+                                set_content_width: DISK_STATS_LINE_WIDTH,
+                                set_content_height: DISK_STATS_LINE_HEIGHT,
+                                #[watch]
+                                set_draw_func: system_stats::line_level_draw_func(model.system_stats.disk.percent),
+                            }
+                        }
+                    },
+
 
                     gtk::Box {
                         add_css_class: "system-indicators",
@@ -962,6 +1011,7 @@ impl SimpleAsyncComponent for MainBar {
             output_name,
         );
         let system_stats_item = bar_item::container(&["system-stats-widget"]);
+        let disk_stats_item = bar_item::container(&["disk-stats-widget"]);
         let ethernet_item =
             bar_item::container(&[bar_item::SQUARE_CLASS, "network-item", "ethernet-item"]);
         let wifi_item = bar_item::container(&[bar_item::SQUARE_CLASS, "network-item", "wifi-item"]);

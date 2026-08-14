@@ -44,7 +44,9 @@ fn selected_project_view(project: ProjectDetails) -> SelectedProjectView {
         .and_then(non_empty)
         .map(str::to_owned)
         .unwrap_or_default();
-    let branch = optional_text(project.branch).filter(|branch| distinct_from(branch, &title));
+    let branch = optional_text(project.branch)
+        .map(|branch| display_branch(branch, &title))
+        .filter(|branch| distinct_from(branch, &title));
     let visible = non_empty(&title).is_some();
 
     SelectedProjectView {
@@ -63,6 +65,15 @@ fn optional_text(value: Option<String>) -> Option<String> {
         let value = value.trim().to_owned();
         (!value.is_empty()).then_some(value)
     })
+}
+
+fn display_branch(branch: String, cwd: &str) -> String {
+    branch
+        .strip_prefix("vafu/")
+        .and_then(|rest| rest.split_once('/'))
+        .filter(|(worktree, _)| *worktree == cwd)
+        .map(|(_, feature)| feature.to_owned())
+        .unwrap_or(branch)
 }
 
 fn non_empty(value: &str) -> Option<&str> {

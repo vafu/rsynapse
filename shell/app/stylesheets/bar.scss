@@ -18,7 +18,6 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
 }
 
 .bar {
-  // background-color: #fff;
   background-color: #{$panel-bg};
   transition: 100ms;
 
@@ -123,6 +122,7 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
   }
 
   .selected-project-main {
+    padding: 0 7px;
     color: color-mix(in srgb, #{$fg} 90%, transparent);
     font-weight: 700;
   }
@@ -423,6 +423,21 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
 
   to {
     transform: rotate(360deg);
+  }
+}
+
+.disk-stats-widget {
+  padding-left: 1px;
+  padding-right: 3px;
+
+  .disk-stats-icon {
+    margin-right: 2px;
+    font-size: 14pt;
+  }
+
+  .levelindicator.line {
+    padding-top: 0;
+    padding-bottom: 0;
   }
 }
 
