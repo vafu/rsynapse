@@ -107,7 +107,7 @@ pub(super) fn tooltip(view: &SelectedProjectView) -> String {
 }
 
 pub(super) fn classes(_view: &SelectedProjectView) -> &'static [&'static str] {
-    &["bar-item", super::BACKGROUND_BLUR_CLASS, "selected-project"]
+    &["bar-item", "selected-project"]
 }
 
 #[cfg(test)]

@@ -32,8 +32,6 @@ pub fn apply_layer_shell_config(
         ExclusiveZone::Fixed(exclusive_zone) => window.set_exclusive_zone(exclusive_zone),
         ExclusiveZone::Auto => window.auto_exclusive_zone_enable(),
     }
-
-    gtk4_background_effect::apply_background_effect(window, config.background_effect);
 }
 
 fn apply_anchors(window: &impl gtk::prelude::IsA<gtk::Window>, anchors: Anchors) {

@@ -314,15 +314,6 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
   border-top-color: #{$panel-border-strong};
 }
 
-.workspace-window-column {
-  &.stacked {
-    margin-top: 0;
-    padding-left: 3px;
-    border-left: 1px solid color-mix(in srgb, #{$accent_color} 36%, transparent);
-
-  }
-}
-
 .bar-indicator.build-progress {
   outline: none;
   outline-offset: 0;

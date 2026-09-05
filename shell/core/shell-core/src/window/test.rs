@@ -1,7 +1,4 @@
-use super::{
-    Anchors, BackgroundEffect, BackgroundEffectRegion, Edge, ExclusiveZone, Layer, SurfaceMargins,
-    WindowConfig,
-};
+use super::{Anchors, Edge, ExclusiveZone, Layer, SurfaceMargins, WindowConfig};
 
 #[test]
 fn anchors_can_be_built_from_generic_edges() {
@@ -20,47 +17,14 @@ fn config_builders_preserve_explicit_values() {
         .with_anchors(anchors)
         .with_surface_margins(SurfaceMargins::uniform(8))
         .with_fixed_exclusive_zone(12)
-        .with_background_blur()
         .with_namespace("custom")
         .with_keyboard_interactivity(true);
 
     assert_eq!(config.anchors, anchors);
     assert_eq!(config.surface_margins, SurfaceMargins::uniform(8));
     assert_eq!(config.exclusive_zone, ExclusiveZone::Fixed(12));
-    assert_eq!(
-        config.background_effect,
-        BackgroundEffect::Blur(BackgroundEffectRegion::Surface)
-    );
     assert_eq!(config.namespace, Some("custom"));
     assert!(config.keyboard_interactive);
-}
-
-#[test]
-fn config_supports_css_class_background_blur_regions() {
-    const CLASSES: &[&str] = &["barblock", "workspace-window-tile"];
-
-    let config = WindowConfig::new(Layer::Top).with_background_blur_for_css_classes(CLASSES);
-
-    assert_eq!(
-        config.background_effect,
-        BackgroundEffect::Blur(BackgroundEffectRegion::CssClasses(CLASSES))
-    );
-}
-
-#[test]
-fn config_supports_rounded_css_class_background_blur_regions() {
-    const CLASSES: &[&str] = &["blur"];
-
-    let config =
-        WindowConfig::new(Layer::Top).with_rounded_background_blur_for_css_classes(CLASSES, 12);
-
-    assert_eq!(
-        config.background_effect,
-        BackgroundEffect::Blur(BackgroundEffectRegion::RoundedCssClasses {
-            classes: CLASSES,
-            radius: 12
-        })
-    );
 }
 
 #[test]

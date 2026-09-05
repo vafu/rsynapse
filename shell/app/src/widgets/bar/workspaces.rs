@@ -1,8 +1,8 @@
 use shell_core::source::{self, Observable, rx::Observable as _};
 use shell_rx_macros::combine_latest;
 
+use super::WindowNode;
 use super::niri::{self, NiriWorkspace};
-use super::window_column::WindowColumnNode;
 use super::window_source::{WindowSnapshot, window_snapshots};
 
 pub(super) type WorkspaceNode = WorkspaceEntry;
@@ -43,25 +43,24 @@ fn selected_workspace_id(output_name: Option<String>) -> Observable<Option<u64>>
         .box_it()
 }
 
-pub(super) fn selected_workspace_window_columns(
+pub(super) fn selected_workspace_windows(
     output_name: Option<String>,
-) -> Observable<Vec<WindowColumnNode>> {
+) -> Observable<Vec<WindowNode>> {
     selected_workspace_id(output_name)
         .combine_latest(window_snapshots(), |selected_workspace_id, windows| {
             let _span = tracing::trace_span!(
-                "bar.selected_workspace_window_columns",
+                "bar.selected_workspace_windows",
                 selected_workspace_id,
                 input_windows = windows.len()
             )
             .entered();
-            let windows = selected_workspace_sorted_windows(selected_workspace_id, windows);
-            let columns = window_columns(windows);
+            let windows = selected_workspace_sorted_windows(selected_workspace_id, windows)
+                .into_iter()
+                .map(|window| window.window)
+                .collect::<Vec<_>>();
 
-            tracing::trace!(
-                output_columns = columns.len(),
-                "selected workspace window columns"
-            );
-            columns
+            tracing::trace!(output_windows = windows.len(), "selected workspace windows");
+            windows
         })
         .distinct_until_changed()
         .box_it()
@@ -78,44 +77,6 @@ fn selected_workspace_sorted_windows(
             .then_with(|| left.window.path_key().cmp(right.window.path_key()))
     });
     windows
-}
-
-fn window_columns(windows: Vec<WindowSnapshot>) -> Vec<WindowColumnNode> {
-    let mut columns = Vec::new();
-    let mut current_key = None;
-    let mut current_column = None;
-    let mut current_windows = Vec::new();
-
-    for window in windows {
-        let key = window_column_group_key(&window);
-        if current_key != Some(key) {
-            push_window_column(&mut columns, current_column, &mut current_windows);
-            current_key = Some(key);
-            current_column = Some(window.column);
-        }
-        current_windows.push(window.window);
-    }
-
-    push_window_column(&mut columns, current_column, &mut current_windows);
-    columns
-}
-
-fn window_column_group_key(window: &WindowSnapshot) -> (u64, u64) {
-    let unknown_column_tiebreaker = (window.column == u64::MAX)
-        .then_some(window.id)
-        .unwrap_or_default();
-    (window.column, unknown_column_tiebreaker)
-}
-
-fn push_window_column(
-    columns: &mut Vec<WindowColumnNode>,
-    column: Option<u64>,
-    windows: &mut Vec<super::WindowNode>,
-) {
-    let Some(column) = column else {
-        return;
-    };
-    columns.push(WindowColumnNode::new(column, std::mem::take(windows)));
 }
 
 fn filter_workspaces_for_output(
@@ -165,12 +126,10 @@ fn sort_workspaces(workspaces: &mut [WorkspaceEntry]) {
 #[cfg(test)]
 mod tests {
     use super::{
-        filter_workspaces_for_output, selected_workspace_sorted_windows, window_columns,
-        workspace_matches_output,
+        filter_workspaces_for_output, selected_workspace_sorted_windows, workspace_matches_output,
     };
     use crate::widgets::bar::{
         niri::{NiriWindow, NiriWorkspace},
-        window_column::WindowColumnNode,
         window_source::WindowSnapshot,
     };
     use shell_core::source::dbus::ObjectModel;
@@ -215,7 +174,7 @@ mod tests {
     }
 
     #[test]
-    fn window_columns_group_stacked_windows_by_niri_column() {
+    fn selected_workspace_windows_are_inline_in_niri_layout_order() {
         let selected_workspace_id = Some(7);
         let windows = vec![
             window_snapshot(30, selected_workspace_id, 2, 0),
@@ -224,37 +183,28 @@ mod tests {
             window_snapshot(10, selected_workspace_id, 1, 0),
         ];
 
-        let columns = window_columns(selected_workspace_sorted_windows(
-            selected_workspace_id,
-            windows,
-        ));
+        let windows = selected_workspace_sorted_windows(selected_workspace_id, windows);
 
-        assert_eq!(columns.len(), 2);
-        assert_eq!(columns[0].column, 1);
-        assert_eq!(columns[1].column, 2);
         assert_eq!(
-            window_paths(&columns[0]),
-            vec![window_path(10), window_path(20)]
+            window_paths(&windows),
+            vec![window_path(10), window_path(20), window_path(30)]
         );
-        assert_eq!(window_paths(&columns[1]), vec![window_path(30)]);
     }
 
     #[test]
-    fn window_columns_keep_unknown_columns_separate() {
+    fn inline_windows_use_id_to_order_unknown_positions() {
         let selected_workspace_id = Some(7);
         let windows = vec![
-            window_snapshot(10, selected_workspace_id, u64::MAX, u64::MAX),
             window_snapshot(20, selected_workspace_id, u64::MAX, u64::MAX),
+            window_snapshot(10, selected_workspace_id, u64::MAX, u64::MAX),
         ];
 
-        let columns = window_columns(selected_workspace_sorted_windows(
-            selected_workspace_id,
-            windows,
-        ));
+        let windows = selected_workspace_sorted_windows(selected_workspace_id, windows);
 
-        assert_eq!(columns.len(), 2);
-        assert_eq!(window_paths(&columns[0]), vec![window_path(10)]);
-        assert_eq!(window_paths(&columns[1]), vec![window_path(20)]);
+        assert_eq!(
+            window_paths(&windows),
+            vec![window_path(10), window_path(20)]
+        );
     }
 
     fn workspace(index: u32, output_path: Option<&str>) -> super::WorkspaceEntry {
@@ -281,11 +231,10 @@ mod tests {
         }
     }
 
-    fn window_paths(column: &WindowColumnNode) -> Vec<String> {
-        column
-            .windows
+    fn window_paths(windows: &[WindowSnapshot]) -> Vec<String> {
+        windows
             .iter()
-            .map(|window| window.path_key().to_owned())
+            .map(|window| window.window.path_key().to_owned())
             .collect()
     }
 

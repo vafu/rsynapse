@@ -18,22 +18,21 @@ workspace. Keep observations durable here as each unit is reviewed.
 1. `locus` - reviewed
 2. `niri-dbus` - reviewed
 3. `shell/core/shell-core` - reviewed
-4. `shell/core/background-effect` - reviewed
-5. `shell/core/macros` - reviewed
-6. `shell/core/rx-macros` - reviewed
-7. `shell/app` - reviewed
-8. `shell/examples/battery-status` - reviewed
-9. `shell/examples/volume-status` - reviewed
-10. `shell/examples/window-tiles` - reviewed
-11. `shell/launcher/rsynapse-plugin` - reviewed
-12. `shell/launcher/rsynapse-daemon` - reviewed
-13. `shell/launcher/rsynapse-cli` - reviewed
-14. `shell/launcher/rsynapse-ui` - reviewed
-15. `shell/launcher/rsynapse-plugin-launcher` - reviewed
-16. `shell/launcher/rsynapse-plugin-shell` - reviewed
-17. `shell/launcher/rsynapse-plugin-calc` - reviewed
-18. `shell/launcher/rsynapse-plugin-commands` - reviewed
-19. `install` - reviewed
+4. `shell/core/macros` - reviewed
+5. `shell/core/rx-macros` - reviewed
+6. `shell/app` - reviewed
+7. `shell/examples/battery-status` - reviewed
+8. `shell/examples/volume-status` - reviewed
+9. `shell/examples/window-tiles` - reviewed
+10. `shell/launcher/rsynapse-plugin` - reviewed
+11. `shell/launcher/rsynapse-daemon` - reviewed
+12. `shell/launcher/rsynapse-cli` - reviewed
+13. `shell/launcher/rsynapse-ui` - reviewed
+14. `shell/launcher/rsynapse-plugin-launcher` - reviewed
+15. `shell/launcher/rsynapse-plugin-shell` - reviewed
+16. `shell/launcher/rsynapse-plugin-calc` - reviewed
+17. `shell/launcher/rsynapse-plugin-commands` - reviewed
+18. `install` - reviewed
 
 ## Cross-Cutting Findings
 
@@ -62,7 +61,6 @@ workspace. Keep observations durable here as each unit is reviewed.
 - [locus](locus.md)
 - [niri-dbus](niri-dbus.md)
 - [shell-core](shell-core.md)
-- [gtk4-background-effect](gtk4-background-effect.md)
 - [shell-macros](shell-macros.md)
 - [shell-rx-macros](shell-rx-macros.md)
 - [rsynapse-shell-app](rsynapse-shell-app.md)
@@ -84,7 +82,6 @@ workspace. Keep observations durable here as each unit is reviewed.
 - `cargo test --manifest-path locus/Cargo.toml`
 - `cargo test --manifest-path niri-dbus/Cargo.toml`
 - `cargo test -p shell-core --manifest-path shell/Cargo.toml`
-- `cargo test -p gtk4-background-effect --manifest-path shell/Cargo.toml`
 - `cargo test -p shell-macros --manifest-path shell/Cargo.toml`
 - `cargo test -p shell-rx-macros --manifest-path shell/Cargo.toml`
 - `cargo test -p rsynapse-shell --manifest-path shell/Cargo.toml`

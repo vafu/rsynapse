@@ -29,7 +29,6 @@ impl RequestTarget {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ShellRequest {
     SchemeToggle,
-    FrostMode(FrostMode),
     Hints(HintsAction),
     Notifications(NotificationCenterAction),
 }
@@ -37,22 +36,9 @@ pub enum ShellRequest {
 impl ShellRequest {
     pub const fn target(&self) -> RequestTarget {
         match self {
-            Self::SchemeToggle | Self::FrostMode(_) | Self::Hints(_) => RequestTarget::Shell,
+            Self::SchemeToggle | Self::Hints(_) => RequestTarget::Shell,
             Self::Notifications(_) => RequestTarget::Notifications,
         }
-    }
-}
-
-/// Desktop surface translucency request action.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum FrostMode {
-    Solid,
-    Frosted,
-}
-
-impl FrostMode {
-    pub const fn is_frosted(self) -> bool {
-        matches!(self, Self::Frosted)
     }
 }
 
@@ -281,21 +267,11 @@ fn parse_request(args: &[String]) -> Result<ShellRequest, String> {
                 Err("scheme-toggle does not accept arguments".to_owned())
             }
         }
-        "frost-mode" => parse_frost_mode_request(&args[1..]).map(ShellRequest::FrostMode),
         "hints" => parse_hints_request(&args[1..]).map(ShellRequest::Hints),
         "notifications" | "notification-center" => {
             parse_notification_center_request(&args[1..]).map(ShellRequest::Notifications)
         }
         _ => Err(format!("unknown request command: {command}")),
-    }
-}
-
-fn parse_frost_mode_request(args: &[String]) -> Result<FrostMode, String> {
-    match args {
-        [mode] if mode == "solid" => Ok(FrostMode::Solid),
-        [mode] if mode == "frosted" => Ok(FrostMode::Frosted),
-        [] => Err("frost-mode requires solid or frosted".to_owned()),
-        _ => Err("invalid frost-mode request".to_owned()),
     }
 }
 
@@ -389,9 +365,9 @@ fn runtime_dir() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::{
-        FrostMode, HintsAction, NotificationCenterAction, RequestResponse, RequestTarget,
-        ShellRequest, decode_args, encode_args, notification_center_request_args, parse_request,
-        parse_response, socket_path,
+        HintsAction, NotificationCenterAction, RequestResponse, RequestTarget, ShellRequest,
+        decode_args, encode_args, notification_center_request_args, parse_request, parse_response,
+        socket_path,
     };
 
     fn args(values: &[&str]) -> Vec<String> {
@@ -427,20 +403,6 @@ mod tests {
     }
 
     #[test]
-    fn parses_frost_mode() {
-        assert_eq!(
-            parse_request(&args(&["frost-mode", "solid"])).unwrap(),
-            ShellRequest::FrostMode(FrostMode::Solid)
-        );
-        assert_eq!(
-            parse_request(&args(&["frost-mode", "frosted"])).unwrap(),
-            ShellRequest::FrostMode(FrostMode::Frosted)
-        );
-        assert!(FrostMode::Frosted.is_frosted());
-        assert!(!FrostMode::Solid.is_frosted());
-    }
-
-    #[test]
     fn parses_notifications_actions() {
         assert_eq!(
             parse_request(&args(&["notifications", "toggle"])).unwrap(),
@@ -464,12 +426,6 @@ mod tests {
         );
         assert_eq!(
             parse_request(&args(&["hints", "toggle"])).unwrap().target(),
-            RequestTarget::Shell
-        );
-        assert_eq!(
-            parse_request(&args(&["frost-mode", "frosted"]))
-                .unwrap()
-                .target(),
             RequestTarget::Shell
         );
         assert_eq!(

@@ -20,7 +20,6 @@ mod source_errors;
 mod system_stats;
 mod systray;
 mod time;
-mod window_column;
 mod window_source;
 mod window_tile;
 mod workspace_bar;
@@ -43,10 +42,8 @@ use shell_core::{
     window::{self, Anchors, Edge, Layer, WindowConfig},
 };
 
-use crate::widgets::{
-    BACKGROUND_BLUR_CLASS,
-    nerd_icon::{NerdIcon, NerdIconLabelExt, fa, md},
-};
+use crate::widgets::nerd_icon::{NerdIcon, NerdIconLabelExt};
+use crate::widgets::nerd_icon::{fa, md};
 
 use self::audio::{AudioRoutePopover, AudioView, audio_status};
 use self::battery::BatteryView;
@@ -63,9 +60,9 @@ use self::source_errors::{SourceErrorRow, source_error_count, source_error_items
 use self::system_stats::{ArcSide, SysStatsView, sys_stats};
 use self::systray::{TrayItem, systray_items};
 use self::time::{ClockView, clock};
-use self::window_column::{WindowColumn, WindowColumnNode};
+use self::window_tile::WindowTile;
 use self::workspace_bar::{WorkspaceBar, WorkspaceBarInit};
-use self::workspaces::{WorkspaceNode, selected_workspace_window_columns};
+use self::workspaces::{WorkspaceNode, selected_workspace_windows};
 use super::{
     OsdAudioView, OsdBrightnessView, OsdInit, OsdInput, OsdWindow, has_notification_items,
 };
@@ -150,8 +147,8 @@ pub struct MainBar {
     _brightness_osd_ready: bool,
     output_name: Option<String>,
 
-    #[source(selected_workspace_window_columns(output_name.clone()))]
-    window_columns: Vec<WindowColumnNode>,
+    #[source(selected_workspace_windows(output_name.clone()))]
+    windows: Vec<WindowNode>,
 
     #[source(selected_project_status(output_name.clone()))]
     selected_project: SelectedProjectView,
@@ -245,8 +242,8 @@ impl SimpleAsyncComponent for MainBar {
                         }
                     },
 
-                    #[bind_list(window_columns, row = WindowColumn)]
-                    window_columns -> gtk::Box {
+                    #[bind_list(windows, row = WindowTile)]
+                    windows -> gtk::Box {
                         set_widget_name: "workspace-window-list",
                         set_halign: gtk::Align::Start,
                         set_orientation: gtk::Orientation::Horizontal,
@@ -829,44 +826,44 @@ impl SimpleAsyncComponent for MainBar {
                         gtk::MenuButton {
                             set_css_classes: &bar_item::action_classes(&["source-error-button"]),
 
-                        #[wrap(Some)]
-                        set_child = &gtk::Box {
-                            set_orientation: gtk::Orientation::Horizontal,
-                            set_spacing: 4,
+                            #[wrap(Some)]
+                            set_child = &gtk::Box {
+                                set_orientation: gtk::Orientation::Horizontal,
+                                set_spacing: 4,
 
-                            gtk::Label {
-                                set_css_classes: &[
-                                    "nerdicon",
-                                    bar_item::ICON_CLASS,
-                                    "source-error-icon",
-                                ],
-                                set_nerd_icon: NerdIcon::new(md::MD_ALERT),
+                                gtk::Label {
+                                    set_css_classes: &[
+                                        "nerdicon",
+                                        bar_item::ICON_CLASS,
+                                        "source-error-icon",
+                                    ],
+                                    set_nerd_icon: NerdIcon::new(md::MD_ALERT),
+                                },
+
+                                gtk::Label {
+                                    add_css_class: "source-error-count",
+                                    #[watch]
+                                    set_label: source_error_count_label(model.source_error_count).as_str(),
+                                }
                             },
 
-                            gtk::Label {
-                                add_css_class: "source-error-count",
-                                #[watch]
-                                set_label: source_error_count_label(model.source_error_count).as_str(),
-                            }
-                        },
+                            #[wrap(Some)]
+                            set_popover = &gtk::Popover {
+                                add_css_class: "menu",
 
-                        #[wrap(Some)]
-                        set_popover = &gtk::Popover {
-                            add_css_class: "menu",
-
-                            gtk::Box {
-                                add_css_class: "source-error-popover",
-                                set_orientation: gtk::Orientation::Vertical,
-                                set_spacing: 8,
-
-                                #[bind_list(source_error_items, row = SourceErrorRow)]
-                                source_error_items -> gtk::Box {
+                                gtk::Box {
+                                    add_css_class: "source-error-popover",
                                     set_orientation: gtk::Orientation::Vertical,
                                     set_spacing: 8,
+
+                                    #[bind_list(source_error_items, row = SourceErrorRow)]
+                                    source_error_items -> gtk::Box {
+                                        set_orientation: gtk::Orientation::Vertical,
+                                        set_spacing: 8,
+                                    }
                                 }
                             }
                         }
-                    }
                     },
 
                     gtk::Box {
@@ -878,22 +875,22 @@ impl SimpleAsyncComponent for MainBar {
                         gtk::Button {
                             set_css_classes: &bar_item::action_classes(&["clock-button"]),
 
-                        gtk::Overlay {
-                            gtk::Label {
-                                add_css_class: "clock-label",
-                                #[watch]
-                                set_label: model.clock.time.as_str(),
-                            },
+                            gtk::Overlay {
+                                gtk::Label {
+                                    add_css_class: "clock-label",
+                                    #[watch]
+                                    set_label: model.clock.time.as_str(),
+                                },
 
-                            add_overlay = &gtk::Box {
-                                add_css_class: "notification-dot",
-                                #[watch]
-                                set_visible: model.has_notifications,
-                                set_halign: gtk::Align::End,
-                                set_valign: gtk::Align::Start,
+                                add_overlay = &gtk::Box {
+                                    add_css_class: "notification-dot",
+                                    #[watch]
+                                    set_visible: model.has_notifications,
+                                    set_halign: gtk::Align::End,
+                                    set_valign: gtk::Align::Start,
+                                }
                             }
                         }
-                    }
                     }
                 }
             }
@@ -1172,9 +1169,6 @@ fn main_bar_input_name(msg: &MainBarInput) -> &'static str {
 fn handle_request(request: request::PendingRequest) {
     let response = match request.request {
         request::ShellRequest::SchemeToggle => theme::toggle_color_scheme()
-            .map(|_| request::RequestResponse::Ok)
-            .unwrap_or_else(request::RequestResponse::Error),
-        request::ShellRequest::FrostMode(mode) => theme::set_frost_mode(mode.is_frosted())
             .map(|_| request::RequestResponse::Ok)
             .unwrap_or_else(request::RequestResponse::Error),
         request::ShellRequest::Hints(action) => {

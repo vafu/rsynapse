@@ -1,4 +1,4 @@
-use super::{workspace_visible, ProjectLabelVm};
+use super::{ProjectLabelVm, workspace_visible};
 
 #[test]
 fn workspace_visible_hides_empty_unselected_workspace() {

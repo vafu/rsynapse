@@ -32,18 +32,6 @@ pub(crate) fn toggle_color_scheme() -> Result<(), String> {
     update_desktop_theme(&settings, next)
 }
 
-pub(crate) fn set_frost_mode(frosted: bool) -> Result<(), String> {
-    let settings = interface_settings();
-    let current_theme = settings.string("gtk-theme");
-    let color_scheme = settings.string("color-scheme");
-    let theme = theme_for_frost_mode(current_theme.as_str(), color_scheme.as_str(), frosted);
-    settings
-        .set_string("gtk-theme", &theme)
-        .map_err(|error| format!("set gtk-theme to {theme}: {error}"))?;
-    gio::Settings::sync();
-    Ok(())
-}
-
 fn prepare_icons() {
     if let Some(display) = gtk::gdk::Display::default() {
         let icon_theme = gtk::IconTheme::for_display(&display);
@@ -188,23 +176,9 @@ fn sync_accent(color: &str) -> Result<(), String> {
 }
 
 fn theme_for_scheme(current_theme: &str, color_scheme: &str) -> String {
-    theme_for_frost_mode(
-        current_theme,
-        color_scheme,
-        current_theme.ends_with("-frosted"),
-    )
-}
-
-fn theme_for_frost_mode(current_theme: &str, color_scheme: &str, frosted: bool) -> String {
     let base = theme_base(current_theme);
 
-    if frosted {
-        if color_scheme == DARK_SCHEME {
-            format!("{base}-dark-frosted")
-        } else {
-            format!("{base}-light-frosted")
-        }
-    } else if color_scheme == DARK_SCHEME {
+    if color_scheme == DARK_SCHEME {
         format!("{base}-dark")
     } else {
         base.to_string()
@@ -213,26 +187,12 @@ fn theme_for_frost_mode(current_theme: &str, color_scheme: &str, frosted: bool) 
 
 fn theme_base(current_theme: &str) -> &str {
     current_theme
-        .strip_suffix("-frosted")
-        .map(frosted_theme_base)
-        .unwrap_or_else(|| non_frosted_theme_base(current_theme))
-}
-
-fn frosted_theme_base(theme: &str) -> &str {
-    theme
         .strip_suffix("-dark")
-        .or_else(|| theme.strip_suffix("-light"))
-        .filter(|base| !base.is_empty())
-        .or_else(|| (!theme.is_empty() && theme != "-dark").then_some(theme))
-        .unwrap_or(DEFAULT_LIGHT_THEME)
-}
-
-fn non_frosted_theme_base(current_theme: &str) -> &str {
-    current_theme
-        .strip_suffix("-dark")
+        .or_else(|| current_theme.strip_suffix("-light"))
         .filter(|base| !base.is_empty())
         .or_else(|| {
-            (!current_theme.is_empty() && current_theme != "-dark").then_some(current_theme)
+            (!current_theme.is_empty() && current_theme != "-dark" && current_theme != "-light")
+                .then_some(current_theme)
         })
         .unwrap_or(DEFAULT_LIGHT_THEME)
 }
@@ -274,10 +234,7 @@ thread_local! {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        DEFAULT_LIGHT_THEME, scheme_name, theme_for_frost_mode, theme_for_scheme,
-        toggled_color_scheme,
-    };
+    use super::{DEFAULT_LIGHT_THEME, scheme_name, theme_for_scheme, toggled_color_scheme};
 
     #[test]
     fn toggles_color_scheme_like_ags() {
@@ -297,39 +254,13 @@ mod tests {
     fn derives_gtk_theme_name_from_scheme() {
         assert_eq!(theme_for_scheme("Adwaita", "prefer-dark"), "Adwaita-dark");
         assert_eq!(theme_for_scheme("Adwaita-dark", "prefer-light"), "Adwaita");
-        assert_eq!(
-            theme_for_scheme("kanso-light-frosted", "prefer-dark"),
-            "kanso-dark-frosted"
-        );
-        assert_eq!(
-            theme_for_scheme("kanso-dark-frosted", "prefer-light"),
-            "kanso-light-frosted"
-        );
+        assert_eq!(theme_for_scheme("kanso-light", "prefer-dark"), "kanso-dark");
+        assert_eq!(theme_for_scheme("kanso-dark", "prefer-light"), "kanso");
         assert_eq!(theme_for_scheme("", "prefer-dark"), "kanso-dark");
         assert_eq!(theme_for_scheme("-dark", "prefer-dark"), "kanso-dark");
         assert_eq!(
             theme_for_scheme("-dark", "prefer-light"),
             DEFAULT_LIGHT_THEME
-        );
-    }
-
-    #[test]
-    fn derives_gtk_theme_name_from_frost_mode() {
-        assert_eq!(
-            theme_for_frost_mode("kanso-dark-frosted", "prefer-dark", false),
-            "kanso-dark"
-        );
-        assert_eq!(
-            theme_for_frost_mode("kanso-light-frosted", "prefer-light", false),
-            DEFAULT_LIGHT_THEME
-        );
-        assert_eq!(
-            theme_for_frost_mode("kanso-dark", "prefer-dark", true),
-            "kanso-dark-frosted"
-        );
-        assert_eq!(
-            theme_for_frost_mode("kanso", "prefer-light", true),
-            "kanso-light-frosted"
         );
     }
 }

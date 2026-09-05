@@ -3,8 +3,6 @@ use std::collections::HashMap;
 use shell_core::gtk::glib;
 use zvariant::OwnedValue;
 
-use crate::widgets::BACKGROUND_BLUR_CLASS;
-
 const DEFAULT_EXPIRE_TIMEOUT_MS: i32 = 5000;
 const NEVER_EXPIRE_TIMEOUT_MS: i32 = 0;
 
@@ -131,7 +129,7 @@ impl NotificationClosedReason {
 }
 
 pub(crate) fn notification_card_classes(notification: &NotificationView) -> Vec<&'static str> {
-    let mut classes = vec!["notification-card", BACKGROUND_BLUR_CLASS];
+    let mut classes = vec!["notification-card"];
     if notification.urgency == NotificationUrgency::Critical {
         classes.push("critical");
     }

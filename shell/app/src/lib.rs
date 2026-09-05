@@ -20,8 +20,7 @@ const SHELL_STYLESHEET: &str = concat!(
 const SHELL_STYLESHEET_DIR: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/stylesheets");
 const TRACE_CHROME_ENV: &str = "RSYNAPSE_TRACE_CHROME";
 const TRACE_FILTER_ENV: &str = "RSYNAPSE_TRACE_FILTER";
-const DEFAULT_TRACE_FILTER: &str =
-    "rsynapse_shell=trace,shell_core=trace,gtk4_background_effect=trace";
+const DEFAULT_TRACE_FILTER: &str = "rsynapse_shell=trace,shell_core=trace";
 const PPROF_FLAMEGRAPH_ENV: &str = "RSYNAPSE_PPROF_FLAMEGRAPH";
 const PPROF_PROTO_ENV: &str = "RSYNAPSE_PPROF_PROTO";
 const PPROF_SECONDS_ENV: &str = "RSYNAPSE_PPROF_SECONDS";

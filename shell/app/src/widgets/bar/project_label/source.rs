@@ -5,11 +5,11 @@ mod workspace_icon;
 #[cfg(test)]
 mod test;
 
-use shell_core::source::{rx::Observable as _, Observable};
+use shell_core::source::{Observable, rx::Observable as _};
 use shell_rx_macros::combine_latest;
 
 use self::{
-    agent::{workspace_agent_state, WorkspaceAgentState},
+    agent::{WorkspaceAgentState, workspace_agent_state},
     build::workspace_build_state,
     workspace_icon::{
         clear_workspace_icon_override, set_workspace_icon_override, workspace_icon_source,

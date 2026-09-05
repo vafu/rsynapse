@@ -1,7 +1,7 @@
 use crate::widgets::nerd_icon::cod;
 
 use super::agent::workspace_agent_state_from_agents;
-use super::build::{workspace_build_state_from_builds, WorkspaceBuildState};
+use super::build::{WorkspaceBuildState, workspace_build_state_from_builds};
 use super::workspace_icon::{
     fallback_glyph_for_context, parse_pick_icon_output, picker_cache_key_for_context,
     picker_input_for_context, picker_strings_for_context, with_icon_override_for_test,

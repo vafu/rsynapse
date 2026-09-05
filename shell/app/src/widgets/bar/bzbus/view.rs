@@ -5,10 +5,8 @@ use std::{
 
 use shell_core::gtk::{self, prelude::*};
 
-use crate::widgets::{
-    BACKGROUND_BLUR_CLASS,
-    nerd_icon::{NerdIcon, fa, md},
-};
+use crate::widgets::nerd_icon::NerdIcon;
+use crate::widgets::nerd_icon::{fa, md};
 
 const ACTIVE_STALE_MS: i64 = 2 * 60 * 60 * 1000;
 
@@ -218,7 +216,7 @@ fn icon_for(active: bool, invocation: Option<&Invocation>) -> NerdIcon {
 }
 
 fn classes_for(active: bool, invocation: Option<&Invocation>) -> Vec<&'static str> {
-    let mut classes = vec!["bar-item", BACKGROUND_BLUR_CLASS, "bzbus-widget"];
+    let mut classes = vec!["bar-item", "bzbus-widget"];
     classes.push(state_class_for(active, invocation));
     classes
 }

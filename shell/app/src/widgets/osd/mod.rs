@@ -5,11 +5,7 @@ use shell_core::{
 };
 use std::time::Duration;
 
-use crate::widgets::BACKGROUND_BLUR_CLASS;
-
 const OSD_SHELL_CLASS: &str = "osd-shell";
-const OSD_BACKGROUND_BLUR_CLASSES: &[&str] = &[BACKGROUND_BLUR_CLASS];
-const OSD_BACKGROUND_BLUR_RADIUS: i32 = 24;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct OsdInit {
@@ -58,7 +54,6 @@ impl SimpleAsyncComponent for OsdWindow {
             set_visible: model.visible,
 
             gtk::Box {
-                add_css_class: BACKGROUND_BLUR_CLASS,
                 add_css_class: OSD_SHELL_CLASS,
                 set_orientation: gtk::Orientation::Vertical,
 
@@ -152,9 +147,5 @@ impl OsdWindow {
 const fn osd_window_config() -> WindowConfig {
     WindowConfig::new(Layer::Overlay)
         .with_anchors(Anchors::NONE.with_edge(Edge::Bottom))
-        .with_rounded_background_blur_for_css_classes(
-            OSD_BACKGROUND_BLUR_CLASSES,
-            OSD_BACKGROUND_BLUR_RADIUS,
-        )
         .with_namespace("rsynapse-osd")
 }

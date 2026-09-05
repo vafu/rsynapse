@@ -23,14 +23,11 @@ use shell_core::{
 
 use crate::{request, session};
 
-use super::BACKGROUND_BLUR_CLASS;
 use card::NotificationCard;
 use model::NotificationView;
 pub use model::{NotificationClosedReason, NotificationRequest};
 use policy::{NotificationCenterContext, NotificationCenterPolicy};
 
-const NOTIFICATION_BACKGROUND_BLUR_CLASSES: &[&str] = &[BACKGROUND_BLUR_CLASS];
-const NOTIFICATION_BACKGROUND_BLUR_RADIUS: i32 = 12;
 const NOTIFICATION_PANEL_WIDTH: i32 = 432;
 const NOTIFICATION_CONTENT_WIDTH: i32 = 400;
 const NOTIFICATION_CENTER_MAX_HEIGHT: i32 = 520;
@@ -156,7 +153,6 @@ impl SimpleAsyncComponent for NotificationsWindow {
 
                             gtk::Label {
                                 add_css_class: "notification-center-title",
-                                add_css_class: BACKGROUND_BLUR_CLASS,
                                 set_hexpand: true,
                                 set_halign: gtk::Align::Start,
                                 set_label: "Notifications",
@@ -165,7 +161,6 @@ impl SimpleAsyncComponent for NotificationsWindow {
                             #[name = "clear_button"]
                             gtk::Button {
                                 add_css_class: "notification-center-control",
-                                add_css_class: BACKGROUND_BLUR_CLASS,
                                 add_css_class: "flat",
                                 set_tooltip_text: Some("Clear notifications"),
                                 #[watch]
@@ -180,7 +175,6 @@ impl SimpleAsyncComponent for NotificationsWindow {
 
                         gtk::Label {
                             add_css_class: "notification-empty",
-                            add_css_class: BACKGROUND_BLUR_CLASS,
                             #[watch]
                             set_visible: model.notifications.is_empty(),
                             set_label: "No notifications",
@@ -285,11 +279,11 @@ impl NotificationsWindow {
                 };
                 request::RequestResponse::Ok
             }
-            request::ShellRequest::SchemeToggle
-            | request::ShellRequest::FrostMode(_)
-            | request::ShellRequest::Hints(_) => request::RequestResponse::Error(
-                "shell requests are handled by rsynapse-shell".to_owned(),
-            ),
+            request::ShellRequest::SchemeToggle | request::ShellRequest::Hints(_) => {
+                request::RequestResponse::Error(
+                    "shell requests are handled by rsynapse-shell".to_owned(),
+                )
+            }
         };
         request.respond(response);
     }
@@ -461,8 +455,4 @@ const fn notifications_window_config() -> WindowConfig {
             left: 0,
         })
         .with_namespace("rsynapse-notifications")
-        .with_rounded_background_blur_for_css_classes(
-            NOTIFICATION_BACKGROUND_BLUR_CLASSES,
-            NOTIFICATION_BACKGROUND_BLUR_RADIUS,
-        )
 }
