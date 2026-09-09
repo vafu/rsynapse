@@ -90,7 +90,16 @@ impl Service {
             let event = stream.read_event().await?;
             debug!(?event, "niri event");
             let before = self.snapshot().await;
-            let delta = self.state.write().await.apply_event(event)?;
+            let delta = match event {
+                niri_ipc::Event::WorkspacesChanged { workspaces } => {
+                    let outputs = ipc::outputs().await?;
+                    self.state
+                        .write()
+                        .await
+                        .apply_workspace_snapshot(workspaces, outputs)?
+                }
+                event => self.state.write().await.apply_event(event)?,
+            };
             let after = self.snapshot().await;
             self.apply_object_delta(delta).await?;
             self.emit_changes(&before, &after).await;
