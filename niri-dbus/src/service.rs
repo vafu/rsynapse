@@ -71,7 +71,7 @@ impl Service {
             let before = self.snapshot().await;
             let delta = self.state.write().await.mark_disconnected();
             let after = self.snapshot().await;
-            self.apply_object_delta(delta).await?;
+            self.apply_object_delta(delta, false).await?;
             self.emit_changes(&before, &after).await;
             sleep(Duration::from_secs(1)).await;
         }
@@ -82,7 +82,7 @@ impl Service {
         let (version, outputs) = ipc::initial_snapshot().await?;
         let delta = self.state.write().await.mark_connected(version, outputs);
         let after = self.snapshot().await;
-        self.apply_object_delta(delta).await?;
+        self.apply_object_delta(delta, false).await?;
         self.emit_changes(&before, &after).await;
 
         let mut stream = ipc::event_stream().await?;
@@ -101,12 +101,16 @@ impl Service {
                 event => self.state.write().await.apply_event(event)?,
             };
             let after = self.snapshot().await;
-            self.apply_object_delta(delta).await?;
+            self.apply_object_delta(delta, true).await?;
             self.emit_changes(&before, &after).await;
         }
     }
 
-    async fn apply_object_delta(&mut self, delta: ObjectDelta) -> anyhow::Result<()> {
+    async fn apply_object_delta(
+        &mut self,
+        delta: ObjectDelta,
+        clear_workspace_relations: bool,
+    ) -> anyhow::Result<()> {
         for window in sorted(delta.removed.windows) {
             if self.registered_windows.contains(&window) {
                 self.connection
@@ -114,6 +118,12 @@ impl Service {
                     .remove::<WindowInterface, _>(paths::window_path(window))
                     .await?;
                 self.registered_windows.remove(&window);
+            }
+        }
+        if clear_workspace_relations && !delta.removed.workspaces.is_empty() {
+            let proxy = locus::RelationsProxy::new(&self.connection).await?;
+            for workspace in &delta.removed.workspaces {
+                proxy.clear_subject(workspace_subject(*workspace)).await?;
             }
         }
         for workspace in sorted(delta.removed.workspaces) {
@@ -794,6 +804,10 @@ fn sorted_strings(values: HashSet<String>) -> Vec<String> {
     values
 }
 
+fn workspace_subject(id: u64) -> locus::RelationEndpoint {
+    locus::RelationEndpoint::stable_key(locus::keys::NIRI_WORKSPACE_ID, id.to_string())
+}
+
 fn current_mode(output: &Output) -> Option<Mode> {
     output
         .current_mode
@@ -810,5 +824,18 @@ fn transform_name(transform: Transform) -> &'static str {
         Transform::Flipped90 => "flipped-90",
         Transform::Flipped180 => "flipped-180",
         Transform::Flipped270 => "flipped-270",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use locus::{RelationEndpoint, keys};
+
+    #[test]
+    fn workspace_subject_uses_the_stable_niri_workspace_key() {
+        assert_eq!(
+            super::workspace_subject(19),
+            RelationEndpoint::stable_key(keys::NIRI_WORKSPACE_ID, "19")
+        );
     }
 }

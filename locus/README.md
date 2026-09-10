@@ -20,7 +20,7 @@ rather than a general RDF/SPARQL database.
 
 - Owns `org.rsynapse.Locus` on the session bus.
 - Exports `/org/rsynapse/Locus` with `org.rsynapse.Locus.Relations1`.
-- Supports `Set`, `Unset`, `Clear`, `Targets`, `Subjects`, and `List`.
+- Supports `Set`, `Unset`, `Clear`, `ClearSubject`, `Targets`, `Subjects`, and `List`.
 - Uses typed relation endpoints for subjects and targets:
   `StableKey { kind, id }` or
   `DBusObject { bus, service, path, interface }`.

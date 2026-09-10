@@ -125,6 +125,7 @@ pub enum MainBarInput {
     ToggleBluetooth,
     CyclePowerProfile,
     ToggleNotificationCenter,
+    MonitorsChanged,
     Request(request::PendingRequest),
 }
 
@@ -141,12 +142,18 @@ pub enum MediaAction {
     Next,
 }
 
+struct SecondaryBar {
+    output_name: String,
+    controller: AsyncController<MainBar>,
+}
+
 #[shell_macros::model]
 pub struct MainBar {
     _osd: Option<AsyncController<OsdWindow>>,
     _request_server: Option<request::RequestServer>,
     _workspace_bar: Option<Controller<WorkspaceBar>>,
-    _child_bars: Vec<AsyncController<MainBar>>,
+    _child_bars: Vec<SecondaryBar>,
+    _monitor_list: Option<gtk::gio::ListModel>,
     _audio_osd_ready: bool,
     _brightness_osd_ready: bool,
     output_name: Option<String>,
@@ -1028,11 +1035,17 @@ impl SimpleAsyncComponent for MainBar {
             Vec::new()
         };
 
+        let monitor_list = init
+            .primary
+            .then(|| watch_monitors(sender.input_sender().clone()))
+            .flatten();
+
         let model = MainBar::new(
             osd,
             request_server,
             workspace_bar,
             child_bars,
+            monitor_list,
             false,
             false,
             output_name,
@@ -1193,8 +1206,20 @@ impl SimpleAsyncComponent for MainBar {
             MainBarInput::CyclePowerProfile => {
                 power_profile::cycle_power_profile(&self.power_profile.profile)
             }
+            MainBarInput::MonitorsChanged => self.reconcile_secondary_bars(),
             MainBarInput::ToggleNotificationCenter => request_notification_center_toggle(),
             MainBarInput::Request(request) => handle_request(request),
+        }
+    }
+
+    fn shutdown(&mut self, _widgets: &mut Self::Widgets, _output: relm4::Sender<Self::Output>) {
+        if let Some(workspace_bar) = self._workspace_bar.take() {
+            workspace_bar.widget().close();
+            relm4::main_application().remove_window(workspace_bar.widget());
+        }
+        for bar in self._child_bars.drain(..) {
+            bar.controller.widget().close();
+            relm4::main_application().remove_window(bar.controller.widget());
         }
     }
 }
@@ -1232,6 +1257,45 @@ impl MainBar {
         }
         self._brightness_osd_ready = true;
     }
+
+    fn reconcile_secondary_bars(&mut self) {
+        let Some(primary_output) = self.output_name.as_deref() else {
+            return;
+        };
+        let monitors = available_monitors();
+        let connected = monitors
+            .iter()
+            .filter_map(|monitor| monitor_output_name(Some(monitor)))
+            .collect::<Vec<_>>();
+        let existing = self
+            ._child_bars
+            .iter()
+            .map(|bar| bar.output_name.clone())
+            .collect::<Vec<_>>();
+        let (removed, added) = secondary_bar_changes(&existing, &connected, primary_output);
+
+        for output_name in removed {
+            if let Some(index) = self
+                ._child_bars
+                .iter()
+                .position(|bar| bar.output_name == output_name)
+            {
+                let bar = self._child_bars.remove(index);
+                bar.controller.widget().close();
+                relm4::main_application().remove_window(bar.controller.widget());
+            }
+        }
+
+        for output_name in added {
+            if let Some(monitor) = monitors
+                .iter()
+                .find(|monitor| monitor_output_name(Some(monitor)).as_deref() == Some(&output_name))
+            {
+                self._child_bars
+                    .push(launch_secondary_bar("Rsynapse Shell", monitor.clone()));
+            }
+        }
+    }
 }
 
 fn main_bar_input_name(msg: &MainBarInput) -> &'static str {
@@ -1241,6 +1305,7 @@ fn main_bar_input_name(msg: &MainBarInput) -> &'static str {
         MainBarInput::ToggleBluetooth => "toggle-bluetooth",
         MainBarInput::CyclePowerProfile => "cycle-power-profile",
         MainBarInput::ToggleNotificationCenter => "toggle-notification-center",
+        MainBarInput::MonitorsChanged => "monitors_changed",
         MainBarInput::Request(_) => "request",
     }
 }
@@ -1308,22 +1373,71 @@ fn launch_workspace_bar(
     Some(controller)
 }
 
+fn watch_monitors(sender: relm4::Sender<MainBarInput>) -> Option<gtk::gio::ListModel> {
+    let display = gtk::gdk::Display::default()?;
+    let monitors = display.monitors();
+    monitors.connect_items_changed(move |_, _, _, _| {
+        eprintln!("[bar] monitor list changed");
+        sender.emit(MainBarInput::MonitorsChanged);
+    });
+    Some(monitors)
+}
+
 fn launch_secondary_bars(
     title: &'static str,
     monitors: impl Iterator<Item = gtk::gdk::Monitor>,
-) -> Vec<AsyncController<MainBar>> {
+) -> Vec<SecondaryBar> {
     monitors
-        .map(|monitor| {
-            let builder = MainBar::builder();
-            let root = builder.root.clone();
-            relm4::main_application().add_window(&root);
-            let controller = builder
-                .launch(MainBarInit::secondary(title, monitor))
-                .detach();
-            root.present();
-            controller
+        .filter_map(|monitor| {
+            monitor_output_name(Some(&monitor)).map(|_| launch_secondary_bar(title, monitor))
         })
         .collect()
+}
+
+fn launch_secondary_bar(title: &'static str, monitor: gtk::gdk::Monitor) -> SecondaryBar {
+    let output_name =
+        monitor_output_name(Some(&monitor)).expect("secondary bars require a monitor connector");
+    let builder = MainBar::builder();
+    let root = builder.root.clone();
+    relm4::main_application().add_window(&root);
+    let controller = builder
+        .launch(MainBarInit::secondary(title, monitor))
+        .detach();
+    root.present();
+    SecondaryBar {
+        output_name,
+        controller,
+    }
+}
+
+fn secondary_bar_changes(
+    existing: &[String],
+    connected: &[String],
+    primary_output: &str,
+) -> (Vec<String>, Vec<String>) {
+    let primary_output = connected
+        .iter()
+        .find(|output| output.as_str() == primary_output)
+        .or_else(|| connected.first());
+    let desired = connected
+        .iter()
+        .filter(|output| Some(*output) != primary_output)
+        .fold(Vec::new(), |mut outputs, output| {
+            if !outputs.contains(output) {
+                outputs.push(output.clone());
+            }
+            outputs
+        });
+    let removed = existing
+        .iter()
+        .filter(|output| !desired.contains(output))
+        .cloned()
+        .collect();
+    let added = desired
+        .into_iter()
+        .filter(|output| !existing.contains(output))
+        .collect();
+    (removed, added)
 }
 
 fn monitor_output_name(monitor: Option<&gtk::gdk::Monitor>) -> Option<String> {
@@ -1460,4 +1574,32 @@ fn launch_playerctl(action: MediaAction, player_name: &str) {
         }
         let _ = playerctl.arg(command).status();
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::secondary_bar_changes;
+
+    #[test]
+    fn secondary_bar_changes_adds_and_removes_disconnected_outputs() {
+        let existing = vec!["DP-1".to_owned()];
+        let connected = vec!["eDP-1".to_owned(), "DP-1".to_owned(), "DP-2".to_owned()];
+        assert_eq!(
+            secondary_bar_changes(&existing, &connected, "eDP-1"),
+            (Vec::<String>::new(), vec!["DP-2".to_owned()])
+        );
+
+        let disconnected = vec!["eDP-1".to_owned()];
+        assert_eq!(
+            secondary_bar_changes(&existing, &disconnected, "eDP-1"),
+            (vec!["DP-1".to_owned()], Vec::<String>::new())
+        );
+
+        let existing = vec!["eDP-1".to_owned()];
+        let connected = vec!["eDP-1".to_owned()];
+        assert_eq!(
+            secondary_bar_changes(&existing, &connected, "DP-3"),
+            (vec!["eDP-1".to_owned()], Vec::<String>::new())
+        );
+    }
 }

@@ -134,6 +134,25 @@ impl RelationStore {
         Ok(removed)
     }
 
+    pub fn clear_subject(&mut self, subject: &RelationEndpoint) -> io::Result<Vec<RelationRecord>> {
+        validate_endpoint("subject", subject)?;
+
+        let mut removed = Vec::new();
+        let mut retained = Vec::with_capacity(self.records.len());
+        for record in &self.records {
+            if &record.subject == subject {
+                removed.push(record.clone());
+            } else {
+                retained.push(record.clone());
+            }
+        }
+        if !removed.is_empty() {
+            self.persist_changed_records(&retained)?;
+            self.records = retained;
+        }
+        Ok(removed)
+    }
+
     pub fn targets(&self, subject: &RelationEndpoint, relation: &str) -> Vec<RelationEndpoint> {
         let mut targets = self
             .records
@@ -420,6 +439,50 @@ mod tests {
                 .targets(&workspace(5), "org.rsynapse.WorkspaceProject")
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn clear_subject_removes_only_subject_owned_relations() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let path = temp.path().join("relations.json");
+        let mut store = RelationStore::open(path).expect("open store");
+        let workspace = workspace(7);
+        let project = project("coroutines");
+
+        store
+            .set(
+                workspace.clone(),
+                "org.rsynapse.workspace.project".to_owned(),
+                project.clone(),
+                HashMap::new(),
+            )
+            .expect("set workspace project");
+        store
+            .set(
+                workspace.clone(),
+                "org.rsynapse.workspace.icon-override".to_owned(),
+                icon("code"),
+                HashMap::new(),
+            )
+            .expect("set workspace icon");
+        store
+            .set(
+                project,
+                "org.rsynapse.project.metadata".to_owned(),
+                key("org.rsynapse.project.path", "coroutines"),
+                HashMap::new(),
+            )
+            .expect("set project metadata");
+
+        assert_eq!(
+            store
+                .clear_subject(&workspace)
+                .expect("clear subject")
+                .len(),
+            2
+        );
+        assert!(store.list("org.rsynapse.workspace.project").is_empty());
+        assert_eq!(store.list("org.rsynapse.project.metadata").len(), 1);
     }
 
     #[test]
