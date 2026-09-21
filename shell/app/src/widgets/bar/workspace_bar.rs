@@ -45,7 +45,7 @@ impl SimpleComponent for WorkspaceBar {
 
             gtk::CenterBox {
                 set_widget_name: "rsynapse-workspace-rail",
-                add_css_class: "workspace-rail",
+                add_css_class: "bar",
                 set_width_request: WORKSPACE_RAIL_WIDTH,
                 set_orientation: gtk::Orientation::Vertical,
                 set_vexpand: true,
@@ -69,12 +69,10 @@ impl SimpleComponent for WorkspaceBar {
                     #[bind_list(project_labels, row = ProjectLabel)]
                     project_labels -> gtk::Box {
                         set_widget_name: "workspace-rail-list",
-                        add_css_class: "bar-indicator-list",
                         add_css_class: "bar-indicator-list-vertical",
                         set_halign: gtk::Align::Center,
                         set_valign: gtk::Align::End,
                         set_orientation: gtk::Orientation::Vertical,
-                        set_spacing: 4,
                     },
                 },
             }

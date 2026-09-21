@@ -41,7 +41,6 @@ impl NerdIconPicker {
         let root = gtk::Box::builder()
             .css_classes(["nerd-icon-picker"])
             .orientation(gtk::Orientation::Vertical)
-            .spacing(8)
             .build();
         let search = gtk::SearchEntry::builder()
             .placeholder_text("Search Nerd Font icons")
@@ -101,11 +100,10 @@ impl NerdIconPicker {
         self.state.search.set_text(query);
     }
 
-    /// Move keyboard focus to the search field.
-    pub fn focus_search(&self) -> bool {
-        self.state.search.grab_focus()
+    /// Move keyboard focus to the search entry.
+    pub fn focus_search(&self) {
+        self.state.search.grab_focus();
     }
-
     /// Replace the icons displayed in the dedicated specific-icons row.
     pub fn set_specific_icons(&self, icons: Vec<NerdIcon>) {
         *self.state.specific_icons.borrow_mut() = icons;
@@ -276,8 +274,6 @@ fn icon_button(state: &Rc<PickerState>, icon: NerdIcon, kind: &str) -> gtk::Butt
 
 fn icon_flow() -> gtk::FlowBox {
     gtk::FlowBox::builder()
-        .column_spacing(4)
-        .row_spacing(4)
         .homogeneous(true)
         .max_children_per_line(ICONS_PER_ROW)
         .min_children_per_line(ICONS_PER_ROW)

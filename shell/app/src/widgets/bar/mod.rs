@@ -66,7 +66,7 @@ use self::workspaces::{WorkspaceNode, selected_workspace_windows};
 use super::{
     OsdAudioView, OsdBrightnessView, OsdInit, OsdInput, OsdWindow, has_notification_items,
 };
-use crate::{hints, request, theme};
+use crate::{hints, request};
 
 type WindowNode = niri::NiriWindow;
 pub(super) const WORKSPACE_RAIL_WIDTH: i32 = bar_indicator::SIZE;
@@ -74,6 +74,8 @@ const BT_BATTERY_INDICATOR_WIDTH: i32 = 4;
 const BT_BATTERY_INDICATOR_HEIGHT: i32 = 18;
 const SYSTEM_STATS_ARC_WIDTH: i32 = 10;
 const SYSTEM_STATS_ARC_HEIGHT: i32 = 18;
+const DISK_STATS_ARC_WIDTH: i32 = 10;
+const DISK_STATS_ARC_HEIGHT: i32 = 18;
 
 #[derive(Clone)]
 pub struct MainBarInit {
@@ -215,11 +217,9 @@ impl SimpleAsyncComponent for MainBar {
                     add_css_class: "bar-zone",
                     add_css_class: "bar-zone-start",
                     add_css_class: "bar-zone-windows",
-                    add_css_class: "bar-indicator-list",
                     add_css_class: "bar-indicator-list-horizontal",
                     set_halign: gtk::Align::Start,
                     set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 4,
                     set_valign: gtk::Align::Center,
                     set_vexpand: false,
 
@@ -247,7 +247,6 @@ impl SimpleAsyncComponent for MainBar {
                         set_widget_name: "workspace-window-list",
                         set_halign: gtk::Align::Start,
                         set_orientation: gtk::Orientation::Horizontal,
-                        set_spacing: 4,
                         set_valign: gtk::Align::Center,
                         set_vexpand: false,
                     }
@@ -272,7 +271,6 @@ impl SimpleAsyncComponent for MainBar {
                         set_halign: gtk::Align::Center,
                         set_valign: gtk::Align::Center,
                         set_orientation: gtk::Orientation::Horizontal,
-                        set_spacing: 4,
 
                         gtk::Box {
                             add_css_class: "selected-project-segment",
@@ -280,7 +278,6 @@ impl SimpleAsyncComponent for MainBar {
                             set_halign: gtk::Align::Center,
                             set_valign: gtk::Align::Center,
                             set_orientation: gtk::Orientation::Horizontal,
-                            set_spacing: 4,
 
                             gtk::Label {
                                 set_css_classes: &["selected-project-icon", "nerdicon"],
@@ -291,8 +288,6 @@ impl SimpleAsyncComponent for MainBar {
                             },
 
                             gtk::Label {
-                                add_css_class: "selected-project-text",
-                                add_css_class: "selected-project-title",
                                 set_ellipsize: gtk::pango::EllipsizeMode::End,
                                 set_valign: gtk::Align::Center,
                                 set_xalign: 0.0,
@@ -308,35 +303,41 @@ impl SimpleAsyncComponent for MainBar {
                             set_visible: selected_project::first_separator_visible(&model.selected_project),
                         },
 
-                        gtk::Box {
-                            add_css_class: "selected-project-segment",
-                            add_css_class: "selected-project-branch",
+                        #[name = "branch_copy_button"]
+                        gtk::Button {
+                            add_css_class: "flat",
+                            add_css_class: "selected-project-branch-button",
+                            set_has_frame: false,
                             #[watch]
                             set_visible: selected_project::branch_visible(&model.selected_project),
-                            set_halign: gtk::Align::Center,
-                            set_valign: gtk::Align::Center,
-                            set_orientation: gtk::Orientation::Horizontal,
-                            set_spacing: 4,
 
-                            gtk::Label {
-                                set_css_classes: &[
-                                    "selected-project-meta-icon",
-                                    "selected-project-branch-icon",
-                                    "nerdicon",
-                                ],
+                            #[wrap(Some)]
+                            set_child = &gtk::Box {
+                                add_css_class: "selected-project-segment",
                                 set_halign: gtk::Align::Center,
                                 set_valign: gtk::Align::Center,
-                                set_nerd_icon: selected_project::branch_icon(),
-                            },
+                                set_orientation: gtk::Orientation::Horizontal,
 
-                            gtk::Label {
-                                add_css_class: "selected-project-text",
-                                add_css_class: "selected-project-branch-label",
-                                set_ellipsize: gtk::pango::EllipsizeMode::End,
-                                set_valign: gtk::Align::Center,
-                                set_xalign: 0.0,
-                                #[watch]
-                                set_label: selected_project::branch_label(&model.selected_project),
+                                gtk::Label {
+                                    set_css_classes: &[
+                                        "selected-project-meta-icon",
+                                        "selected-project-branch-icon",
+                                        "nerdicon",
+                                    ],
+                                    set_halign: gtk::Align::Center,
+                                    set_valign: gtk::Align::Center,
+                                    set_nerd_icon: selected_project::branch_icon(),
+                                },
+
+                                #[name = "branch_copy_label"]
+                                gtk::Label {
+                                    add_css_class: "selected-project-branch-label",
+                                    set_ellipsize: gtk::pango::EllipsizeMode::End,
+                                    set_valign: gtk::Align::Center,
+                                    set_xalign: 0.0,
+                                    #[watch]
+                                    set_label: selected_project::branch_label(&model.selected_project),
+                                }
                             }
                         },
 
@@ -350,7 +351,6 @@ impl SimpleAsyncComponent for MainBar {
                     add_css_class: "system-cluster",
                     set_halign: gtk::Align::End,
                     set_orientation: gtk::Orientation::Horizontal,
-                    set_spacing: 0,
                     set_valign: gtk::Align::Fill,
                     set_vexpand: true,
 
@@ -364,7 +364,6 @@ impl SimpleAsyncComponent for MainBar {
                         set_tooltip_text: Some(model.mpris.tooltip.as_str()),
                         set_halign: gtk::Align::End,
                         set_orientation: gtk::Orientation::Horizontal,
-                        set_spacing: 4,
 
                         #[name = "mpris_details_revealer"]
                         gtk::Revealer {
@@ -430,7 +429,6 @@ impl SimpleAsyncComponent for MainBar {
                         set_orientation: gtk::Orientation::Horizontal,
                         #[watch]
                         set_tooltip_text: Some(system_stats::tooltip(&model.system_stats).as_str()),
-                        set_spacing: 4,
 
                         #[name = "power_profile_button"]
                         gtk::Button {
@@ -448,7 +446,6 @@ impl SimpleAsyncComponent for MainBar {
                                 set_halign: gtk::Align::Center,
                                 set_valign: gtk::Align::Center,
                                 set_orientation: gtk::Orientation::Horizontal,
-                                set_spacing: 0,
 
                                 gtk::Overlay {
                                     #[watch]
@@ -512,22 +509,94 @@ impl SimpleAsyncComponent for MainBar {
                                         #[watch]
                                         set_draw_func: system_stats::level_draw_func(model.system_stats.ram, ArcSide::Start),
                                     }
-                                }
+                                },
                             }
                         }
                     },
+
+                    #[local_ref]
+                    disk_stats_item -> gtk::Box {
+                        add_css_class: "bar-item",
+                        set_halign: gtk::Align::End,
+                        set_valign: gtk::Align::Center,
+                        set_orientation: gtk::Orientation::Horizontal,
+                        #[watch]
+                        set_tooltip_text: Some(system_stats::disk_tooltip(&model.system_stats.disk).as_str()),
+
+                        gtk::Overlay {
+                            #[watch]
+                            set_css_classes: &system_stats::arc_root_classes(),
+                            set_halign: gtk::Align::Center,
+                            set_valign: gtk::Align::Center,
+                            set_width_request: DISK_STATS_ARC_WIDTH,
+                            set_height_request: DISK_STATS_ARC_HEIGHT,
+
+                            add_overlay = &gtk::DrawingArea {
+                                set_css_classes: system_stats::track_classes(),
+                                set_can_target: false,
+                                set_content_width: DISK_STATS_ARC_WIDTH,
+                                set_content_height: DISK_STATS_ARC_HEIGHT,
+                                set_draw_func: system_stats::track_draw_func(ArcSide::End),
+                            },
+
+                            add_overlay = &gtk::DrawingArea {
+                                #[watch]
+                                set_css_classes: &system_stats::level_classes(model.system_stats.disk.busy),
+                                set_can_target: false,
+                                set_content_width: DISK_STATS_ARC_WIDTH,
+                                set_content_height: DISK_STATS_ARC_HEIGHT,
+                                #[watch]
+                                set_draw_func: system_stats::level_draw_func(model.system_stats.disk.busy, ArcSide::End),
+                            }
+                        },
+
+                        gtk::Label {
+                            set_css_classes: &[
+                                "nerdicon",
+                                bar_item::ICON_CLASS,
+                                "disk-stats-icon",
+                            ],
+                            set_nerd_icon: system_stats::disk_icon(),
+                        },
+
+                        gtk::Overlay {
+                            #[watch]
+                            set_css_classes: &system_stats::arc_root_classes(),
+                            set_halign: gtk::Align::Center,
+                            set_valign: gtk::Align::Center,
+                            set_width_request: DISK_STATS_ARC_WIDTH,
+                            set_height_request: DISK_STATS_ARC_HEIGHT,
+
+                            add_overlay = &gtk::DrawingArea {
+                                set_css_classes: system_stats::track_classes(),
+                                set_can_target: false,
+                                set_content_width: DISK_STATS_ARC_WIDTH,
+                                set_content_height: DISK_STATS_ARC_HEIGHT,
+                                set_draw_func: system_stats::track_draw_func(ArcSide::Start),
+                            },
+
+                            add_overlay = &gtk::DrawingArea {
+                                #[watch]
+                                set_css_classes: &system_stats::level_classes(model.system_stats.disk.percent),
+                                set_can_target: false,
+                                set_content_width: DISK_STATS_ARC_WIDTH,
+                                set_content_height: DISK_STATS_ARC_HEIGHT,
+                                #[watch]
+                                set_draw_func: system_stats::level_draw_func(model.system_stats.disk.percent, ArcSide::Start),
+                            }
+                        }
+                    },
+
 
                     gtk::Box {
                         add_css_class: "system-indicators",
                         set_halign: gtk::Align::End,
                         set_orientation: gtk::Orientation::Horizontal,
-                        set_spacing: 0,
 
                         #[bind_list(tray_items, row = TrayItem)]
                         tray_items -> gtk::Box {
                             add_css_class: "tray-widget",
                             set_orientation: gtk::Orientation::Horizontal,
-                            set_spacing: 0,
                         },
 
                         // TODO(rsynapse-shell): split this into a right-cluster
@@ -970,12 +1039,21 @@ impl SimpleAsyncComponent for MainBar {
             output_name,
         );
         let system_stats_item = bar_item::container(&["system-stats-widget"]);
+        let disk_stats_item = bar_item::container(&["disk-stats-widget"]);
         let ethernet_item =
             bar_item::container(&[bar_item::SQUARE_CLASS, "network-item", "ethernet-item"]);
         let wifi_item = bar_item::container(&[bar_item::SQUARE_CLASS, "network-item", "wifi-item"]);
         let battery_item = bar_item::container(&[bar_item::SQUARE_CLASS, "battery-item"]);
 
         let widgets = view_output!();
+
+        let branch_label = widgets.branch_copy_label.clone();
+        widgets.branch_copy_button.connect_clicked(move |button| {
+            let branch = branch_label.text();
+            if let Some(branch) = selected_project::branch_for_clipboard(Some(branch.as_str())) {
+                button.display().clipboard().set_text(branch);
+            }
+        });
         let input_sender = sender.input_sender().clone();
         widgets.clock_button.connect_clicked(move |_| {
             input_sender.emit(MainBarInput::ToggleNotificationCenter);
@@ -1013,7 +1091,9 @@ impl SimpleAsyncComponent for MainBar {
         let audio_route_popover = gtk::Popover::new();
         audio_route_popover.add_css_class("menu");
         audio_route_popover.add_css_class("audio-route-popover");
-        let audio_route_mount = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        let audio_route_mount = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .build();
         audio_route_popover.set_child(Some(&audio_route_mount));
         widgets
             .audio_route_button
@@ -1168,9 +1248,6 @@ fn main_bar_input_name(msg: &MainBarInput) -> &'static str {
 
 fn handle_request(request: request::PendingRequest) {
     let response = match request.request {
-        request::ShellRequest::SchemeToggle => theme::toggle_color_scheme()
-            .map(|_| request::RequestResponse::Ok)
-            .unwrap_or_else(request::RequestResponse::Error),
         request::ShellRequest::Hints(action) => {
             hints::apply(action);
             request::RequestResponse::Ok
@@ -1306,7 +1383,9 @@ fn mount_popover_component<C>(
 }
 
 fn mount_bluetooth_group_popover(popover: &gtk::Popover, group: BluetoothDeviceGroup) {
-    let mount = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    let mount = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .build();
     popover.set_child(Some(&mount));
     let controller = Rc::new(RefCell::new(None));
     mount_popover_component::<BluetoothGroupPopover>(popover, &mount, &controller, group);

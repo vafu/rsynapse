@@ -106,7 +106,6 @@ impl SimpleAsyncComponent for NotificationsWindow {
             gtk::Box {
                 add_css_class: "notification-window-body",
                 set_orientation: gtk::Orientation::Vertical,
-                set_spacing: 8,
                 set_halign: gtk::Align::End,
                 set_valign: gtk::Align::End,
                 set_width_request: NOTIFICATION_PANEL_WIDTH,
@@ -123,7 +122,6 @@ impl SimpleAsyncComponent for NotificationsWindow {
                     gtk::Box {
                         add_css_class: "notifications-stack",
                         set_orientation: gtk::Orientation::Vertical,
-                        set_spacing: 8,
                         set_width_request: NOTIFICATION_PANEL_WIDTH,
                         #[watch]
                         set_component_list: ComponentListUpdate::<NotificationCard>::new(
@@ -143,13 +141,11 @@ impl SimpleAsyncComponent for NotificationsWindow {
                     gtk::Box {
                         add_css_class: "notification-center",
                         set_orientation: gtk::Orientation::Vertical,
-                        set_spacing: 8,
                         set_width_request: NOTIFICATION_PANEL_WIDTH,
 
                         gtk::Box {
                             add_css_class: "notification-center-header",
                             set_orientation: gtk::Orientation::Horizontal,
-                            set_spacing: 8,
 
                             gtk::Label {
                                 add_css_class: "notification-center-title",
@@ -193,7 +189,6 @@ impl SimpleAsyncComponent for NotificationsWindow {
                             gtk::Box {
                                 add_css_class: "notification-center-list",
                                 set_orientation: gtk::Orientation::Vertical,
-                                set_spacing: 8,
                                 #[watch]
                                 set_component_list: ComponentListUpdate::<NotificationCard>::new(
                                     &model.notifications
@@ -279,7 +274,7 @@ impl NotificationsWindow {
                 };
                 request::RequestResponse::Ok
             }
-            request::ShellRequest::SchemeToggle | request::ShellRequest::Hints(_) => {
+            request::ShellRequest::Hints(_) => {
                 request::RequestResponse::Error(
                     "shell requests are handled by rsynapse-shell".to_owned(),
                 )

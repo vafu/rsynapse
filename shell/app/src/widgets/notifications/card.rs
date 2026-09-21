@@ -26,14 +26,12 @@ impl SimpleComponent for NotificationCard {
         gtk::Box {
             set_css_classes: &notification_card_classes(&model.notification),
             set_orientation: gtk::Orientation::Vertical,
-            set_spacing: 8,
             set_hexpand: false,
             set_width_request: NOTIFICATION_CARD_WIDTH,
 
             gtk::Box {
                 add_css_class: "notification-header",
                 set_orientation: gtk::Orientation::Horizontal,
-                set_spacing: 8,
 
                 gtk::Image {
                     add_css_class: "notification-app-icon",
@@ -70,7 +68,6 @@ impl SimpleComponent for NotificationCard {
             gtk::Box {
                 add_css_class: "notification-content",
                 set_orientation: gtk::Orientation::Horizontal,
-                set_spacing: 10,
 
                 #[name = "content_image"]
                 gtk::Image {
@@ -83,7 +80,6 @@ impl SimpleComponent for NotificationCard {
                 gtk::Box {
                     set_orientation: gtk::Orientation::Vertical,
                     set_hexpand: true,
-                    set_spacing: 3,
 
                     gtk::Label {
                         add_css_class: "notification-summary",
@@ -114,7 +110,6 @@ impl SimpleComponent for NotificationCard {
             gtk::Box {
                 add_css_class: "notification-actions",
                 set_orientation: gtk::Orientation::Horizontal,
-                set_spacing: 8,
                 set_visible: model.notification.has_actions(),
             },
         }

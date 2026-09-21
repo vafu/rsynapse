@@ -28,7 +28,6 @@ impl RequestTarget {
 /// Product-level request understood by one of the rsynapse shell processes.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ShellRequest {
-    SchemeToggle,
     Hints(HintsAction),
     Notifications(NotificationCenterAction),
 }
@@ -36,7 +35,7 @@ pub enum ShellRequest {
 impl ShellRequest {
     pub const fn target(&self) -> RequestTarget {
         match self {
-            Self::SchemeToggle | Self::Hints(_) => RequestTarget::Shell,
+            Self::Hints(_) => RequestTarget::Shell,
             Self::Notifications(_) => RequestTarget::Notifications,
         }
     }
@@ -260,13 +259,6 @@ fn parse_request(args: &[String]) -> Result<ShellRequest, String> {
         return Err("missing request command".to_owned());
     };
     match command {
-        "scheme-toggle" => {
-            if args.len() == 1 {
-                Ok(ShellRequest::SchemeToggle)
-            } else {
-                Err("scheme-toggle does not accept arguments".to_owned())
-            }
-        }
         "hints" => parse_hints_request(&args[1..]).map(ShellRequest::Hints),
         "notifications" | "notification-center" => {
             parse_notification_center_request(&args[1..]).map(ShellRequest::Notifications)
@@ -375,14 +367,6 @@ mod tests {
     }
 
     #[test]
-    fn parses_scheme_toggle() {
-        assert_eq!(
-            parse_request(&args(&["scheme-toggle"])).unwrap(),
-            ShellRequest::SchemeToggle
-        );
-    }
-
-    #[test]
     fn parses_hints_active_bool() {
         assert_eq!(
             parse_request(&args(&["hints", "active", "true"])).unwrap(),
@@ -420,10 +404,6 @@ mod tests {
 
     #[test]
     fn routes_requests_to_process_targets() {
-        assert_eq!(
-            parse_request(&args(&["scheme-toggle"])).unwrap().target(),
-            RequestTarget::Shell
-        );
         assert_eq!(
             parse_request(&args(&["hints", "toggle"])).unwrap().target(),
             RequestTarget::Shell

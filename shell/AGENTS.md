@@ -99,7 +99,7 @@ Consumer source rules:
 
 - The Unix-socket request bridge is app product behavior, not a `shell-core`
   framework feature.
-- Keep command names and policies such as `scheme-toggle` and `hints
+- Keep command names and policies such as `hints
   active|show|hide|toggle` in app unless another consumer needs the same
   transport contract.
 - Direct `.config/ags` runtime usages should be migrated to app commands when
@@ -158,5 +158,4 @@ Live checks that often catch integration mistakes:
 
 ```sh
 rsynapse-shell request hints toggle
-rsynapse-shell request scheme-toggle
 ```

@@ -25,7 +25,6 @@ impl SimpleComponent for AudioRouteRow {
 
             gtk::Box {
                 set_orientation: gtk::Orientation::Horizontal,
-                set_spacing: 8,
 
                 gtk::Label {
                     set_css_classes: &["nerdicon", "audio-route-icon"],

@@ -95,7 +95,6 @@ impl SimpleComponent for ProjectLabel {
                         set_valign: gtk::Align::Center,
                         set_hexpand: false,
                         set_orientation: gtk::Orientation::Horizontal,
-                        set_spacing: 1,
 
                         #[name = "project_icon_label"]
                         gtk::Label {
@@ -122,7 +121,6 @@ impl SimpleComponent for ProjectLabel {
                                 set_halign: gtk::Align::Start,
                                 set_hexpand: false,
                                 set_orientation: gtk::Orientation::Horizontal,
-                                set_spacing: 4,
 
                                 gtk::Label {
                                     set_ellipsize: gtk::pango::EllipsizeMode::End,
@@ -194,14 +192,18 @@ impl SimpleComponent for ProjectLabel {
         });
         let icon_picker = model.icon_picker.clone();
         widgets.icon_popover.connect_visible_notify(move |popover| {
-            let Some(window) = popover.root().and_downcast::<gtk::Window>() else {
-                return;
-            };
-            if popover.is_visible() {
-                window.set_keyboard_mode(KeyboardMode::Exclusive);
-                icon_picker.focus_search();
-            } else {
-                window.set_keyboard_mode(KeyboardMode::None);
+            let visible = popover.is_visible();
+            if let Some(window) = popover.root().and_downcast::<gtk::Window>() {
+                window.set_keyboard_mode(if visible {
+                    KeyboardMode::Exclusive
+                } else {
+                    KeyboardMode::None
+                });
+            }
+
+            if visible {
+                let icon_picker = icon_picker.clone();
+                gtk::glib::idle_add_local_once(move || icon_picker.focus_search());
             }
         });
         sync_icon_picker(&model);

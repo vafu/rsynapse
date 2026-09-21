@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=Rsynapse URL Opener
+Type=Application
+Exec=@SCRIPT_DIR@/rsynapse-open-url %u
+MimeType=x-scheme-handler/http;x-scheme-handler/https;
+NoDisplay=true
+Terminal=false

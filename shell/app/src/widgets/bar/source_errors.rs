@@ -31,7 +31,6 @@ impl SimpleComponent for SourceErrorRow {
         gtk::Box {
             add_css_class: "source-error-row",
             set_orientation: gtk::Orientation::Vertical,
-            set_spacing: 2,
             set_tooltip_text: Some(model.error.message.as_str()),
 
             gtk::Label {

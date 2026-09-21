@@ -45,17 +45,14 @@ impl SimpleComponent for ContextZone {
                 set_halign: gtk::Align::Center,
                 set_valign: gtk::Align::Start,
                 set_orientation: gtk::Orientation::Vertical,
-                set_spacing: 0,
 
                 #[bind_list(items, row = ContextZoneItem)]
                 items -> gtk::Box {
-                    add_css_class: "bar-indicator-list",
                     add_css_class: "bar-indicator-list-vertical",
                     add_css_class: "context-zone-list",
                     set_halign: gtk::Align::Center,
                     set_valign: gtk::Align::Start,
                     set_orientation: gtk::Orientation::Vertical,
-                    set_spacing: 4,
                 }
             }
         }

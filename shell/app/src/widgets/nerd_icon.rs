@@ -29,6 +29,7 @@ pub(crate) mod md {
     pub(crate) const MD_CELLPHONE_INFORMATION: &str = "\u{f0f41}";
     pub(crate) const MD_CLOUD_OFF_OUTLINE: &str = "\u{f0164}";
     pub(crate) const MD_GOOGLE_CHROME: &str = "\u{f02af}";
+    pub(crate) const MD_HARDDISK: &str = "\u{f02ca}";
     pub(crate) const MD_HEADPHONES_SETTINGS: &str = "\u{f02cd}";
     pub(crate) const MD_KEYBOARD_RETURN: &str = "\u{f0311}";
     pub(crate) const MD_LEAF: &str = "\u{f032a}";

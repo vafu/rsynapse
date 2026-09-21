@@ -11,8 +11,10 @@ Run from the repository root:
 The installer writes only user-local paths by default:
 
 - Binaries: `~/.local/bin`
+- URL helper scripts: `~/.config/scripts`
 - Launcher plugins: `~/.local/lib/rsynapse/plugins`
 - D-Bus activation files: `~/.local/share/dbus-1/services`
+- Desktop entries: `~/.local/share/applications`
 - systemd user units: `~/.config/systemd/user`
 - git hooks: `~/.local/share/rsynapse/git-hooks`
 
@@ -26,6 +28,10 @@ Installed binaries currently include:
 - `rsynapse-cli`
 - `rsynapse-ui`
 - `proj`
+
+Installed URL helper scripts currently include:
+
+- `rsynapse-open-url`
 
 Installed git hooks currently include:
 
@@ -43,6 +49,11 @@ Installed D-Bus activation files currently include:
 - `org.rsynapse.Engine.service`
 - `org.rsynapse.Locus.service`
 - `org.rsynapse.Niri.service`
+
+Installed desktop entries currently include:
+
+- `rsynapse-open-url.desktop`, registered as the default `http` and `https`
+  scheme handler.
 
 Installed systemd user units currently include:
 
