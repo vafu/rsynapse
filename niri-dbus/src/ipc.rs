@@ -84,6 +84,14 @@ pub async fn initial_snapshot()
     Ok((version, outputs))
 }
 
+pub async fn outputs() -> anyhow::Result<std::collections::HashMap<String, niri_ipc::Output>> {
+    let mut socket = AsyncNiriSocket::connect().await?;
+    match socket.send(Request::Outputs).await? {
+        Response::Outputs(outputs) => Ok(outputs),
+        response => anyhow::bail!("unexpected niri outputs response: {response:?}"),
+    }
+}
+
 pub async fn event_stream() -> anyhow::Result<AsyncNiriSocket> {
     AsyncNiriSocket::connect().await?.start_event_stream().await
 }

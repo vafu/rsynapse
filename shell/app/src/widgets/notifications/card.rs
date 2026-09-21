@@ -23,7 +23,12 @@ impl SimpleComponent for NotificationCard {
 
     view! {
         #[root]
-        gtk::Box {
+        gtk::Revealer {
+            set_reveal_child: false,
+            set_transition_type: gtk::RevealerTransitionType::SlideDown,
+            set_transition_duration: 160,
+
+            gtk::Box {
             set_css_classes: &notification_card_classes(&model.notification),
             set_orientation: gtk::Orientation::Vertical,
             set_hexpand: false,
@@ -113,11 +118,12 @@ impl SimpleComponent for NotificationCard {
                 set_visible: model.notification.has_actions(),
             },
         }
+        }
     }
 
     fn init(
         init: Self::Init,
-        _root: Self::Root,
+        root: Self::Root,
         _sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
         let model = NotificationCard { notification: init };
@@ -143,6 +149,8 @@ impl SimpleComponent for NotificationCard {
 
             widgets.actions_box.append(&button);
         }
+
+        gtk::glib::idle_add_local_once(move || root.set_reveal_child(true));
 
         ComponentParts { model, widgets }
     }

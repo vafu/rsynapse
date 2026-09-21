@@ -65,10 +65,18 @@ impl NiriState {
 
     pub fn apply_event(&mut self, event: Event) -> anyhow::Result<ObjectDelta> {
         let before = self.object_set();
-        let result = catch_unwind(AssertUnwindSafe(|| self.event_state.apply(event)));
-        if result.is_err() {
-            anyhow::bail!("niri EventStreamState rejected event ordering");
-        }
+        self.apply_event_state(event)?;
+        Ok(self.object_set().delta_from(&before))
+    }
+
+    pub fn apply_workspace_snapshot(
+        &mut self,
+        workspaces: Vec<Workspace>,
+        outputs: HashMap<String, Output>,
+    ) -> anyhow::Result<ObjectDelta> {
+        let before = self.object_set();
+        self.apply_event_state(Event::WorkspacesChanged { workspaces })?;
+        self.outputs = outputs;
         Ok(self.object_set().delta_from(&before))
     }
 
@@ -88,6 +96,14 @@ impl NiriState {
 
     pub fn output(&self, name: &str) -> Option<&Output> {
         self.outputs.get(name)
+    }
+
+    fn apply_event_state(&mut self, event: Event) -> anyhow::Result<()> {
+        let result = catch_unwind(AssertUnwindSafe(|| self.event_state.apply(event)));
+        if result.is_err() {
+            anyhow::bail!("niri EventStreamState rejected event ordering");
+        }
+        Ok(())
     }
 
     pub fn workspace(&self, id: u64) -> Option<&Workspace> {
@@ -353,6 +369,32 @@ mod tests {
         assert_eq!(delta.removed.workspaces, HashSet::from([5, 6]));
         assert_eq!(delta.removed.windows, HashSet::from([20]));
         assert!(!state.connected);
+    }
+
+    #[test]
+    fn workspace_snapshot_registers_an_output_referenced_by_a_workspace() {
+        let mut state = NiriState::default();
+        state.mark_connected(
+            "niri 26.4".to_owned(),
+            HashMap::from([("eDP-1".to_owned(), output("eDP-1"))]),
+        );
+
+        let delta = state
+            .apply_workspace_snapshot(
+                vec![workspace(19, 2, "DP-3", true, true, None)],
+                HashMap::from([
+                    ("eDP-1".to_owned(), output("eDP-1")),
+                    ("DP-3".to_owned(), output("DP-3")),
+                ]),
+            )
+            .expect("workspace snapshot applies");
+
+        assert_eq!(delta.added.outputs, HashSet::from(["DP-3".to_owned()]));
+        assert!(state.output("DP-3").is_some());
+        assert_eq!(
+            state.current_workspace_for_output("DP-3").unwrap().as_str(),
+            "/org/rsynapse/Niri/Workspaces/workspace_19"
+        );
     }
 
     #[test]

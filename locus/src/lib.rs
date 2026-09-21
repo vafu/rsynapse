@@ -217,6 +217,8 @@ pub trait Relations {
 
     async fn clear(&self, subject: RelationEndpoint, relation: &str) -> zbus::Result<u32>;
 
+    async fn clear_subject(&self, subject: RelationEndpoint) -> zbus::Result<u32>;
+
     async fn targets(
         &self,
         subject: RelationEndpoint,

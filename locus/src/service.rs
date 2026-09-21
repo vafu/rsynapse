@@ -135,6 +135,27 @@ impl RelationsService {
         Ok(count)
     }
 
+    async fn clear_subject(
+        &self,
+        subject: RelationEndpoint,
+        #[zbus(signal_context)] ctxt: SignalContext<'_>,
+    ) -> fdo::Result<u32> {
+        let removed = self
+            .store
+            .lock()
+            .await
+            .clear_subject(&subject)
+            .map_err(fdo_error)?;
+        let count = removed.len().try_into().unwrap_or(u32::MAX);
+        if count > 0 {
+            self.emit_store_properties(&ctxt).await?;
+            for record in removed {
+                Self::relation_removed(&ctxt, record).await?;
+            }
+        }
+        Ok(count)
+    }
+
     async fn targets(&self, subject: RelationEndpoint, relation: String) -> Vec<RelationEndpoint> {
         self.store.lock().await.targets(&subject, &relation)
     }
