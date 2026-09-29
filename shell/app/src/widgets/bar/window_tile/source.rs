@@ -166,7 +166,11 @@ fn window_kind(app_id: &str, agent: Option<Agent>) -> Kind {
 fn window_tooltip(app_id: &str, agent: Option<&Agent>) -> String {
     let label = if app_id.is_empty() { "Window" } else { app_id };
     if let Some(agent) = agent {
-        return [label.to_owned(), format!("Agent: {:?}", agent.state)].join("\n");
+        let mut tooltip = [label.to_owned(), format!("Agent: {:?}", agent.state)].join("\n");
+        if agent.subagents > 0 {
+            tooltip.push_str(&format!("\nSubagents: {}", agent.subagents));
+        }
+        return tooltip;
     }
 
     label.to_owned()

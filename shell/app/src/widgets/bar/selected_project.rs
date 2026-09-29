@@ -7,11 +7,16 @@ use super::{
     project::{ProjectDetails, project_details},
 };
 
+mod git;
+
+use git::{GitStatus, git_status};
+
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(super) struct SelectedProjectView {
     pub(super) visible: bool,
     pub(super) title: String,
     pub(super) branch: Option<String>,
+    pub(super) git: Option<GitStatus>,
 }
 
 pub(super) fn selected_project_status(
@@ -27,13 +32,20 @@ pub(super) fn selected_project_status(
 }
 
 fn selected_workspace_project_status(workspace: NiriWorkspace) -> Observable<SelectedProjectView> {
-    project_details(workspace)
-        .map(selected_project_view)
-        .distinct_until_changed()
-        .box_it()
+    source::switch_map(project_details(workspace), |project| {
+        match project.path.clone() {
+            Some(path) => git_status(path)
+                .map(move |git| selected_project_view(project.clone(), Some(git)))
+                .distinct_until_changed()
+                .box_it(),
+            None => source::once(selected_project_view(project, None)),
+        }
+    })
+    .distinct_until_changed()
+    .box_it()
 }
 
-fn selected_project_view(project: ProjectDetails) -> SelectedProjectView {
+fn selected_project_view(project: ProjectDetails, git: Option<GitStatus>) -> SelectedProjectView {
     if !project.has_project {
         return SelectedProjectView::default();
     }
@@ -53,6 +65,7 @@ fn selected_project_view(project: ProjectDetails) -> SelectedProjectView {
         visible,
         title,
         branch,
+        git,
     }
 }
 
@@ -110,7 +123,7 @@ pub(super) fn first_separator_visible(view: &SelectedProjectView) -> bool {
 }
 
 pub(super) fn branch_icon() -> NerdIcon {
-    NerdIcon::branch()
+    NerdIcon::new(crate::widgets::nerd_icon::cod::COD_GITHUB)
 }
 
 pub(super) fn tooltip(view: &SelectedProjectView) -> String {
@@ -118,11 +131,90 @@ pub(super) fn tooltip(view: &SelectedProjectView) -> String {
     if let Some(branch) = view.branch.as_deref().and_then(non_empty) {
         lines.push(format!("branch: {branch}"));
     }
+    if let Some(git) = view.git.as_ref() {
+        if git.has_changes() || git.stashes > 0 {
+            lines.push(git_summary(git));
+        }
+    }
     lines.join("\n")
 }
 
-pub(super) fn classes(_view: &SelectedProjectView) -> &'static [&'static str] {
-    &["bar-item", "selected-project"]
+pub(super) fn classes(view: &SelectedProjectView) -> Vec<&'static str> {
+    let mut classes = vec!["bar-item", "selected-project"];
+    if let Some(git) = view.git.as_ref() {
+        if git.staged > 0 || git.unstaged > 0 || git.untracked > 0 {
+            classes.push("git-dirty");
+        }
+        if git.merging || git.rebasing {
+            classes.push("git-merging");
+        }
+    }
+    classes
+}
+
+#[allow(dead_code)]
+pub(super) fn git_visible(view: &SelectedProjectView) -> bool {
+    view.git.as_ref().is_some_and(GitStatus::has_changes)
+}
+
+/// One fixed slot of the git status cluster. Each slot renders a single
+/// icon widget: nerd glyphs and bar text never share a label because the
+/// icon font's vertical metrics differ.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum GitPart {
+    Dirty,
+    Untracked,
+    Ahead,
+    Behind,
+    Merging,
+    Rebasing,
+}
+
+pub(super) fn git_part_visible(view: &SelectedProjectView, part: GitPart) -> bool {
+    view.git.as_ref().is_some_and(|git| match part {
+        GitPart::Dirty => git.staged > 0 || git.unstaged > 0,
+        GitPart::Untracked => git.untracked > 0,
+        GitPart::Ahead => git.ahead > 0,
+        GitPart::Behind => git.behind > 0,
+        GitPart::Merging => git.merging,
+        GitPart::Rebasing => git.rebasing,
+    })
+}
+
+pub(super) fn git_part_icon(part: GitPart) -> &'static str {
+    use crate::widgets::nerd_icon::cod;
+
+    match part {
+        GitPart::Dirty => cod::COD_DIFF_MODIFIED,
+        GitPart::Untracked => cod::COD_DIFF_ADDED,
+        GitPart::Ahead => "⇡",
+        GitPart::Behind => "⇣",
+        GitPart::Merging => cod::COD_GIT_MERGE,
+        GitPart::Rebasing => cod::COD_SYNC,
+    }
+}
+
+fn git_summary(git: &GitStatus) -> String {
+    let mut lines = vec![format!(
+        "git: {} staged, {} unstaged, {} untracked",
+        git.staged, git.unstaged, git.untracked
+    )];
+    if git.ahead > 0 || git.behind > 0 {
+        lines.push(format!(
+            "upstream: ahead {}, behind {}",
+            git.ahead, git.behind
+        ));
+    }
+    if git.merging {
+        lines.push("merging".to_owned());
+    }
+    if git.rebasing {
+        lines.push("rebasing".to_owned());
+    }
+    if git.stashes > 0 {
+        lines.push(format!("stashes: {}", git.stashes));
+    }
+    lines.join("\n")
 }
 
 #[cfg(test)]

@@ -30,6 +30,7 @@ impl RequestTarget {
 pub enum ShellRequest {
     Hints(HintsAction),
     Notifications(NotificationCenterAction),
+    Approvals(ApprovalsAction),
 }
 
 impl ShellRequest {
@@ -37,6 +38,7 @@ impl ShellRequest {
         match self {
             Self::Hints(_) => RequestTarget::Shell,
             Self::Notifications(_) => RequestTarget::Notifications,
+            Self::Approvals(_) => RequestTarget::Shell,
         }
     }
 }
@@ -51,6 +53,13 @@ pub enum HintsAction {
 /// Notification center request action.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NotificationCenterAction {
+    Set(bool),
+    Toggle,
+}
+
+/// Agent approval overlay request action.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ApprovalsAction {
     Set(bool),
     Toggle,
 }
@@ -263,6 +272,9 @@ fn parse_request(args: &[String]) -> Result<ShellRequest, String> {
         "notifications" | "notification-center" => {
             parse_notification_center_request(&args[1..]).map(ShellRequest::Notifications)
         }
+        "approvals" | "agent-approvals" => {
+            parse_approvals_request(&args[1..]).map(ShellRequest::Approvals)
+        }
         _ => Err(format!("unknown request command: {command}")),
     }
 }
@@ -277,6 +289,19 @@ fn parse_notification_center_request(args: &[String]) -> Result<NotificationCent
         }
         [] => Err("notifications requires open <bool>, show, hide, or toggle".to_owned()),
         _ => Err("invalid notifications request".to_owned()),
+    }
+}
+
+fn parse_approvals_request(args: &[String]) -> Result<ApprovalsAction, String> {
+    match args {
+        [action] if action == "toggle" => Ok(ApprovalsAction::Toggle),
+        [action] if action == "show" => Ok(ApprovalsAction::Set(true)),
+        [action] if action == "hide" => Ok(ApprovalsAction::Set(false)),
+        [key, value] if key == "open" || key == "active" => {
+            parse_bool(value).map(ApprovalsAction::Set)
+        }
+        [] => Err("approvals requires open <bool>, show, hide, or toggle".to_owned()),
+        _ => Err("invalid approvals request".to_owned()),
     }
 }
 
@@ -357,9 +382,9 @@ fn runtime_dir() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::{
-        HintsAction, NotificationCenterAction, RequestResponse, RequestTarget, ShellRequest,
-        decode_args, encode_args, notification_center_request_args, parse_request, parse_response,
-        socket_path,
+        ApprovalsAction, HintsAction, NotificationCenterAction, RequestResponse, RequestTarget,
+        ShellRequest, decode_args, encode_args, notification_center_request_args, parse_request,
+        parse_response, socket_path,
     };
 
     fn args(values: &[&str]) -> Vec<String> {
@@ -438,6 +463,28 @@ mod tests {
         assert!(
             socket_path(RequestTarget::Notifications)
                 .ends_with("rsynapse-notifications/request.sock"),
+        );
+    }
+
+    #[test]
+    fn parses_approvals_actions() {
+        assert_eq!(
+            parse_request(&args(&["approvals", "toggle"])).unwrap(),
+            ShellRequest::Approvals(ApprovalsAction::Toggle)
+        );
+        assert_eq!(
+            parse_request(&args(&["agent-approvals", "show"])).unwrap(),
+            ShellRequest::Approvals(ApprovalsAction::Set(true))
+        );
+        assert_eq!(
+            parse_request(&args(&["approvals", "open", "false"])).unwrap(),
+            ShellRequest::Approvals(ApprovalsAction::Set(false))
+        );
+        assert_eq!(
+            parse_request(&args(&["approvals", "toggle"]))
+                .unwrap()
+                .target(),
+            RequestTarget::Shell
         );
     }
 

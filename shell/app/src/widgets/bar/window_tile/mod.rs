@@ -75,7 +75,19 @@ impl SimpleComponent for WindowTile {
 
                     #[watch]
                     set_visible: agent_unseen_visible(&model.vm),
-                }
+                },
+
+                add_overlay = &gtk::Label {
+                    add_css_class: "bar-badge",
+                    add_css_class: "agent-subagent-badge",
+                    set_halign: gtk::Align::End,
+                    set_valign: gtk::Align::End,
+
+                    #[watch]
+                    set_visible: agent_subagents_visible(&model.vm),
+                    #[watch]
+                    set_label: agent_subagents_label(&model.vm).as_str(),
+                },
             }
         }
     }
@@ -199,4 +211,20 @@ fn agent_unseen_visible(vm: &Option<ViewModel>) -> bool {
         Kind::Agent(agent) => agent.unseen,
         Kind::Plain | Kind::Neovim => false,
     })
+}
+
+fn agent_subagents_visible(vm: &Option<ViewModel>) -> bool {
+    vm.as_ref().is_some_and(|vm| match &vm.kind {
+        Kind::Agent(agent) => agent.subagents > 0,
+        Kind::Plain | Kind::Neovim => false,
+    })
+}
+
+fn agent_subagents_label(vm: &Option<ViewModel>) -> String {
+    vm.as_ref()
+        .and_then(|vm| match &vm.kind {
+            Kind::Agent(agent) if agent.subagents > 0 => Some(agent.subagents.to_string()),
+            Kind::Agent(_) | Kind::Plain | Kind::Neovim => None,
+        })
+        .unwrap_or_default()
 }

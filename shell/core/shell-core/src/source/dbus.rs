@@ -12,7 +12,7 @@ use zbus::{
 
 use super::{
     Observable, Source, defer, shared_by_key,
-    support::{from_stream_result, log_errors},
+    support::{from_stream_result, log_errors, record_source_error},
 };
 
 const DBUS_PROPERTIES: &str = "org.freedesktop.DBus.Properties";
@@ -555,6 +555,17 @@ where
                                 match receive_properties_changed(&proxy).await {
                                     Ok(stream) => state.stream = Some(stream),
                                     Err(error) => {
+                                        if retry_after_service_return(
+                                            state.descriptor.object.bus,
+                                            &state.descriptor.object.destination.clone(),
+                                        )
+                                        .await
+                                        {
+                                            state.proxy = None;
+                                            state.stream = None;
+                                            state.phase = PropertyPhase::Connect;
+                                            continue;
+                                        }
                                         state.phase = PropertyPhase::Done;
                                         return Some((Err(error), state));
                                     }
@@ -563,6 +574,15 @@ where
                                 state.phase = PropertyPhase::InitialRead;
                             }
                             Err(error) => {
+                                if retry_after_service_return(
+                                    state.descriptor.object.bus,
+                                    &state.descriptor.object.destination.clone(),
+                                )
+                                .await
+                                {
+                                    state.phase = PropertyPhase::Connect;
+                                    continue;
+                                }
                                 state.phase = PropertyPhase::Done;
                                 return Some((
                                     Err(format_dbus_error("connect property source", error)),
@@ -574,7 +594,23 @@ where
                     PropertyPhase::InitialRead => {
                         state.phase = PropertyPhase::Watch;
                         let result = read_property::<T>(&state.descriptor, state.proxy()).await;
-                        return Some((result, state));
+                        match result {
+                            Err(error) => {
+                                if retry_after_service_return(
+                                    state.descriptor.object.bus,
+                                    &state.descriptor.object.destination.clone(),
+                                )
+                                .await
+                                {
+                                    state.proxy = None;
+                                    state.stream = None;
+                                    state.phase = PropertyPhase::Connect;
+                                    continue;
+                                }
+                                return Some((Err(error), state));
+                            }
+                            ok => return Some((ok, state)),
+                        }
                     }
                     PropertyPhase::Watch => {
                         let Some(update) = state
@@ -584,7 +620,24 @@ where
                             .next()
                             .await
                         else {
-                            return None;
+                            if retry_after_service_return(
+                                state.descriptor.object.bus,
+                                &state.descriptor.object.destination.clone(),
+                            )
+                            .await
+                            {
+                                state.proxy = None;
+                                state.stream = None;
+                                state.phase = PropertyPhase::Connect;
+                                continue;
+                            }
+                            return Some((
+                                Err(format_dbus_error(
+                                    "property signal stream ended",
+                                    state.descriptor.key(),
+                                )),
+                                state,
+                            ));
                         };
 
                         let result =
@@ -594,8 +647,16 @@ where
                             PropertyChange::Emit(value) => return Some((value, state)),
                             PropertyChange::Ignore => continue,
                             PropertyChange::Error(error) => {
-                                state.phase = PropertyPhase::Done;
-                                return Some((Err(error), state));
+                                // Message-level failure: record it for the
+                                // error outlet and wait for the next signal.
+                                // Later signals still arrive on their own
+                                // cadence, so nothing is lost permanently.
+                                record_source_error(
+                                    "dbus-property",
+                                    &descriptor_error_path(&state.descriptor.key()),
+                                    &error,
+                                );
+                                continue;
                             }
                         }
                     }
@@ -632,6 +693,17 @@ where
                                     match receive_properties_changed(&proxy).await {
                                         Ok(stream) => state.stream = Some(stream),
                                         Err(error) => {
+                                            if retry_after_service_return(
+                                                state.descriptor.object.bus,
+                                                &state.descriptor.object.destination.clone(),
+                                            )
+                                            .await
+                                            {
+                                                state.proxy = None;
+                                                state.stream = None;
+                                                state.phase = PropertyPhase::Connect;
+                                                continue;
+                                            }
                                             state.phase = PropertyPhase::Done;
                                             return Some((Err(error), state));
                                         }
@@ -641,6 +713,15 @@ where
                                     return Some((Ok(initial), state));
                                 }
                                 Err(error) => {
+                                    if retry_after_service_return(
+                                        state.descriptor.object.bus,
+                                        &state.descriptor.object.destination.clone(),
+                                    )
+                                    .await
+                                    {
+                                        state.phase = PropertyPhase::Connect;
+                                        continue;
+                                    }
                                     state.phase = PropertyPhase::Done;
                                     return Some((
                                         Err(format_dbus_error("connect property source", error)),
@@ -660,7 +741,24 @@ where
                                 .next()
                                 .await
                             else {
-                                return None;
+                                if retry_after_service_return(
+                                    state.descriptor.object.bus,
+                                    &state.descriptor.object.destination.clone(),
+                                )
+                                .await
+                                {
+                                    state.proxy = None;
+                                    state.stream = None;
+                                    state.phase = PropertyPhase::Connect;
+                                    continue;
+                                }
+                                return Some((
+                                    Err(format_dbus_error(
+                                        "property signal stream ended",
+                                        state.descriptor.key(),
+                                    )),
+                                    state,
+                                ));
                             };
 
                             let result = property_changed_value::<T>(
@@ -673,8 +771,12 @@ where
                                 PropertyChange::Emit(value) => return Some((value, state)),
                                 PropertyChange::Ignore => continue,
                                 PropertyChange::Error(error) => {
-                                    state.phase = PropertyPhase::Done;
-                                    return Some((Err(error), state));
+                                    record_source_error(
+                                        "dbus-property-seeded",
+                                        &descriptor_error_path(&state.descriptor.key()),
+                                        &error,
+                                    );
+                                    continue;
                                 }
                             }
                         }
@@ -822,6 +924,15 @@ where
                             state.phase = SignalPhase::Watch;
                         }
                         Err(error) => {
+                            if retry_after_service_return(
+                                state.descriptor.object.bus,
+                                &state.descriptor.object.destination.clone(),
+                            )
+                            .await
+                            {
+                                state.phase = SignalPhase::Connect;
+                                continue;
+                            }
                             state.phase = SignalPhase::Done;
                             return Some((
                                 Err(format_dbus_error("connect signal source", error)),
@@ -835,6 +946,17 @@ where
                             match proxy.receive_signal(state.descriptor.signal.clone()).await {
                                 Ok(stream) => state.stream = Some(Box::pin(stream)),
                                 Err(error) => {
+                                    if retry_after_service_return(
+                                        state.descriptor.object.bus,
+                                        &state.descriptor.object.destination.clone(),
+                                    )
+                                    .await
+                                    {
+                                        state.proxy = None;
+                                        state.stream = None;
+                                        state.phase = SignalPhase::Connect;
+                                        continue;
+                                    }
                                     state.phase = SignalPhase::Done;
                                     return Some((
                                         Err(format_dbus_error("subscribe signal", error)),
@@ -851,17 +973,38 @@ where
                             .next()
                             .await
                         else {
-                            return None;
+                            if retry_after_service_return(
+                                state.descriptor.object.bus,
+                                &state.descriptor.object.destination.clone(),
+                            )
+                            .await
+                            {
+                                state.proxy = None;
+                                state.stream = None;
+                                state.phase = SignalPhase::Connect;
+                                continue;
+                            }
+                            return Some((
+                                Err(format_dbus_error(
+                                    "signal stream ended",
+                                    state.descriptor.key(),
+                                )),
+                                state,
+                            ));
                         };
 
                         match message.body().deserialize::<T>() {
                             Ok(value) => return Some((Ok(value), state)),
                             Err(error) => {
-                                state.phase = SignalPhase::Done;
-                                return Some((
-                                    Err(format_dbus_error("decode signal", error)),
-                                    state,
-                                ));
+                                // Fire-and-forget signals carry no state to
+                                // resync from: record the bad message for the
+                                // error outlet and wait for the next one.
+                                record_source_error(
+                                    "dbus-signal",
+                                    &descriptor_error_path(&state.descriptor.key()),
+                                    &format_dbus_error("decode signal", error),
+                                );
+                                continue;
                             }
                         }
                     }
@@ -917,6 +1060,15 @@ fn object_manager_stream(
                                 state.phase = ObjectManagerPhase::InitialRead;
                             }
                             Err(error) => {
+                                if retry_after_service_return(
+                                    state.descriptor.bus,
+                                    &state.descriptor.destination.clone(),
+                                )
+                                .await
+                                {
+                                    state.phase = ObjectManagerPhase::Connect;
+                                    continue;
+                                }
                                 state.phase = ObjectManagerPhase::Done;
                                 return Some((
                                     Err(format_dbus_error("connect ObjectManager source", error)),
@@ -933,6 +1085,17 @@ fn object_manager_stream(
                                 return Some((Ok(sorted_objects(&state.objects)), state));
                             }
                             Err(error) => {
+                                if retry_after_service_return(
+                                    state.descriptor.bus,
+                                    &state.descriptor.destination.clone(),
+                                )
+                                .await
+                                {
+                                    state.proxy = None;
+                                    state.stream = None;
+                                    state.phase = ObjectManagerPhase::Connect;
+                                    continue;
+                                }
                                 state.phase = ObjectManagerPhase::Done;
                                 return Some((Err(error), state));
                             }
@@ -943,6 +1106,17 @@ fn object_manager_stream(
                             match state.proxy().receive_all_signals().await {
                                 Ok(stream) => state.stream = Some(Box::pin(stream)),
                                 Err(error) => {
+                                    if retry_after_service_return(
+                                        state.descriptor.bus,
+                                        &state.descriptor.destination.clone(),
+                                    )
+                                    .await
+                                    {
+                                        state.proxy = None;
+                                        state.stream = None;
+                                        state.phase = ObjectManagerPhase::Connect;
+                                        continue;
+                                    }
                                     state.phase = ObjectManagerPhase::Done;
                                     return Some((
                                         Err(format_dbus_error(
@@ -962,7 +1136,24 @@ fn object_manager_stream(
                             .next()
                             .await
                         else {
-                            return None;
+                            if retry_after_service_return(
+                                state.descriptor.bus,
+                                &state.descriptor.destination.clone(),
+                            )
+                            .await
+                            {
+                                state.proxy = None;
+                                state.stream = None;
+                                state.phase = ObjectManagerPhase::Connect;
+                                continue;
+                            }
+                            return Some((
+                                Err(format_dbus_error(
+                                    "ObjectManager signal stream ended",
+                                    state.descriptor.key(),
+                                )),
+                                state,
+                            ));
                         };
 
                         match apply_object_manager_signal(&mut state.objects, message) {
@@ -971,8 +1162,17 @@ fn object_manager_stream(
                             }
                             ObjectManagerChange::Ignore => continue,
                             ObjectManagerChange::Error(error) => {
-                                state.phase = ObjectManagerPhase::Done;
-                                return Some((Err(error), state));
+                                // Deltas are lossy: a failed decode would
+                                // desync the snapshot permanently, so record
+                                // it for the error outlet and re-read the
+                                // full snapshot instead of terminating.
+                                record_source_error(
+                                    "dbus-object-manager",
+                                    &descriptor_error_path(&state.descriptor.key()),
+                                    &error,
+                                );
+                                state.phase = ObjectManagerPhase::InitialRead;
+                                continue;
                             }
                         }
                     }
@@ -1015,6 +1215,15 @@ where
                                 state.phase = ObjectManagerPhase::InitialRead;
                             }
                             Err(error) => {
+                                if retry_after_service_return(
+                                    state.descriptor.bus,
+                                    &state.descriptor.destination.clone(),
+                                )
+                                .await
+                                {
+                                    state.phase = ObjectManagerPhase::Connect;
+                                    continue;
+                                }
                                 state.phase = ObjectManagerPhase::Done;
                                 return Some((
                                     Err(format_dbus_error("connect ObjectManager source", error)),
@@ -1031,6 +1240,17 @@ where
                                 return Some((Ok(model_list_from_paths::<T>(&state.paths)), state));
                             }
                             Err(error) => {
+                                if retry_after_service_return(
+                                    state.descriptor.bus,
+                                    &state.descriptor.destination.clone(),
+                                )
+                                .await
+                                {
+                                    state.proxy = None;
+                                    state.stream = None;
+                                    state.phase = ObjectManagerPhase::Connect;
+                                    continue;
+                                }
                                 state.phase = ObjectManagerPhase::Done;
                                 return Some((Err(error), state));
                             }
@@ -1041,6 +1261,17 @@ where
                             match state.proxy().receive_all_signals().await {
                                 Ok(stream) => state.stream = Some(Box::pin(stream)),
                                 Err(error) => {
+                                    if retry_after_service_return(
+                                        state.descriptor.bus,
+                                        &state.descriptor.destination.clone(),
+                                    )
+                                    .await
+                                    {
+                                        state.proxy = None;
+                                        state.stream = None;
+                                        state.phase = ObjectManagerPhase::Connect;
+                                        continue;
+                                    }
                                     state.phase = ObjectManagerPhase::Done;
                                     return Some((
                                         Err(format_dbus_error(
@@ -1060,7 +1291,24 @@ where
                             .next()
                             .await
                         else {
-                            return None;
+                            if retry_after_service_return(
+                                state.descriptor.bus,
+                                &state.descriptor.destination.clone(),
+                            )
+                            .await
+                            {
+                                state.proxy = None;
+                                state.stream = None;
+                                state.phase = ObjectManagerPhase::Connect;
+                                continue;
+                            }
+                            return Some((
+                                Err(format_dbus_error(
+                                    "ObjectManager signal stream ended",
+                                    state.descriptor.key(),
+                                )),
+                                state,
+                            ));
                         };
 
                         match apply_object_model_signal(&mut state.paths, &state.interface, message)
@@ -1070,8 +1318,13 @@ where
                             }
                             ObjectManagerChange::Ignore => continue,
                             ObjectManagerChange::Error(error) => {
-                                state.phase = ObjectManagerPhase::Done;
-                                return Some((Err(error), state));
+                                record_source_error(
+                                    "dbus-models",
+                                    &descriptor_error_path(&state.descriptor.key()),
+                                    &error,
+                                );
+                                state.phase = ObjectManagerPhase::InitialRead;
+                                continue;
                             }
                         }
                     }
@@ -1408,6 +1661,75 @@ fn is_missing_property_invalid_args(message: &str) -> bool {
 
 fn format_dbus_error(operation: &str, error: impl fmt::Display) -> String {
     format!("{operation} failed: {error}")
+}
+
+/// Decides whether a failed D-Bus operation may be retried once its
+/// destination returns, parking until then.
+///
+/// Returns true after the destination (re)appears on the bus: the caller
+/// should drop stale transport state and reconnect from its `Connect`
+/// phase. Returns false immediately when the destination is already owned
+/// (the failure is genuine, not a restart race: terminate loudly so it
+/// reaches the error outlet) or when even watching is impossible.
+/// Purely event-driven: no polling, no reconnect sleeps.
+async fn retry_after_service_return(bus: Bus, destination: &OwnedBusName) -> bool {
+    let Ok(connection) = bus.connection().await else {
+        return false;
+    };
+    if destination_owner_present(&connection, destination).await {
+        return false;
+    }
+    let dest = destination.to_string();
+    let rule = (|| -> zbus::Result<zbus::MatchRule<'_>> {
+        Ok(zbus::MatchRule::builder()
+            .msg_type(zbus::message::Type::Signal)
+            .sender("org.freedesktop.DBus")?
+            .interface("org.freedesktop.DBus")?
+            .member("NameOwnerChanged")?
+            .add_arg(dest.as_str())?
+            .build())
+    })();
+    let Ok(rule) = rule else {
+        return false;
+    };
+    let Ok(mut stream) = zbus::MessageStream::for_match_rule(rule, &connection, Some(1)).await
+    else {
+        return false;
+    };
+    // Re-check after subscribing: the name may have appeared in between,
+    // and NameOwnerChanged only fires on changes.
+    if destination_owner_present(&connection, destination).await {
+        return true;
+    }
+    while let Some(message) = stream.next().await {
+        let Ok(message) = message else {
+            continue;
+        };
+        let Ok((name, _old_owner, new_owner)): Result<(String, String, String), _> =
+            message.body().deserialize()
+        else {
+            continue;
+        };
+        if name == dest && !new_owner.is_empty() {
+            return true;
+        }
+    }
+    // The bus itself is going away; let the caller retry its setup path,
+    // which will fail fast and terminate loudly.
+    true
+}
+
+async fn destination_owner_present(
+    connection: &zbus::Connection,
+    destination: &OwnedBusName,
+) -> bool {
+    let Ok(proxy) = zbus::fdo::DBusProxy::builder(connection).build().await else {
+        return false;
+    };
+    let Ok(name) = zbus::names::BusName::try_from(destination.as_str()) else {
+        return false;
+    };
+    proxy.name_has_owner(name).await.unwrap_or(false)
 }
 
 fn descriptor_error_path(key: &str) -> PathBuf {

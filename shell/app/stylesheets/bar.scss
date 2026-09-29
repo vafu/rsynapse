@@ -143,6 +143,15 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
   .selected-project-branch-label {
     color: color-mix(in srgb, #{$fg} 82%, transparent);
     font-weight: 650;
+    padding: 0 4px;
+  }
+
+  .selected-project-git-icon {
+    font-size: 1em;
+  }
+
+  .selected-project-branch-icon.nerdicon {
+    font-size: 2em;
   }
 }
 

@@ -145,6 +145,38 @@ pub(super) fn agent_with_seen_state(
     agent
 }
 
+/// Live count of subagent sessions parented to `session_id`.
+///
+/// Membership comes from the ObjectManager snapshot, which is exactly the
+/// right granularity here: subagent sessions are added when spawned and
+/// removed when they stop, unlike pending-request state which changes via
+/// properties on long-lived objects.
+fn subagent_count(session_id: &str) -> Observable<usize> {
+    let key = session_id.to_owned();
+    source::shared_by_key("rsynapse.agent-subagent-count", key.clone(), move || {
+        let key = key.clone();
+        dbus::object_manager(agent_dbus())
+            .map(move |objects| count_subagents(&objects, &key))
+            .distinct_until_changed()
+            .box_it()
+    })
+}
+
+pub(super) fn count_subagents(objects: &[DbusObject], parent_session_id: &str) -> usize {
+    if parent_session_id.is_empty() {
+        return 0;
+    }
+    objects
+        .iter()
+        .filter(|object| has_interface(object, AGENT_SESSION_INTERFACE))
+        .filter(|object| {
+            snapshot_property::<String>(object, AGENT_SESSION_INTERFACE, "ParentSessionId")
+                .as_deref()
+                == Some(parent_session_id)
+        })
+        .count()
+}
+
 fn agent_dbus() -> ObjectManagerDescriptor {
     ObjectManagerDescriptor::parse(Bus::Session, AGENT_DBUS_BUS, AGENT_DBUS_ROOT_PATH)
         .expect("AgentDBus descriptor should be valid")
@@ -175,26 +207,44 @@ fn interface<'a>(object: &'a DbusObject, interface_name: &str) -> Option<&'a Dbu
 }
 
 fn agent_session(session: AgentSession) -> Observable<Option<Agent>> {
-    combine_latest!(
+    let base = combine_latest!(
         session.agent_name(),
         session.agent_nickname(),
         session.agent_role(),
         session.state(),
         session.requires_attention(),
         session.cwd(),
-        session.session_title()
-            => |(agent_name, nickname, role, state, attention, cwd, title)| {
-                Some(Agent {
-                    name: agent_name.clone(),
-                    icon: agent_icon(&agent_name, &nickname, &role),
-                    cwd,
-                    title,
-                    attention,
-                    state: session_state(&state),
-                    unseen: false,
-                })
+        session.session_title(),
+        session.session_id()
+            => |(agent_name, nickname, role, state, attention, cwd, title, session_id)| {
+                Some((
+                    Agent {
+                        name: agent_name.clone(),
+                        icon: agent_icon(&agent_name, &nickname, &role),
+                        cwd,
+                        title,
+                        attention,
+                        state: session_state(&state),
+                        unseen: false,
+                        subagents: 0,
+                    },
+                    session_id,
+                ))
             },
     )
+    .distinct_until_changed()
+    .box_it();
+    source::switch_map(base, |agent| match agent {
+        Some((agent, session_id)) => subagent_count(&session_id)
+            .map(move |subagents| {
+                let mut agent = agent.clone();
+                agent.subagents = subagents;
+                Some(agent)
+            })
+            .distinct_until_changed()
+            .box_it(),
+        None => source::once(None),
+    })
     .distinct_until_changed()
     .box_it()
 }
@@ -226,6 +276,10 @@ impl AgentSession {
 
     fn session_title(&self) -> Observable<String> {
         required(self.property("SessionTitle"), String::new())
+    }
+
+    fn session_id(&self) -> Observable<String> {
+        required(self.property("SessionId"), String::new())
     }
 
     fn property(&self, name: &'static str) -> PropertyDescriptor {

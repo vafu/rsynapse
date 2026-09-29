@@ -3,6 +3,11 @@ use shell_core::gtk::{self, prelude::*};
 pub(crate) mod cod {
     pub(crate) const COD_MOVE: &str = "\u{eb22}";
     pub(crate) const COD_WORKSPACE_UNKNOWN: &str = "\u{ebc3}";
+    pub(crate) const COD_DIFF_MODIFIED: &str = "\u{eade}";
+    pub(crate) const COD_DIFF_ADDED: &str = "\u{eadc}";
+    pub(crate) const COD_GIT_MERGE: &str = "\u{eafe}";
+    pub(crate) const COD_SYNC: &str = "\u{ea77}";
+    pub(crate) const COD_GITHUB: &str = "\u{ea84}";
 }
 
 pub(crate) mod dev {

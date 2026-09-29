@@ -157,6 +157,25 @@ Required semantics:
   subscriber drops, and restarts for later subscribers.
 - Cancellation must be cooperative and owned by generated subscription handles.
 
+### Error Policy
+
+Transient source failures must never terminate live subscribers:
+
+- Leaf D-Bus streams treat a missing service owner as a restart race: they
+  park on the bus `NameOwnerChanged` signal and reconnect from scratch when
+  the service returns. Message-level decode failures are recorded and
+  skipped; object-manager deltas that fail to decode trigger a full
+  snapshot re-read instead.
+- Shared sources keep their replay cache and live observers across upstream
+  failures and reconnect upstream (bounded against synchronously-failing
+  factories); recovery arrives as ordinary new values.
+- Errors are reported, not hidden: every failure is recorded through the
+  error outlet (`source::errors()`, surfaced by the shell's error widget),
+  and genuinely fatal failures (for example an already-owned destination
+  rejecting setup) still terminate loudly.
+- No polling and no reconnect sleeps anywhere on this path: pacing comes
+  from bus signals and natural event cadence.
+
 Useful operators for shell authors:
 
 - `map`

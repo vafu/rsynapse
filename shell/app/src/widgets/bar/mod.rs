@@ -64,7 +64,8 @@ use self::window_tile::WindowTile;
 use self::workspace_bar::{WorkspaceBar, WorkspaceBarInit};
 use self::workspaces::{WorkspaceNode, selected_workspace_windows};
 use super::{
-    OsdAudioView, OsdBrightnessView, OsdInit, OsdInput, OsdWindow, has_notification_items,
+    ApprovalOverlay, ApprovalOverlayInit, ApprovalOverlayInput, OsdAudioView, OsdBrightnessView,
+    OsdInit, OsdInput, OsdWindow, focused_output_name, has_notification_items,
 };
 use crate::{hints, request};
 
@@ -150,6 +151,8 @@ pub struct MainBar {
     _osd: Option<AsyncController<OsdWindow>>,
     _request_server: Option<request::RequestServer>,
     _workspace_bar: Option<Controller<WorkspaceBar>>,
+    _approval_overlay: Option<Controller<ApprovalOverlay>>,
+    _approval_output_applied: Option<String>,
     _child_bars: Vec<SecondaryBar>,
     _monitor_list: Option<gtk::gio::ListModel>,
     _audio_osd_ready: bool,
@@ -200,6 +203,9 @@ pub struct MainBar {
 
     #[source(source_error_items())]
     source_error_items: Vec<SourceError>,
+
+    #[source(focused_output_name())]
+    approval_output: Option<String>,
 }
 
 #[shell_macros::component(model = MainBar)]
@@ -270,7 +276,7 @@ impl SimpleAsyncComponent for MainBar {
 
                     gtk::Box {
                         #[watch]
-                        set_css_classes: selected_project::classes(&model.selected_project),
+                        set_css_classes: &selected_project::classes(&model.selected_project),
                         #[watch]
                         set_visible: selected_project::visible(&model.selected_project),
                         #[watch]
@@ -344,7 +350,65 @@ impl SimpleAsyncComponent for MainBar {
                                     set_xalign: 0.0,
                                     #[watch]
                                     set_label: selected_project::branch_label(&model.selected_project),
-                                }
+                                },
+
+                                gtk::Label {
+                                    add_css_class: "selected-project-git-icon",
+                                    add_css_class: "nerdicon",
+                                    set_halign: gtk::Align::Center,
+                                    set_valign: gtk::Align::Center,
+                                    #[watch]
+                                    set_visible: selected_project::git_part_visible(&model.selected_project, selected_project::GitPart::Dirty),
+                                    set_label: selected_project::git_part_icon(selected_project::GitPart::Dirty),
+                                },
+
+                                gtk::Label {
+                                    add_css_class: "selected-project-git-icon",
+                                    add_css_class: "nerdicon",
+                                    set_halign: gtk::Align::Center,
+                                    set_valign: gtk::Align::Center,
+                                    #[watch]
+                                    set_visible: selected_project::git_part_visible(&model.selected_project, selected_project::GitPart::Untracked),
+                                    set_label: selected_project::git_part_icon(selected_project::GitPart::Untracked),
+                                },
+
+                                gtk::Label {
+                                    add_css_class: "selected-project-git-icon",
+                                    set_halign: gtk::Align::Center,
+                                    set_valign: gtk::Align::Center,
+                                    #[watch]
+                                    set_visible: selected_project::git_part_visible(&model.selected_project, selected_project::GitPart::Ahead),
+                                    set_label: selected_project::git_part_icon(selected_project::GitPart::Ahead),
+                                },
+
+                                gtk::Label {
+                                    add_css_class: "selected-project-git-icon",
+                                    set_halign: gtk::Align::Center,
+                                    set_valign: gtk::Align::Center,
+                                    #[watch]
+                                    set_visible: selected_project::git_part_visible(&model.selected_project, selected_project::GitPart::Behind),
+                                    set_label: selected_project::git_part_icon(selected_project::GitPart::Behind),
+                                },
+
+                                gtk::Label {
+                                    add_css_class: "selected-project-git-icon",
+                                    add_css_class: "nerdicon",
+                                    set_halign: gtk::Align::Center,
+                                    set_valign: gtk::Align::Center,
+                                    #[watch]
+                                    set_visible: selected_project::git_part_visible(&model.selected_project, selected_project::GitPart::Merging),
+                                    set_label: selected_project::git_part_icon(selected_project::GitPart::Merging),
+                                },
+
+                                gtk::Label {
+                                    add_css_class: "selected-project-git-icon",
+                                    add_css_class: "nerdicon",
+                                    set_halign: gtk::Align::Center,
+                                    set_valign: gtk::Align::Center,
+                                    #[watch]
+                                    set_visible: selected_project::git_part_visible(&model.selected_project, selected_project::GitPart::Rebasing),
+                                    set_label: selected_project::git_part_icon(selected_project::GitPart::Rebasing),
+                                },
                             }
                         },
 
@@ -1030,6 +1094,11 @@ impl SimpleAsyncComponent for MainBar {
             monitor.clone(),
             output_name.clone(),
         );
+        let approval_overlay = if init.primary {
+            launch_approval_overlay("Rsynapse Approvals", monitor.clone())
+        } else {
+            None
+        };
         let child_bars = if init.primary {
             launch_secondary_bars(init.title, monitors.into_iter().skip(1))
         } else {
@@ -1045,6 +1114,8 @@ impl SimpleAsyncComponent for MainBar {
             osd,
             request_server,
             workspace_bar,
+            approval_overlay,
+            None,
             child_bars,
             monitor_list,
             false,
@@ -1201,6 +1272,7 @@ impl SimpleAsyncComponent for MainBar {
                 MainBar::update(self, msg);
                 self.maybe_show_audio_osd(previous_audio);
                 self.maybe_show_brightness_osd(previous_brightness);
+                self.follow_focused_output();
             }
             MainBarInput::Media(action) => launch_playerctl(action, &self.mpris.playerctl_name),
             MainBarInput::ToggleBluetooth => bluetooth::toggle_power(&self.bluetooth.status),
@@ -1209,7 +1281,7 @@ impl SimpleAsyncComponent for MainBar {
             }
             MainBarInput::MonitorsChanged => self.reconcile_secondary_bars(),
             MainBarInput::ToggleNotificationCenter => request_notification_center_toggle(),
-            MainBarInput::Request(request) => handle_request(request),
+            MainBarInput::Request(request) => self.handle_request(request),
         }
     }
 
@@ -1226,6 +1298,31 @@ impl SimpleAsyncComponent for MainBar {
 }
 
 impl MainBar {
+    /// Moves the approval overlay to the focused output, mirroring the AGS
+    /// active-monitor approval window. Secondary bars own no overlay, so
+    /// this only ever acts on the primary bar.
+    fn follow_focused_output(&mut self) {
+        let Some(overlay) = self._approval_overlay.as_ref() else {
+            return;
+        };
+        if self._approval_output_applied == self.approval_output {
+            return;
+        }
+        self._approval_output_applied = self.approval_output.clone();
+        let Some(wanted) = self.approval_output.clone() else {
+            return;
+        };
+        let monitors = available_monitors();
+        let monitor = monitors
+            .iter()
+            .find(|monitor| monitor_output_name(Some(monitor)).as_deref() == Some(&wanted))
+            .cloned()
+            .or_else(|| monitors.first().cloned());
+        if let Some(monitor) = monitor {
+            overlay.widget().set_monitor(Some(&monitor));
+        }
+    }
+
     fn maybe_show_audio_osd(&mut self, previous_audio: AudioView) {
         if self.audio == previous_audio {
             return;
@@ -1311,17 +1408,41 @@ fn main_bar_input_name(msg: &MainBarInput) -> &'static str {
     }
 }
 
-fn handle_request(request: request::PendingRequest) {
-    let response = match request.request {
-        request::ShellRequest::Hints(action) => {
-            hints::apply(action);
-            request::RequestResponse::Ok
+impl MainBar {
+    fn handle_request(&self, request: request::PendingRequest) {
+        let response = match request.request {
+            request::ShellRequest::Hints(action) => {
+                hints::apply(action);
+                request::RequestResponse::Ok
+            }
+            request::ShellRequest::Notifications(_) => request::RequestResponse::Error(
+                "notification requests are handled by rsynapse-notifications".to_owned(),
+            ),
+            request::ShellRequest::Approvals(action) => self.handle_approvals_request(action),
+        };
+        request.respond(response);
+    }
+
+    fn handle_approvals_request(
+        &self,
+        action: request::ApprovalsAction,
+    ) -> request::RequestResponse {
+        let Some(overlay) = self._approval_overlay.as_ref() else {
+            return request::RequestResponse::Error("approval overlay is not running".to_owned());
+        };
+        match action {
+            request::ApprovalsAction::Set(true) => {
+                overlay.sender().emit(ApprovalOverlayInput::Show);
+            }
+            request::ApprovalsAction::Set(false) => {
+                overlay.sender().emit(ApprovalOverlayInput::Hide);
+            }
+            request::ApprovalsAction::Toggle => {
+                overlay.sender().emit(ApprovalOverlayInput::Toggle);
+            }
         }
-        request::ShellRequest::Notifications(_) => request::RequestResponse::Error(
-            "notification requests are handled by rsynapse-notifications".to_owned(),
-        ),
-    };
-    request.respond(response);
+        request::RequestResponse::Ok
+    }
 }
 
 fn request_notification_center_toggle() {
@@ -1347,6 +1468,19 @@ fn available_monitors() -> Vec<gtk::gdk::Monitor> {
         .filter_map(|index| monitors.item(index))
         .filter_map(|item| item.downcast::<gtk::gdk::Monitor>().ok())
         .collect()
+}
+
+fn launch_approval_overlay(
+    title: &'static str,
+    monitor: Option<gtk::gdk::Monitor>,
+) -> Option<Controller<ApprovalOverlay>> {
+    let builder = ApprovalOverlay::builder();
+    let root = builder.root.clone();
+    relm4::main_application().add_window(&root);
+    let controller = builder
+        .launch(ApprovalOverlayInit { title, monitor })
+        .detach();
+    Some(controller)
 }
 
 fn launch_workspace_bar(

@@ -8,8 +8,8 @@ use zbus::{
 
 use super::super::{Agent, State};
 use super::actual::{
-    AgentSeenState, agent_icon, agent_with_seen_state, find_agent_session_by_window_id,
-    session_state,
+    AgentSeenState, agent_icon, agent_with_seen_state, count_subagents,
+    find_agent_session_by_window_id, session_state,
 };
 
 #[test]
@@ -126,6 +126,7 @@ fn make_agent(state: State) -> Agent {
         attention: false,
         state,
         unseen: false,
+        subagents: 0,
     }
 }
 
@@ -137,6 +138,45 @@ fn session_object(path: &str, window_id: &str) -> DbusObject {
             properties: vec![DbusPropertyValue {
                 name: "WindowId".to_owned(),
                 value: Arc::new(OwnedValue::try_from(Value::from(window_id)).unwrap()),
+            }],
+        }],
+    }
+}
+
+#[test]
+fn counts_live_subagents_for_parent_session() {
+    let objects = vec![
+        subagent_object("/io/github/AgentDBus/sessions/codex/ses_sub1", "ses_parent"),
+        subagent_object("/io/github/AgentDBus/sessions/codex/ses_sub2", "ses_parent"),
+        subagent_object(
+            "/io/github/AgentDBus/sessions/codex/ses_other",
+            "ses_someone_else",
+        ),
+    ];
+
+    assert_eq!(count_subagents(&objects, "ses_parent"), 2);
+    assert_eq!(count_subagents(&objects, "ses_someone_else"), 1);
+    assert_eq!(count_subagents(&objects, "ses_missing"), 0);
+}
+
+#[test]
+fn never_matches_an_empty_parent_session() {
+    let objects = vec![subagent_object(
+        "/io/github/AgentDBus/sessions/codex/ses_orphan",
+        "",
+    )];
+
+    assert_eq!(count_subagents(&objects, ""), 0);
+}
+
+fn subagent_object(path: &str, parent_session_id: &str) -> DbusObject {
+    DbusObject {
+        path: OwnedObjectPath::try_from(path).unwrap(),
+        interfaces: vec![DbusInterface {
+            name: OwnedInterfaceName::try_from("io.github.AgentDBus1.Session").unwrap(),
+            properties: vec![DbusPropertyValue {
+                name: "ParentSessionId".to_owned(),
+                value: Arc::new(OwnedValue::try_from(Value::from(parent_session_id)).unwrap()),
             }],
         }],
     }

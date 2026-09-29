@@ -274,11 +274,12 @@ impl NotificationsWindow {
                 };
                 request::RequestResponse::Ok
             }
-            request::ShellRequest::Hints(_) => {
-                request::RequestResponse::Error(
-                    "shell requests are handled by rsynapse-shell".to_owned(),
-                )
-            }
+            request::ShellRequest::Hints(_) => request::RequestResponse::Error(
+                "shell requests are handled by rsynapse-shell".to_owned(),
+            ),
+            request::ShellRequest::Approvals(_) => request::RequestResponse::Error(
+                "approval requests are handled by rsynapse-shell".to_owned(),
+            ),
         };
         request.respond(response);
     }

@@ -237,6 +237,10 @@ struct ShareReplayState<T> {
     version: u64,
     connecting: bool,
     connection: Option<BoxedSubscriptionSend>,
+    /// Consecutive upstream failures without an intervening value. Bounds
+    /// reconnect recursion when a factory fails synchronously on every
+    /// attempt; reset by any broadcast value.
+    error_restarts: u32,
 }
 
 impl<T> Default for ShareReplayState<T> {
@@ -248,6 +252,7 @@ impl<T> Default for ShareReplayState<T> {
             version: 0,
             connecting: false,
             connection: None,
+            error_restarts: 0,
         }
     }
 }
@@ -256,6 +261,12 @@ struct ShareReplaySubscriber<T> {
     id: usize,
     observer: BoxedObserverSend<'static, T, String>,
 }
+
+/// Consecutive upstream failures tolerated before a shared source gives up
+/// and terminates live subscribers. Bounds reconnect recursion when a
+/// factory fails synchronously on every attempt; any broadcast value resets
+/// the count, so flapping services recover indefinitely.
+const MAX_UPSTREAM_RESTARTS: u32 = 8;
 
 impl<T> ShareReplayState<T> {
     fn add_observer(&mut self, observer: BoxedObserverSend<'static, T, String>) -> usize {
@@ -292,6 +303,7 @@ impl<T> ShareReplayState<T> {
         T: Clone,
     {
         self.version = self.version.wrapping_add(1);
+        self.error_restarts = 0;
         self.latest = Some(value.clone());
 
         let last_index = self.observers.len().saturating_sub(1);
@@ -304,7 +316,27 @@ impl<T> ShareReplayState<T> {
         }
     }
 
-    fn broadcast_error(&mut self, error: String) {
+    /// Records an upstream failure without terminating live subscribers.
+    ///
+    /// Standard policy: errors are reported (through the error outlet by
+    /// `log_errors` wrappers, plus a journal warning here) while subscribers
+    /// keep the last good value; recovery arrives as ordinary new values.
+    /// Returns true when the hub should reconnect upstream now.
+    fn note_upstream_error(&mut self, error: &str) -> bool {
+        if self.error_restarts >= MAX_UPSTREAM_RESTARTS {
+            return false;
+        }
+        self.error_restarts += 1;
+        self.connecting = false;
+        self.connection.take();
+        tracing::warn!(reconnect_attempt = self.error_restarts, "{error}");
+        true
+    }
+
+    /// Forwards a terminal error to live subscribers, dropping the replay
+    /// cache. Last resort for failures that must stay loud (for example a
+    /// factory failing synchronously past the restart bound).
+    fn terminate_observers(&mut self, error: String) {
         self.reset_connection();
 
         let mut observers = std::mem::take(&mut self.observers);
@@ -390,6 +422,7 @@ where
             let observer = ShareReplayObserver {
                 label: self.hub.label.clone(),
                 state: self.hub.state.clone(),
+                hub: self.hub.clone(),
             };
             Some((self.hub.create)().subscribe_with(observer).into_boxed())
         } else {
@@ -419,9 +452,48 @@ where
     }
 }
 
+impl<T> ShareReplayHub<T>
+where
+    T: Clone + Send + 'static,
+{
+    /// Reconnects upstream after a non-fatal failure, keeping live
+    /// subscribers and the replay cache. Mirrors the connect block in the
+    /// `CoreObservable` impl: at most one upstream connection exists, and a
+    /// connection with no remaining observers is dropped immediately.
+    fn restart_upstream(self: &Arc<Self>) {
+        {
+            let mut state = self.state.lock().expect("share replay state lock poisoned");
+            if state.observer_count() == 0 || state.connection.is_some() {
+                return;
+            }
+            state.connecting = true;
+        }
+
+        trace_source_lifecycle("reconnect", &self.label);
+        let observer = ShareReplayObserver {
+            label: self.label.clone(),
+            state: self.state.clone(),
+            hub: Arc::clone(self),
+        };
+        let connection: BoxedSubscriptionSend =
+            (self.create)().subscribe_with(observer).into_boxed();
+
+        {
+            let mut state = self.state.lock().expect("share replay state lock poisoned");
+            state.connecting = false;
+            if state.observer_count() == 0 {
+                connection.unsubscribe();
+            } else {
+                state.connection = Some(connection);
+            }
+        }
+    }
+}
+
 struct ShareReplayObserver<T> {
     label: String,
     state: Arc<Mutex<ShareReplayState<T>>>,
+    hub: Arc<ShareReplayHub<T>>,
 }
 
 impl<T> Observer<T, String> for ShareReplayObserver<T>
@@ -438,8 +510,18 @@ where
     }
 
     fn error(self, error: String) {
+        let restart = {
+            let Ok(mut state) = self.state.lock() else {
+                return;
+            };
+            state.note_upstream_error(&error)
+        };
+        if restart {
+            self.hub.restart_upstream();
+            return;
+        }
         if let Ok(mut state) = self.state.lock() {
-            state.broadcast_error(error);
+            state.terminate_observers(error);
         }
     }
 
@@ -582,7 +664,7 @@ fn source_error_state() -> &'static SourceErrorState {
     })
 }
 
-fn record_source_error(source: &'static str, path: &Path, message: &str) {
+pub(crate) fn record_source_error(source: &'static str, path: &Path, message: &str) {
     let state = source_error_state();
     let total = state.total.fetch_add(1, Ordering::SeqCst) + 1;
     let snapshot = {
@@ -695,6 +777,7 @@ mod tests {
             version: 0,
             connecting: false,
             connection: Some(upstream_subscription.clone().into_boxed()),
+            error_restarts: 0,
         };
         let observer_id = state.add_observer(IgnoreI32.into_boxed());
         let state = Arc::new(std::sync::Mutex::new(state));
@@ -726,6 +809,7 @@ mod tests {
             version: 0,
             connecting: false,
             connection: Some(upstream_subscription.clone().into_boxed()),
+            error_restarts: 0,
         };
         let observer_id = state.add_observer(IgnoreI32.into_boxed());
         state.add_observer(IgnoreI32.into_boxed());
@@ -945,5 +1029,90 @@ mod tests {
 
             assert_eq!(drop_count.load(Ordering::SeqCst), 1);
         });
+    }
+
+    #[test]
+    fn upstream_error_restart_bound_falls_back_to_terminal() {
+        let mut state = ShareReplayState {
+            latest: Some(1),
+            observers: Vec::new(),
+            next_observer_id: 0,
+            version: 0,
+            connecting: false,
+            connection: None,
+            error_restarts: 0,
+        };
+
+        for _ in 0..8 {
+            assert!(state.note_upstream_error("boom"));
+        }
+        assert!(!state.note_upstream_error("boom"));
+
+        // The last good value is preserved throughout for late subscribers.
+        assert_eq!(state.latest, Some(1));
+    }
+
+    #[test]
+    fn shared_source_recovers_for_live_subscribers_after_upstream_error() {
+        let create_count = Arc::new(AtomicUsize::new(0));
+        let first_subject = Shared::subject::<u32, String>();
+        let second_subject = Shared::subject::<u32, String>();
+        let values = Arc::new(Mutex::new(Vec::new()));
+        let terminal = Arc::new(Mutex::new(None));
+
+        let source = shared_by_key("test-hub-restart", "same", {
+            let create_count = create_count.clone();
+            let first_subject = first_subject.clone();
+            let second_subject = second_subject.clone();
+            move || {
+                let attempt = create_count.fetch_add(1, Ordering::SeqCst);
+                if attempt == 0 {
+                    first_subject.clone().box_it()
+                } else {
+                    second_subject.clone().box_it()
+                }
+            }
+        });
+        let _subscription = source.subscribe_with(RecordU32 {
+            values: values.clone(),
+            terminal: terminal.clone(),
+        });
+
+        first_subject.clone().next(7);
+        assert_eq!(values.lock().unwrap().as_slice(), &[7]);
+
+        // The failing upstream reconnects instead of terminating subscribers.
+        first_subject.clone().error("boom".to_owned());
+        assert_eq!(create_count.load(Ordering::SeqCst), 2);
+        assert!(terminal.lock().unwrap().is_none());
+        assert_eq!(values.lock().unwrap().as_slice(), &[7]);
+
+        // Recovery arrives as ordinary new values on the same subscription.
+        second_subject.clone().next(8);
+        assert_eq!(values.lock().unwrap().as_slice(), &[7, 8]);
+        assert!(terminal.lock().unwrap().is_none());
+    }
+
+    struct RecordU32 {
+        values: Arc<Mutex<Vec<u32>>>,
+        terminal: Arc<Mutex<Option<String>>>,
+    }
+
+    impl Observer<u32, String> for RecordU32 {
+        fn next(&mut self, value: u32) {
+            self.values.lock().unwrap().push(value);
+        }
+
+        fn error(self, error: String) {
+            *self.terminal.lock().unwrap() = Some(format!("error:{error}"));
+        }
+
+        fn complete(self) {
+            *self.terminal.lock().unwrap() = Some("complete".to_owned());
+        }
+
+        fn is_closed(&self) -> bool {
+            false
+        }
     }
 }

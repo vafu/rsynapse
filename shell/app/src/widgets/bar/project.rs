@@ -17,6 +17,7 @@ pub(in crate::widgets::bar) struct ProjectDetails {
     pub(in crate::widgets::bar) display_secondary: Option<String>,
     pub(in crate::widgets::bar) branch: Option<String>,
     pub(in crate::widgets::bar) cwd_label: Option<String>,
+    pub(in crate::widgets::bar) path: Option<String>,
 }
 
 pub(in crate::widgets::bar) fn project_details(
@@ -192,6 +193,7 @@ impl From<RelationRecord> for ProjectDetails {
             display_secondary: metadata_value(&record.metadata, &["display-secondary"]),
             branch: metadata_value(&record.metadata, &["branch"]),
             cwd_label,
+            path,
         }
     }
 }
