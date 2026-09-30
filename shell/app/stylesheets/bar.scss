@@ -146,6 +146,12 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
     padding: 0 4px;
   }
 
+  .selected-project-branch-button {
+    min-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+
   .selected-project-git-icon {
     font-size: 1em;
   }
@@ -753,3 +759,5 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
     background-color: #{$sys_danger};
   }
 }
+
+

@@ -64,8 +64,7 @@ use self::window_tile::WindowTile;
 use self::workspace_bar::{WorkspaceBar, WorkspaceBarInit};
 use self::workspaces::{WorkspaceNode, selected_workspace_windows};
 use super::{
-    ApprovalOverlay, ApprovalOverlayInit, ApprovalOverlayInput, OsdAudioView, OsdBrightnessView,
-    OsdInit, OsdInput, OsdWindow, focused_output_name, has_notification_items,
+    OsdAudioView, OsdBrightnessView, OsdInit, OsdInput, OsdWindow, has_notification_items,
 };
 use crate::{hints, request};
 
@@ -124,6 +123,7 @@ pub enum MainBarInput {
     ToggleBluetooth,
     CyclePowerProfile,
     ToggleNotificationCenter,
+    CopyBranch,
     MonitorsChanged,
     Request(request::PendingRequest),
 }
@@ -151,8 +151,6 @@ pub struct MainBar {
     _osd: Option<AsyncController<OsdWindow>>,
     _request_server: Option<request::RequestServer>,
     _workspace_bar: Option<Controller<WorkspaceBar>>,
-    _approval_overlay: Option<Controller<ApprovalOverlay>>,
-    _approval_output_applied: Option<String>,
     _child_bars: Vec<SecondaryBar>,
     _monitor_list: Option<gtk::gio::ListModel>,
     _audio_osd_ready: bool,
@@ -203,9 +201,6 @@ pub struct MainBar {
 
     #[source(source_error_items())]
     source_error_items: Vec<SourceError>,
-
-    #[source(focused_output_name())]
-    approval_output: Option<String>,
 }
 
 #[shell_macros::component(model = MainBar)]
@@ -1094,11 +1089,6 @@ impl SimpleAsyncComponent for MainBar {
             monitor.clone(),
             output_name.clone(),
         );
-        let approval_overlay = if init.primary {
-            launch_approval_overlay("Rsynapse Approvals", monitor.clone())
-        } else {
-            None
-        };
         let child_bars = if init.primary {
             launch_secondary_bars(init.title, monitors.into_iter().skip(1))
         } else {
@@ -1114,8 +1104,6 @@ impl SimpleAsyncComponent for MainBar {
             osd,
             request_server,
             workspace_bar,
-            approval_overlay,
-            None,
             child_bars,
             monitor_list,
             false,
@@ -1131,12 +1119,9 @@ impl SimpleAsyncComponent for MainBar {
 
         let widgets = view_output!();
 
-        let branch_label = widgets.branch_copy_label.clone();
-        widgets.branch_copy_button.connect_clicked(move |button| {
-            let branch = branch_label.text();
-            if let Some(branch) = selected_project::branch_for_clipboard(Some(branch.as_str())) {
-                button.display().clipboard().set_text(branch);
-            }
+        let input_sender = sender.input_sender().clone();
+        widgets.branch_copy_button.connect_clicked(move |_| {
+            input_sender.emit(MainBarInput::CopyBranch);
         });
         let input_sender = sender.input_sender().clone();
         widgets.clock_button.connect_clicked(move |_| {
@@ -1272,7 +1257,6 @@ impl SimpleAsyncComponent for MainBar {
                 MainBar::update(self, msg);
                 self.maybe_show_audio_osd(previous_audio);
                 self.maybe_show_brightness_osd(previous_brightness);
-                self.follow_focused_output();
             }
             MainBarInput::Media(action) => launch_playerctl(action, &self.mpris.playerctl_name),
             MainBarInput::ToggleBluetooth => bluetooth::toggle_power(&self.bluetooth.status),
@@ -1281,6 +1265,13 @@ impl SimpleAsyncComponent for MainBar {
             }
             MainBarInput::MonitorsChanged => self.reconcile_secondary_bars(),
             MainBarInput::ToggleNotificationCenter => request_notification_center_toggle(),
+            MainBarInput::CopyBranch => {
+                if let Some(branch) = selected_project::branch_for_clipboard(
+                    self.selected_project.branch_full.as_deref(),
+                ) {
+                    copy_branch_to_clipboard(branch.to_owned());
+                }
+            }
             MainBarInput::Request(request) => self.handle_request(request),
         }
     }
@@ -1298,31 +1289,6 @@ impl SimpleAsyncComponent for MainBar {
 }
 
 impl MainBar {
-    /// Moves the approval overlay to the focused output, mirroring the AGS
-    /// active-monitor approval window. Secondary bars own no overlay, so
-    /// this only ever acts on the primary bar.
-    fn follow_focused_output(&mut self) {
-        let Some(overlay) = self._approval_overlay.as_ref() else {
-            return;
-        };
-        if self._approval_output_applied == self.approval_output {
-            return;
-        }
-        self._approval_output_applied = self.approval_output.clone();
-        let Some(wanted) = self.approval_output.clone() else {
-            return;
-        };
-        let monitors = available_monitors();
-        let monitor = monitors
-            .iter()
-            .find(|monitor| monitor_output_name(Some(monitor)).as_deref() == Some(&wanted))
-            .cloned()
-            .or_else(|| monitors.first().cloned());
-        if let Some(monitor) = monitor {
-            overlay.widget().set_monitor(Some(&monitor));
-        }
-    }
-
     fn maybe_show_audio_osd(&mut self, previous_audio: AudioView) {
         if self.audio == previous_audio {
             return;
@@ -1403,6 +1369,7 @@ fn main_bar_input_name(msg: &MainBarInput) -> &'static str {
         MainBarInput::ToggleBluetooth => "toggle-bluetooth",
         MainBarInput::CyclePowerProfile => "cycle-power-profile",
         MainBarInput::ToggleNotificationCenter => "toggle-notification-center",
+        MainBarInput::CopyBranch => "copy-branch",
         MainBarInput::MonitorsChanged => "monitors_changed",
         MainBarInput::Request(_) => "request",
     }
@@ -1418,30 +1385,8 @@ impl MainBar {
             request::ShellRequest::Notifications(_) => request::RequestResponse::Error(
                 "notification requests are handled by rsynapse-notifications".to_owned(),
             ),
-            request::ShellRequest::Approvals(action) => self.handle_approvals_request(action),
         };
         request.respond(response);
-    }
-
-    fn handle_approvals_request(
-        &self,
-        action: request::ApprovalsAction,
-    ) -> request::RequestResponse {
-        let Some(overlay) = self._approval_overlay.as_ref() else {
-            return request::RequestResponse::Error("approval overlay is not running".to_owned());
-        };
-        match action {
-            request::ApprovalsAction::Set(true) => {
-                overlay.sender().emit(ApprovalOverlayInput::Show);
-            }
-            request::ApprovalsAction::Set(false) => {
-                overlay.sender().emit(ApprovalOverlayInput::Hide);
-            }
-            request::ApprovalsAction::Toggle => {
-                overlay.sender().emit(ApprovalOverlayInput::Toggle);
-            }
-        }
-        request::RequestResponse::Ok
     }
 }
 
@@ -1459,6 +1404,43 @@ fn request_notification_center_toggle() {
     });
 }
 
+fn copy_branch_to_clipboard(branch: String) {
+    // The GDK clipboard offer demonstrably never lands from this
+    // layer-shell surface (clicks arrive, set_text is a silent no-op),
+    // while wl-copy round-trips fine in the same session. Shell out
+    // instead, covering both clipboard and primary selections.
+    thread::spawn(move || {
+        for primary in [false, true] {
+            let mut command = std::process::Command::new("wl-copy");
+            if primary {
+                command.arg("--primary");
+            }
+            let result = command
+                .stdin(std::process::Stdio::piped())
+                .spawn()
+                .and_then(|mut child| {
+                    use std::io::Write;
+                    child
+                        .stdin
+                        .as_mut()
+                        .ok_or_else(|| {
+                            std::io::Error::new(std::io::ErrorKind::BrokenPipe, "no stdin")
+                        })
+                        .and_then(|stdin| stdin.write_all(branch.as_bytes()))
+                        .map(|_| child)
+                });
+            match result {
+                Ok(mut child) => {
+                    let _ = child.wait();
+                }
+                Err(error) => {
+                    eprintln!("[branch-copy] wl-copy failed (primary={primary}): {error}");
+                }
+            }
+        }
+    });
+}
+
 fn available_monitors() -> Vec<gtk::gdk::Monitor> {
     let Some(display) = gtk::gdk::Display::default() else {
         return Vec::new();
@@ -1468,19 +1450,6 @@ fn available_monitors() -> Vec<gtk::gdk::Monitor> {
         .filter_map(|index| monitors.item(index))
         .filter_map(|item| item.downcast::<gtk::gdk::Monitor>().ok())
         .collect()
-}
-
-fn launch_approval_overlay(
-    title: &'static str,
-    monitor: Option<gtk::gdk::Monitor>,
-) -> Option<Controller<ApprovalOverlay>> {
-    let builder = ApprovalOverlay::builder();
-    let root = builder.root.clone();
-    relm4::main_application().add_window(&root);
-    let controller = builder
-        .launch(ApprovalOverlayInit { title, monitor })
-        .detach();
-    Some(controller)
 }
 
 fn launch_workspace_bar(

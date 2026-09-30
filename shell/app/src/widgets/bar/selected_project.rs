@@ -16,6 +16,7 @@ pub(super) struct SelectedProjectView {
     pub(super) visible: bool,
     pub(super) title: String,
     pub(super) branch: Option<String>,
+    pub(super) branch_full: Option<String>,
     pub(super) git: Option<GitStatus>,
 }
 
@@ -56,7 +57,9 @@ fn selected_project_view(project: ProjectDetails, git: Option<GitStatus>) -> Sel
         .and_then(non_empty)
         .map(str::to_owned)
         .unwrap_or_default();
-    let branch = optional_text(project.branch)
+    let branch_full = optional_text(project.branch);
+    let branch = branch_full
+        .clone()
         .map(|branch| display_branch(branch, &title))
         .filter(|branch| distinct_from(branch, &title));
     let visible = non_empty(&title).is_some();
@@ -65,6 +68,7 @@ fn selected_project_view(project: ProjectDetails, git: Option<GitStatus>) -> Sel
         visible,
         title,
         branch,
+        branch_full,
         git,
     }
 }
