@@ -1,5 +1,5 @@
 use super::git::GitStatus;
-use super::{GitPart, git_visible, selected_project_view};
+use super::{GitPart, git_loading, git_visible, selected_project_view};
 use crate::widgets::bar::project::ProjectDetails;
 
 #[test]
@@ -38,6 +38,23 @@ fn selected_project_uses_root_cwd_name_without_relative_cwd() {
         view.branch.as_deref(),
         Some("vafu/coroutines/rescue-scheduler")
     );
+}
+
+#[test]
+fn selected_project_spins_while_git_resolves() {
+    let loading = selected_project_view(split_project(), None);
+
+    assert!(loading.visible);
+    assert!(git_loading(&loading));
+}
+
+#[test]
+fn selected_project_stops_spinning_once_git_resolves() {
+    let resolved = selected_project_view(split_project(), Some(GitStatus::default()));
+    let empty = selected_project_view(ProjectDetails::default(), None);
+
+    assert!(!git_loading(&resolved));
+    assert!(!git_loading(&empty));
 }
 
 #[test]

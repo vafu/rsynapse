@@ -404,6 +404,16 @@ impl SimpleAsyncComponent for MainBar {
                                     set_visible: selected_project::git_part_visible(&model.selected_project, selected_project::GitPart::Rebasing),
                                     set_label: selected_project::git_part_icon(selected_project::GitPart::Rebasing),
                                 },
+
+                                gtk::Spinner {
+                                    add_css_class: "selected-project-git-spinner",
+                                    set_halign: gtk::Align::Center,
+                                    set_valign: gtk::Align::Center,
+                                    #[watch]
+                                    set_visible: selected_project::git_loading(&model.selected_project),
+                                    #[watch]
+                                    set_spinning: selected_project::git_loading(&model.selected_project),
+                                },
                             }
                         },
 

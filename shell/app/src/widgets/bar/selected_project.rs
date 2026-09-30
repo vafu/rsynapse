@@ -35,10 +35,17 @@ pub(super) fn selected_project_status(
 fn selected_workspace_project_status(workspace: NiriWorkspace) -> Observable<SelectedProjectView> {
     source::switch_map(project_details(workspace), |project| {
         match project.path.clone() {
-            Some(path) => git_status(path)
-                .map(move |git| selected_project_view(project.clone(), Some(git)))
-                .distinct_until_changed()
-                .box_it(),
+            // Paint the locus-derived view immediately; git metadata
+            // resolves off-thread and fills in when ready instead of
+            // holding the title and branch hostage.
+            Some(path) => {
+                let immediate = selected_project_view(project.clone(), None);
+                git_status(path)
+                    .map(move |git| selected_project_view(project.clone(), Some(git)))
+                    .start_with(vec![immediate])
+                    .distinct_until_changed()
+                    .box_it()
+            }
             None => source::once(selected_project_view(project, None)),
         }
     })
@@ -159,6 +166,13 @@ pub(super) fn classes(view: &SelectedProjectView) -> Vec<&'static str> {
 #[allow(dead_code)]
 pub(super) fn git_visible(view: &SelectedProjectView) -> bool {
     view.git.as_ref().is_some_and(GitStatus::has_changes)
+}
+
+/// Shows a spinner while a project is known but its git metadata has not
+/// resolved yet. Workspaces without a project stay invisible via `visible`,
+/// so `None` there never spins.
+pub(super) fn git_loading(view: &SelectedProjectView) -> bool {
+    view.visible && view.git.is_none()
 }
 
 /// One fixed slot of the git status cluster. Each slot renders a single

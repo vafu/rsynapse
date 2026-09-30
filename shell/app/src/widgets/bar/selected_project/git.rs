@@ -1,9 +1,6 @@
 use std::time::Duration;
 
-use shell_core::source::{
-    self, Observable,
-    rx::{Observable as _, ObservableFactory as _, Shared},
-};
+use shell_core::source::{self, Observable, rx::Observable as _};
 
 const POLL_INTERVAL: Duration = Duration::from_secs(5);
 
@@ -29,14 +26,39 @@ pub(super) struct GitStatus {
 }
 pub(super) fn git_status(path: String) -> Observable<GitStatus> {
     source::shared_by_key("rsynapse.git-status", path.clone(), move || {
-        let initial = read_git_status(&path);
-        let tick_path = path.clone();
-        Shared::<()>::interval(POLL_INTERVAL)
-            .map(move |_| read_git_status(&tick_path))
-            .start_with(vec![initial])
-            .map_err(|error| error.to_string())
-            .distinct_until_changed()
-            .box_it()
+        let initial_path = path.clone();
+        let poll_path = path.clone();
+        // Porcelain scans take seconds on large worktrees, so every read
+        // runs on the blocking pool: the initial read and the poll ticks
+        // must never stall async runtime workers.
+        source::from_task(move |sender| {
+            let initial_path = initial_path.clone();
+            let poll_path = poll_path.clone();
+            async move {
+                let initial =
+                    tokio::task::spawn_blocking(move || read_git_status(&initial_path)).await;
+                let Ok(initial) = initial else {
+                    return;
+                };
+                if sender.send(Ok(initial)).await.is_err() {
+                    return;
+                }
+                loop {
+                    tokio::time::sleep(POLL_INTERVAL).await;
+                    let tick_path = poll_path.clone();
+                    let Ok(status) =
+                        tokio::task::spawn_blocking(move || read_git_status(&tick_path)).await
+                    else {
+                        return;
+                    };
+                    if sender.send(Ok(status)).await.is_err() {
+                        return;
+                    }
+                }
+            }
+        })
+        .distinct_until_changed()
+        .box_it()
     })
 }
 
