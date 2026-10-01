@@ -81,8 +81,7 @@ curl -s 'http://localhost:8080/render?target=rsynapse.switches.workspace&format=
 |---|---|
 | `rsynapse.focus.project.<name>.seconds` | focus seconds per locus project (10s heartbeat) |
 | `rsynapse.focus.workspace_name.<name>.seconds` | same, keyed by display name: merges workspaces sharing a project and survives workspace-id churn |
-| `rsynapse.focus.session.<name>.seconds` | focus seconds per inner session (`codex`, `neovim`, …) from locus app-instance relations |
-| `rsynapse.focus.app.<id>.seconds` | focus seconds per window app-id |
+| `rsynapse.focus.app.<name>.seconds` | focus seconds per canonical app: hook app-instance name (`codex`, `neovim`, …) else canonicalized AppId |
 | `rsynapse.focus.workspace.<id>.seconds` | focus seconds per niri workspace id |
 | `rsynapse.focus.output.<name>.seconds` | focus seconds per output |
 | `rsynapse.switches.workspace` | workspace-focus changes per flush |

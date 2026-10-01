@@ -110,22 +110,20 @@ fn focus_state(locus: &LocusClient) -> Observable<FocusState> {
         // Rebuilt per switch on purpose: shared hubs dedupe by descriptor
         // key, so this reuses the live upstream instead of cloning streams.
         let projects = relations::records(locus.clone(), relations::WORKSPACE_PROJECT);
-        let sessions = relations::records(locus.clone(), relations::WINDOW_APP_INSTANCE);
+        let instances = relations::records(locus.clone(), relations::WINDOW_APP_INSTANCE);
         let names = relations::records(locus.clone(), relations::WORKSPACE_NAME);
         combine_latest!(
-            resolve_app(window.clone()),
+            resolve_app(window.clone(), instances),
             resolve_output_name(output.clone()),
             project_for(projects, workspace_id(&workspace)),
-            session_for(sessions, window_id(&window)),
             explicit_name_for(names, workspace_id(&workspace))
-            => move |(app, output_name, project, session, explicit_name)| FocusState {
+            => move |(app, output_name, project, explicit_name)| FocusState {
                 workspace_id: workspace_id(&workspace),
                 // Explicit locus name wins; project display name covers
                 // project-native workspaces; otherwise id-only.
                 workspace_name: explicit_name.or(project.clone()),
                 window_id: window_id(&window),
                 app_id: app,
-                session,
                 project,
                 output: output_name,
             },
@@ -149,14 +147,26 @@ fn focused_output() -> Observable<Option<OwnedObjectPath>> {
     dbus::optional_array_property::<OwnedObjectPath>(root_property("FocusedOutput"))
 }
 
-fn resolve_app(window: Option<OwnedObjectPath>) -> Observable<Option<String>> {
+/// Canonical app identity: hook-written app-instance name first (codex,
+/// neovim, …), else the canonicalized niri AppId. One identity per window.
+fn resolve_app(
+    window: Option<OwnedObjectPath>,
+    instances: Observable<Vec<RelationRecord>>,
+) -> Observable<Option<String>> {
     let Some(path) = window else {
         return shell_source::once(None);
     };
-    dbus::optional_array_property::<String>(PropertyDescriptor::new(
+    let hook = hook_app_name(instances, window_id(&Some(path.clone())));
+    let app_id = dbus::optional_array_property::<String>(PropertyDescriptor::new(
         niri_object(path.as_str(), niri_dbus::WINDOW_INTERFACE),
         "AppId",
     ))
+    .map(|app| app.map(|app| crate::focus::canonical_app_id(&app)));
+    combine_latest!(
+        hook,
+        app_id
+        => move |(hook, app_id)| hook.or(app_id),
+    )
     .distinct_until_changed()
     .box_it()
 }
@@ -199,7 +209,7 @@ fn project_for(
         .box_it()
 }
 
-fn session_for(
+fn hook_app_name(
     records: Observable<Vec<RelationRecord>>,
     window_id: Option<u64>,
 ) -> Observable<Option<String>> {    let Some(id) = window_id else {

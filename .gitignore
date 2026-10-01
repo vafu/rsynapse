@@ -1,1 +1,3 @@
 target/
+steward/.cargo-home/*
+!steward/.cargo-home/config.toml

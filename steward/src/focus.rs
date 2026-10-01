@@ -11,9 +11,6 @@ pub struct FocusState {
     pub workspace_name: Option<String>,
     pub window_id: Option<u64>,
     pub app_id: Option<String>,
-    /// Inner session (editor, agent, …) from locus app-instance relations.
-    /// Absent for plain windows; [`Self::app_id`] still covers those.
-    pub session: Option<String>,
     pub project: Option<String>,
     pub output: Option<String>,
 }
@@ -79,12 +76,6 @@ impl Tracker {
                 elapsed,
             );
         }
-        if let Some(session) = state.session.as_deref() {
-            self.add(
-                &format!("focus.session.{}.seconds", sanitize(session)),
-                elapsed,
-            );
-        }
         if let Some(project) = state.project.as_deref() {
             self.add(&format!("focus.project.{}.seconds", sanitize(project)), elapsed);
         }
@@ -101,9 +92,36 @@ impl Tracker {
     }
 }
 
+/// Canonical app name shared by metrics buckets and bar tiles:
+/// exact aliases first, then profile-style prefixes, then the raw id.
+/// One vocabulary so producers and consumers never diverge.
+/// exact aliases first, then profile-style prefixes, then the raw id.
+/// One vocabulary so bar tiles, metrics, and dashboards never diverge.
+pub fn canonical_app_id(app_id: &str) -> String {
+    APP_ALIASES
+        .iter()
+        .find(|(from, _)| *from == app_id)
+        .map(|(_, to)| (*to).to_owned())
+        .unwrap_or_else(|| {
+            APP_PREFIXES
+                .iter()
+                .find(|(prefix, _)| app_id.starts_with(*prefix))
+                .map(|(_, to)| (*to).to_owned())
+                .unwrap_or_else(|| app_id.to_owned())
+        })
+}
+
+const APP_ALIASES: &[(&str, &str)] = &[
+    ("com.mitchellh.ghostty", "ghostty"),
+    ("org.gnome.Terminal", "terminal"),
+    ("org.wezfurlong.wezterm", "wezterm"),
+    ("google-chrome", "chrome"),
+];
+
+const APP_PREFIXES: &[(&str, &str)] = &[("chrome-", "chrome"), ("firefox-", "firefox")];
+
 /// Graphite path segments allow `[A-Za-z0-9_-]`; dots separate nodes.
-pub fn sanitize(value: &str) -> String {
-    let mut cleaned = String::with_capacity(value.len());
+pub fn sanitize(value: &str) -> String {    let mut cleaned = String::with_capacity(value.len());
     let mut last_underscore = false;
     for byte in value.bytes() {
         let ok = byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_';
@@ -133,7 +151,6 @@ mod tests {
             workspace_name: Some(project.to_owned()),
             window_id: Some(workspace * 10),
             app_id: Some(app.to_owned()),
-            session: Some("neovim".to_owned()),
             project: Some(project.to_owned()),
             output: Some("DP-2".to_owned()),
         }
@@ -153,7 +170,6 @@ mod tests {
             pending.get("focus.workspace_name.rsynapse.seconds"),
             Some(&40.0)
         );
-        assert_eq!(pending.get("focus.session.neovim.seconds"), Some(&40.0));
         assert_eq!(pending.get("focus.project.synapse.seconds"), None);
         assert_eq!(pending.get("focus.project.rsynapse.seconds"), Some(&40.0));
         assert_eq!(pending.get("focus.app.ghostty.seconds"), Some(&40.0));
@@ -196,5 +212,17 @@ mod tests {
         assert_eq!(sanitize("a  b//c"), "a_b_c");
         assert_eq!(sanitize(""), "unknown");
         assert_eq!(sanitize("..."), "unknown");
+    }
+
+    #[test]
+    fn canonical_names_collapse_known_variants() {
+        assert_eq!(canonical_app_id("com.mitchellh.ghostty"), "ghostty");
+        assert_eq!(canonical_app_id("google-chrome"), "chrome");
+        assert_eq!(
+            canonical_app_id("chrome-kjbdgfilnfhdoflbpgamdcdgpehopbep-Default"),
+            "chrome"
+        );
+        assert_eq!(canonical_app_id("firefox"), "firefox");
+        assert_eq!(canonical_app_id("slack"), "slack");
     }
 }
