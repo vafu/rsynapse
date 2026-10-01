@@ -1,0 +1,136 @@
+//! # Operators
+//!
+//! All operator implementations for transforming, filtering, and combining
+//! observable streams.
+//!
+//! ## Operator Categories
+//!
+//! ### Transformation
+//! - [`map`] - Transform each item
+//! - [`filter_map`] - Transform and filter in one step
+//! - [`scan`] - Accumulate with intermediate emissions
+//! - [`scan_map`] - Transform each item while accumulating a value
+//!
+//! ### Filtering
+//! - [`filter`] - Pass items matching a predicate
+//! - [`take`] / [`skip`] - Limit emissions
+//! - [`distinct`] - Remove duplicates
+//!
+//! ### Combination
+//! - [`merge`] - Interleave multiple streams
+//! - [`zip`] - Pair items from multiple streams
+//! - [`combine_latest`] - Combine latest values
+//!
+//! ### Timing
+//! - [`debounce`] - Emit after quiet period
+//! - [`throttle`] - Rate limit emissions
+//! - [`delay`] - Shift emissions in time
+//!
+//! For interactive marble diagrams, see [ReactiveX.io](http://reactivex.io/documentation/operators.html).
+//! For Rust-specific usage, see the [Operators Guide](https://rxrust.github.io/rxRust/operators.html).
+
+pub mod average;
+pub mod box_it;
+pub mod buffer;
+pub mod buffer_count;
+pub mod buffer_time;
+pub mod collect;
+pub mod combine_latest;
+pub mod contains;
+pub mod debounce;
+pub mod default_if_empty;
+pub mod delay;
+pub mod distinct;
+pub mod distinct_until_changed;
+pub mod filter;
+pub mod filter_map;
+pub mod finalize;
+pub mod flat_map;
+pub mod group_by;
+pub mod into_future;
+pub mod into_stream;
+pub mod last;
+pub mod lifecycle;
+pub mod map;
+pub mod map_err;
+pub mod map_to;
+pub mod merge;
+pub mod merge_all;
+pub mod observe_on;
+pub mod pairwise;
+pub mod reduce;
+pub mod ref_count;
+pub mod retry;
+pub mod sample;
+pub mod scan;
+pub mod scan_map;
+pub mod skip;
+pub mod skip_last;
+pub mod skip_until;
+pub mod skip_while;
+pub mod start_with;
+pub mod subscribe_on;
+pub mod switch_map;
+pub mod take;
+pub mod take_last;
+pub mod take_until;
+pub mod take_while;
+pub mod tap;
+pub mod throttle;
+pub mod with_latest_from;
+pub mod zip;
+
+// Re-exports
+pub use average::*;
+pub use box_it::*;
+pub use buffer::*;
+pub use buffer_count::*;
+pub use buffer_time::*;
+pub use collect::*;
+pub use combine_latest::*;
+pub use contains::*;
+pub use debounce::*;
+pub use default_if_empty::*;
+pub use delay::*;
+pub use distinct::*;
+pub use distinct_until_changed::*;
+pub use filter::*;
+pub use filter_map::*;
+pub use finalize::*;
+pub use flat_map::*;
+pub use group_by::*;
+pub use into_future::*;
+pub use into_stream::*;
+pub use last::*;
+pub use lifecycle::*;
+pub use map::*;
+pub use map_err::*;
+pub use map_to::*;
+pub use merge::*;
+pub use merge_all::*;
+pub use observe_on::*;
+pub use pairwise::*;
+pub use reduce::*;
+pub use ref_count::*;
+pub use retry::*;
+pub use sample::*;
+pub use scan::*;
+pub use scan_map::*;
+pub use skip::*;
+pub use skip_last::*;
+pub use skip_until::*;
+pub use skip_while::*;
+pub use start_with::*;
+pub use subscribe_on::*;
+pub use switch_map::*;
+pub use take::*;
+pub use take_last::*;
+pub use take_until::*;
+pub use take_while::*;
+pub use tap::*;
+pub use throttle::*;
+pub use with_latest_from::*;
+pub use zip::*;
+
+#[cfg(test)]
+mod aggregation_tests;

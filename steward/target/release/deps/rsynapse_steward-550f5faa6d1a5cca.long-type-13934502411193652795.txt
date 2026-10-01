@@ -1,0 +1,2 @@
+SharedCtx<Box<(dyn DynCoreObservable<SharedCtx<Box<(dyn DynObserver<Vec<RelationRecord>, String> + std::marker::Send + 'static)>, SharedScheduler>> + std::marker::Send + 'static)>, SharedScheduler>
+SharedCtx<Box<(dyn DynCoreObservable<SharedCtx<Box<(dyn DynObserver<Result<Vec<RelationRecord>, String>, String> + std::marker::Send + 'static)>, SharedScheduler>> + std::marker::Send + 'static)>, SharedScheduler>

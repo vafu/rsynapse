@@ -1,0 +1,9 @@
+/home/vfuchedzhy/proj/rsynapse/steward/target/release/deps/zvariant_utils-22f05b1afe749699.d: /home/vfuchedzhy/proj/rsynapse/steward/.cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/zvariant_utils-2.1.0/src/lib.rs /home/vfuchedzhy/proj/rsynapse/steward/.cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/zvariant_utils-2.1.0/src/case.rs /home/vfuchedzhy/proj/rsynapse/steward/.cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/zvariant_utils-2.1.0/src/macros.rs
+
+/home/vfuchedzhy/proj/rsynapse/steward/target/release/deps/libzvariant_utils-22f05b1afe749699.rlib: /home/vfuchedzhy/proj/rsynapse/steward/.cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/zvariant_utils-2.1.0/src/lib.rs /home/vfuchedzhy/proj/rsynapse/steward/.cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/zvariant_utils-2.1.0/src/case.rs /home/vfuchedzhy/proj/rsynapse/steward/.cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/zvariant_utils-2.1.0/src/macros.rs
+
+/home/vfuchedzhy/proj/rsynapse/steward/target/release/deps/libzvariant_utils-22f05b1afe749699.rmeta: /home/vfuchedzhy/proj/rsynapse/steward/.cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/zvariant_utils-2.1.0/src/lib.rs /home/vfuchedzhy/proj/rsynapse/steward/.cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/zvariant_utils-2.1.0/src/case.rs /home/vfuchedzhy/proj/rsynapse/steward/.cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/zvariant_utils-2.1.0/src/macros.rs
+
+/home/vfuchedzhy/proj/rsynapse/steward/.cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/zvariant_utils-2.1.0/src/lib.rs:
+/home/vfuchedzhy/proj/rsynapse/steward/.cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/zvariant_utils-2.1.0/src/case.rs:
+/home/vfuchedzhy/proj/rsynapse/steward/.cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/zvariant_utils-2.1.0/src/macros.rs:

@@ -195,10 +195,12 @@ Generated concepts:
 - View setter adapters that receive typed references to generated model fields.
 - Dynamic styling through normal GTK setters such as `set_css_classes`; CSS contents still live in external stylesheets.
 
-### `shell-core::source`
+### `shell-source`
 
-`source` is the small shell-owned RxRust facade used by generated code and
-consumer sources.
+`shell-source` owns the small shell-owned RxRust facade used by generated
+code and consumer sources. It has no UI dependencies, so headless consumers
+(such as metrics daemons) can depend on it directly. `shell-core` re-exports
+it as `shell_core::source`, which remains the path widget code uses.
 
 Responsibilities:
 
@@ -208,7 +210,8 @@ Responsibilities:
 - Keep backend-specific clients behind source implementation files.
 
 D-Bus source binding is owned by Observable source helpers. Consumer crates
-compose typed service helpers with shell-core source primitives; the framework
+compose typed service helpers with shell-source primitives (via the
+`shell_core::source` re-export in UI code); the framework
 does not expose product-specific object descriptors.
 
 ### `shell-rx-macros`

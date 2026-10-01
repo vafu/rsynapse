@@ -46,6 +46,14 @@ components.
   agent. It stores relations and emits relation change signals; source services
   remain authoritative for their own properties.
 
+- `steward/`
+  A headless session daemon (`rsynapse-steward`) built on `shell-source`
+  observables: focus-time metrics, workspace naming, and per-project git
+  status. It computes, locus stores, the shell renders. It resolves
+  dependencies from public crates.io via `steward/build.sh`; see
+  `steward/README.md`. Steward-owned relations: `org.rsynapse.workspace.name`
+  and `org.rsynapse.project.git-status`.
+
 ## Relation Service Shape
 
 Use D-Bus object semantics directly:

@@ -1,0 +1,7 @@
+/home/vfuchedzhy/proj/rsynapse/steward/target/release/deps/tracing_attributes-75e5aebfee414e27.d: /home/vfuchedzhy/proj/rsynapse/steward/.cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-attributes-0.1.31/src/lib.rs /home/vfuchedzhy/proj/rsynapse/steward/.cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-attributes-0.1.31/src/attr.rs /home/vfuchedzhy/proj/rsynapse/steward/.cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-attributes-0.1.31/src/expand.rs
+
+/home/vfuchedzhy/proj/rsynapse/steward/target/release/deps/libtracing_attributes-75e5aebfee414e27.so: /home/vfuchedzhy/proj/rsynapse/steward/.cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-attributes-0.1.31/src/lib.rs /home/vfuchedzhy/proj/rsynapse/steward/.cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-attributes-0.1.31/src/attr.rs /home/vfuchedzhy/proj/rsynapse/steward/.cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-attributes-0.1.31/src/expand.rs
+
+/home/vfuchedzhy/proj/rsynapse/steward/.cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-attributes-0.1.31/src/lib.rs:
+/home/vfuchedzhy/proj/rsynapse/steward/.cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-attributes-0.1.31/src/attr.rs:
+/home/vfuchedzhy/proj/rsynapse/steward/.cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/tracing-attributes-0.1.31/src/expand.rs:

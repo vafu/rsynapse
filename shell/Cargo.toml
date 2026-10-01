@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "core/shell-core",
+    "core/shell-source",
     "core/macros",
     "core/rx-macros",
     "app",
@@ -22,6 +23,7 @@ gtk4-layer-shell = "0.8.0"
 relm4 = "0.11.0"
 rxrust = "1.0.0-rc.5"
 shell-core = { path = "core/shell-core" }
+shell-source = { path = "core/shell-source" }
 shell-macros = { path = "core/macros" }
 shell-rx-macros = { path = "core/rx-macros" }
 nerd-icon-picker = { path = "widgets/nerd-icon-picker" }

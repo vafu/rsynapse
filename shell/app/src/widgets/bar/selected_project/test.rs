@@ -1,10 +1,27 @@
 use super::git::GitStatus;
-use super::{GitPart, git_loading, git_visible, selected_project_view};
+use super::{GitPart, ProjectView, SelectedWorkspaceView, git_loading, git_visible, project_view};
 use crate::widgets::bar::project::ProjectDetails;
+
+fn wrap(project: ProjectView) -> SelectedWorkspaceView {
+    let visible = project.visible;
+    SelectedWorkspaceView {
+        visible,
+        name: None,
+        project: visible.then_some(project),
+    }
+}
+
+fn named(project: ProjectView, name: &str) -> SelectedWorkspaceView {
+    SelectedWorkspaceView {
+        visible: true,
+        name: Some(name.to_owned()),
+        project: Some(project),
+    }
+}
 
 #[test]
 fn selected_project_displays_project_metadata() {
-    let view = selected_project_view(split_project(), None);
+    let view = project_view(split_project(), None);
 
     assert!(view.visible);
     assert_eq!(view.title, "platform/taskexecution");
@@ -13,7 +30,7 @@ fn selected_project_displays_project_metadata() {
 
 #[test]
 fn selected_project_hides_without_project_metadata() {
-    let view = selected_project_view(ProjectDetails::default(), None);
+    let view = project_view(ProjectDetails::default(), None);
 
     assert!(!view.visible);
     assert_eq!(view.title, "");
@@ -22,7 +39,7 @@ fn selected_project_hides_without_project_metadata() {
 
 #[test]
 fn selected_project_uses_root_cwd_name_without_relative_cwd() {
-    let view = selected_project_view(
+    let view = project_view(
         ProjectDetails {
             has_project: true,
             cwd_label: Some("uiq-worktree".to_owned()),
@@ -41,17 +58,65 @@ fn selected_project_uses_root_cwd_name_without_relative_cwd() {
 }
 
 #[test]
-fn selected_project_spins_while_git_resolves() {
-    let loading = selected_project_view(split_project(), None);
+fn workspace_prefers_name_over_project_title() {
+    let view = named(project_view(split_project(), None), "coro-uiq");
 
-    assert!(loading.visible);
+    assert!(super::visible(&view));
+    assert_eq!(super::title_label(&view), "coro-uiq");
+}
+
+#[test]
+fn workspace_falls_back_to_project_title_without_name() {
+    let view = wrap(project_view(split_project(), None));
+
+    assert_eq!(super::title_label(&view), "platform/taskexecution");
+}
+
+#[test]
+fn workspace_shows_name_without_project() {
+    let view = SelectedWorkspaceView {
+        visible: true,
+        name: Some("noble-owl".to_owned()),
+        project: None,
+    };
+
+    assert!(super::visible(&view));
+    assert_eq!(super::title_label(&view), "noble-owl");
+    assert!(!super::branch_visible(&view));
+    assert!(!super::git_loading(&view));
+}
+
+#[test]
+fn workspace_uses_workspace_icon_without_project() {
+    let plain = SelectedWorkspaceView {
+        visible: true,
+        name: Some("noble-owl".to_owned()),
+        project: None,
+    };
+    let project = wrap(project_view(split_project(), None));
+
+    assert_eq!(
+        super::icon(&plain).glyph(),
+        crate::widgets::nerd_icon::NerdIcon::workspace().glyph()
+    );
+    assert_eq!(
+        super::icon(&project).glyph(),
+        crate::widgets::nerd_icon::NerdIcon::folder().glyph()
+    );
+}
+
+#[test]
+fn selected_project_spins_while_git_resolves() {
+    let loading = wrap(project_view(split_project(), None));
+
+    assert!(super::visible(&loading));
     assert!(git_loading(&loading));
 }
 
 #[test]
 fn selected_project_stops_spinning_once_git_resolves() {
-    let resolved = selected_project_view(split_project(), Some(GitStatus::default()));
-    let empty = selected_project_view(ProjectDetails::default(), None);
+    let resolved = wrap(project_view(split_project(), Some(GitStatus::default())));
+    let empty = wrap(project_view(ProjectDetails::default(), None));
 
     assert!(!git_loading(&resolved));
     assert!(!git_loading(&empty));
@@ -69,7 +134,7 @@ fn selected_project_exposes_branch_for_clipboard() {
 
 #[test]
 fn selected_project_shows_only_feature_for_vafu_worktree_branch() {
-    let view = selected_project_view(
+    let view = project_view(
         ProjectDetails {
             has_project: true,
             cwd_label: Some("rsynapse".to_owned()),
@@ -84,7 +149,7 @@ fn selected_project_shows_only_feature_for_vafu_worktree_branch() {
 
 #[test]
 fn selected_project_keeps_vafu_branch_when_worktree_does_not_match_cwd() {
-    let view = selected_project_view(
+    let view = project_view(
         ProjectDetails {
             has_project: true,
             cwd_label: Some("rsynapse".to_owned()),
@@ -99,7 +164,7 @@ fn selected_project_keeps_vafu_branch_when_worktree_does_not_match_cwd() {
 
 #[test]
 fn selected_project_keeps_non_vafu_branch_name() {
-    let view = selected_project_view(
+    let view = project_view(
         ProjectDetails {
             has_project: true,
             cwd_label: Some("rsynapse".to_owned()),
@@ -124,7 +189,7 @@ fn split_project() -> ProjectDetails {
 
 #[test]
 fn git_markers_combine_dirty_ahead_behind_and_merge() {
-    let view = selected_project_view(
+    let view = wrap(project_view(
         split_project(),
         Some(GitStatus {
             staged: 1,
@@ -135,7 +200,7 @@ fn git_markers_combine_dirty_ahead_behind_and_merge() {
             merging: true,
             ..GitStatus::default()
         }),
-    );
+    ));
 
     assert!(super::git_visible(&view));
     assert!(super::git_part_visible(&view, GitPart::Dirty));
@@ -159,14 +224,14 @@ fn git_markers_combine_dirty_ahead_behind_and_merge() {
 
 #[test]
 fn git_markers_show_unstaged_and_rebase_icons() {
-    let view = selected_project_view(
+    let view = wrap(project_view(
         split_project(),
         Some(GitStatus {
             unstaged: 3,
             rebasing: true,
             ..GitStatus::default()
         }),
-    );
+    ));
 
     assert!(super::git_visible(&view));
     assert!(super::git_part_visible(&view, GitPart::Dirty));
@@ -183,7 +248,7 @@ fn git_markers_show_unstaged_and_rebase_icons() {
 
 #[test]
 fn git_segment_hides_for_clean_tree() {
-    let view = selected_project_view(split_project(), Some(GitStatus::default()));
+    let view = wrap(project_view(split_project(), Some(GitStatus::default())));
 
     assert!(!super::git_visible(&view));
     assert!(!super::git_part_visible(&view, GitPart::Dirty));
@@ -194,7 +259,7 @@ fn git_segment_hides_for_clean_tree() {
 
 #[test]
 fn git_segment_hides_without_repository() {
-    let view = selected_project_view(split_project(), None);
+    let view = wrap(project_view(split_project(), None));
 
     assert!(!git_visible(&view));
     assert!(!super::git_part_visible(&view, GitPart::Dirty));

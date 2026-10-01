@@ -1,0 +1,75 @@
+name: Code coverage
+
+on:
+  push:
+    branches:
+      - master
+      - release-1.0
+  pull_request:
+    branches:
+      - master
+      - release-1.0
+
+permissions:
+  contents: read
+
+concurrency:
+  group: coverage-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  coverage:
+    name: grcov coverage
+    runs-on: ubuntu-latest
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Cache cargo and target
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      - name: Install Rust stable
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: stable
+          override: true
+
+      - name: Install coverage tools
+        run: |
+          rustup component add llvm-tools-preview || true
+          cargo install --locked grcov || true
+
+      - name: Run tests with coverage
+        env:
+          CARGO_INCREMENTAL: 0
+          RUSTFLAGS: "-Cinstrument-coverage -Ccodegen-units=1 -Copt-level=0 --cfg tokio_unstable --check-cfg=cfg(tokio_unstable)"
+          LLVM_PROFILE_FILE: "target/coverage-%p-%m.profraw"
+        run: |
+          cargo test --workspace --tests --verbose
+
+      - name: Generate lcov report
+        if: always()
+        run: |
+          mkdir -p target/coverage
+          grcov . --binary-path target/debug/ -s . -t lcov --branch --ignore-not-existing -o target/coverage/lcov.info
+
+      - name: Upload lcov to Codecov
+        if: always()
+        uses: codecov/codecov-action@v4
+        with:
+          files: target/coverage/lcov.info
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: true

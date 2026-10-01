@@ -1,0 +1,31 @@
+# Local-only metrics stack for rsynapse-metrics.
+#
+#   docker compose -f metrics/docker-compose.yml up -d
+#
+# Graphite (carbon + whisper + graphite-web, Apache-2.0) receives the
+# plaintext metrics on 2003; Grafana OSS (AGPL-3.0) visualizes them on
+# 3000. Every published port binds 127.0.0.1 only: nothing here is
+# reachable off this machine.
+services:
+  graphite:
+    image: graphiteapp/graphite-statsd:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:2003:2003"
+      - "127.0.0.1:8080:80"
+    volumes:
+      - graphite-storage:/opt/graphite/storage
+
+  grafana:
+    image: grafana/grafana-oss:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - grafana-storage:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/etc/grafana/dashboards:ro
+
+volumes:
+  graphite-storage:
+  grafana-storage:

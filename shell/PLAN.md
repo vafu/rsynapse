@@ -40,10 +40,11 @@ Framework crates under `core/` own:
 
 ### 1. Foundation: Workspace And Boundaries
 
-- Current framework crates are `core/shell-core`, `core/macros`, and
-  `core/rx-macros`.
-- `shell-core` exposes generic framework primitives plus the small Observable
-  source facade used by generated code and handwritten sources.
+- Current framework crates are `core/shell-core`, `core/shell-source`,
+  `core/macros`, and `core/rx-macros`.
+- `shell-source` owns the small UI-free Observable source facade used by
+  generated code, handwritten sources, and headless consumers;
+  `shell-core` re-exports it as `shell_core::source` for widget code.
 - `shell-macros` subscribes to Observable-compatible source expressions through `shell_core::source`.
 - `shell-rx-macros` exposes lightweight declarative macros that expand to
   ordinary RxRust operators for source composition ergonomics.

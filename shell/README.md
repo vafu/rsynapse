@@ -6,8 +6,13 @@ GTK4/Relm4 framework crates plus concrete Rsynapse UI surfaces.
 ## Layout
 
 - `core/shell-core`
-  Generic app startup, stylesheet loading, layer-shell window setup, and
-  Observable source primitives.
+  Generic app startup, stylesheet loading, and layer-shell window setup.
+  Re-exports the Observable source primitives from `core/shell-source`.
+
+- `core/shell-source`
+  UI-free Observable source primitives (D-Bus properties, signals,
+  ObjectManager snapshots, Rx composition helpers) for widgets and
+  headless consumers alike.
 
 - `core/macros`
   Relm4 model/source binding procedural macros.

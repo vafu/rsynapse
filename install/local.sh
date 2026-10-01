@@ -38,6 +38,10 @@ cargo_install "$repo_root/shell/launcher/rsynapse-daemon"
 cargo_install "$repo_root/shell/launcher/rsynapse-cli"
 cargo_install "$repo_root/shell/launcher/rsynapse-ui"
 
+echo "Building rsynapse-steward against public crates.io"
+"$repo_root/steward/build.sh"
+install -m 0755 "$repo_root/steward/target/release/rsynapse-steward" "$local_bin/rsynapse-steward"
+
 echo "Installing helper scripts to $local_bin"
 install -d "$local_bin" "$script_dir"
 install -m 0755 "$repo_root/install/bin/proj" "$local_bin/proj"

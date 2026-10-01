@@ -1,0 +1,13 @@
+[Unit]
+Description=Rsynapse session steward
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=@LOCAL_BIN@/rsynapse-steward
+Restart=on-failure
+RestartSec=5s
+Environment=CARBON_HOST=127.0.0.1 CARBON_PORT=2003
+
+[Install]
+WantedBy=default.target

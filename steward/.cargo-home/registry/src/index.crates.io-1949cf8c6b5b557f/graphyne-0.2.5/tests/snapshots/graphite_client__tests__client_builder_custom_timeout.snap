@@ -1,0 +1,17 @@
+---
+source: tests/graphite_client.rs
+assertion_line: 82
+expression: client
+---
+GraphiteClient {
+    connection: TcpStream {
+        addr: <EPHEMERAL>,
+        peer: 127.0.0.1:20033,
+        fd: <EPHEMERAL>,
+    },
+    sock_addr: 127.0.0.1:20033,
+    _address: "127.0.0.1",
+    _port: 20033,
+    retries: 3,
+    timeout: 100ms,
+}

@@ -1,4 +1,5 @@
 use shell_core::source::{self, Observable, rx::Observable as _};
+use shell_rx_macros::combine_latest;
 
 use crate::widgets::nerd_icon::NerdIcon;
 
@@ -8,11 +9,23 @@ use super::{
 };
 
 mod git;
+mod workspace;
 
 use git::{GitStatus, git_status};
+use workspace::workspace_display_name;
 
+/// Workspace-level view: always carries the workspace display name when
+/// known, plus project details only when the workspace has a project.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(super) struct SelectedProjectView {
+pub(super) struct SelectedWorkspaceView {
+    pub(super) visible: bool,
+    pub(super) name: Option<String>,
+    pub(super) project: Option<ProjectView>,
+}
+
+/// Project-level view: title, branch, and git metadata for a linked project.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub(super) struct ProjectView {
     pub(super) visible: bool,
     pub(super) title: String,
     pub(super) branch: Option<String>,
@@ -22,40 +35,54 @@ pub(super) struct SelectedProjectView {
 
 pub(super) fn selected_project_status(
     output_name: Option<String>,
-) -> Observable<SelectedProjectView> {
+) -> Observable<SelectedWorkspaceView> {
     source::switch_map(niri::current_workspace(output_name), |workspace| {
-        workspace
-            .map(selected_workspace_project_status)
-            .unwrap_or_else(|| source::once(SelectedProjectView::default()))
+        let Some(selected) = workspace else {
+            return source::once(SelectedWorkspaceView::default());
+        };
+        combine_latest!(
+            workspace_display_name(selected.path_id()),
+            workspace_project_status(selected)
+            => move |(name, project)| {
+                let project = project.visible.then_some(project);
+                SelectedWorkspaceView {
+                    visible: name.is_some() || project.is_some(),
+                    name,
+                    project,
+                }
+            },
+        )
+        .distinct_until_changed()
+        .box_it()
     })
     .distinct_until_changed()
     .box_it()
 }
 
-fn selected_workspace_project_status(workspace: NiriWorkspace) -> Observable<SelectedProjectView> {
+fn workspace_project_status(workspace: NiriWorkspace) -> Observable<ProjectView> {
     source::switch_map(project_details(workspace), |project| {
         match project.path.clone() {
             // Paint the locus-derived view immediately; git metadata
             // resolves off-thread and fills in when ready instead of
             // holding the title and branch hostage.
             Some(path) => {
-                let immediate = selected_project_view(project.clone(), None);
+                let immediate = project_view(project.clone(), None);
                 git_status(path)
-                    .map(move |git| selected_project_view(project.clone(), Some(git)))
+                    .map(move |git| project_view(project.clone(), Some(git)))
                     .start_with(vec![immediate])
                     .distinct_until_changed()
                     .box_it()
             }
-            None => source::once(selected_project_view(project, None)),
+            None => source::once(project_view(project, None)),
         }
     })
     .distinct_until_changed()
     .box_it()
 }
 
-fn selected_project_view(project: ProjectDetails, git: Option<GitStatus>) -> SelectedProjectView {
+fn project_view(project: ProjectDetails, git: Option<GitStatus>) -> ProjectView {
     if !project.has_project {
-        return SelectedProjectView::default();
+        return ProjectView::default();
     }
 
     let title = project
@@ -71,7 +98,7 @@ fn selected_project_view(project: ProjectDetails, git: Option<GitStatus>) -> Sel
         .filter(|branch| distinct_from(branch, &title));
     let visible = non_empty(&title).is_some();
 
-    SelectedProjectView {
+    ProjectView {
         visible,
         title,
         branch,
@@ -105,31 +132,47 @@ fn non_empty(value: &str) -> Option<&str> {
     (!value.is_empty()).then_some(value)
 }
 
-pub(super) fn visible(view: &SelectedProjectView) -> bool {
+pub(super) fn visible(view: &SelectedWorkspaceView) -> bool {
     view.visible
 }
 
-pub(super) fn icon(_view: &SelectedProjectView) -> NerdIcon {
-    NerdIcon::folder()
+pub(super) fn icon(view: &SelectedWorkspaceView) -> NerdIcon {
+    if view.project.is_some() {
+        NerdIcon::folder()
+    } else {
+        NerdIcon::workspace()
+    }
 }
 
-pub(super) fn title_label(view: &SelectedProjectView) -> &str {
-    view.title.as_str()
+pub(super) fn title_label(view: &SelectedWorkspaceView) -> &str {
+    view.name.as_deref().and_then(non_empty).unwrap_or_else(|| {
+        view.project
+            .as_ref()
+            .map(|project| project.title.as_str())
+            .unwrap_or_default()
+    })
 }
 
-pub(super) fn branch_visible(view: &SelectedProjectView) -> bool {
-    view.branch.as_deref().and_then(non_empty).is_some()
+pub(super) fn branch_visible(view: &SelectedWorkspaceView) -> bool {
+    view.project
+        .as_ref()
+        .and_then(|project| project.branch.as_deref())
+        .and_then(non_empty)
+        .is_some()
 }
 
-pub(super) fn branch_label(view: &SelectedProjectView) -> &str {
-    view.branch.as_deref().unwrap_or_default()
+pub(super) fn branch_label(view: &SelectedWorkspaceView) -> &str {
+    view.project
+        .as_ref()
+        .and_then(|project| project.branch.as_deref())
+        .unwrap_or_default()
 }
 
 pub(super) fn branch_for_clipboard(branch: Option<&str>) -> Option<&str> {
     branch.and_then(non_empty)
 }
 
-pub(super) fn first_separator_visible(view: &SelectedProjectView) -> bool {
+pub(super) fn first_separator_visible(view: &SelectedWorkspaceView) -> bool {
     branch_visible(view)
 }
 
@@ -137,22 +180,34 @@ pub(super) fn branch_icon() -> NerdIcon {
     NerdIcon::new(crate::widgets::nerd_icon::cod::COD_GITHUB)
 }
 
-pub(super) fn tooltip(view: &SelectedProjectView) -> String {
-    let mut lines = vec![format!("cwd: {}", view.title)];
-    if let Some(branch) = view.branch.as_deref().and_then(non_empty) {
-        lines.push(format!("branch: {branch}"));
+pub(super) fn tooltip(view: &SelectedWorkspaceView) -> String {
+    let mut lines = Vec::new();
+    if let Some(name) = view.name.as_deref().and_then(non_empty) {
+        lines.push(format!("workspace: {name}"));
     }
-    if let Some(git) = view.git.as_ref() {
-        if git.has_changes() || git.stashes > 0 {
-            lines.push(git_summary(git));
+    if let Some(project) = view.project.as_ref() {
+        if let Some(title) = non_empty(project.title.as_str()) {
+            lines.push(format!("cwd: {title}"));
+        }
+        if let Some(branch) = project.branch.as_deref().and_then(non_empty) {
+            lines.push(format!("branch: {branch}"));
+        }
+        if let Some(git) = project.git.as_ref() {
+            if git.has_changes() || git.stashes > 0 {
+                lines.push(git_summary(git));
+            }
         }
     }
     lines.join("\n")
 }
 
-pub(super) fn classes(view: &SelectedProjectView) -> Vec<&'static str> {
+pub(super) fn classes(view: &SelectedWorkspaceView) -> Vec<&'static str> {
     let mut classes = vec!["bar-item", "selected-project"];
-    if let Some(git) = view.git.as_ref() {
+    if let Some(git) = view
+        .project
+        .as_ref()
+        .and_then(|project| project.git.as_ref())
+    {
         if git.staged > 0 || git.unstaged > 0 || git.untracked > 0 {
             classes.push("git-dirty");
         }
@@ -164,15 +219,20 @@ pub(super) fn classes(view: &SelectedProjectView) -> Vec<&'static str> {
 }
 
 #[allow(dead_code)]
-pub(super) fn git_visible(view: &SelectedProjectView) -> bool {
-    view.git.as_ref().is_some_and(GitStatus::has_changes)
+pub(super) fn git_visible(view: &SelectedWorkspaceView) -> bool {
+    view.project
+        .as_ref()
+        .and_then(|project| project.git.as_ref())
+        .is_some_and(GitStatus::has_changes)
 }
 
 /// Shows a spinner while a project is known but its git metadata has not
-/// resolved yet. Workspaces without a project stay invisible via `visible`,
-/// so `None` there never spins.
-pub(super) fn git_loading(view: &SelectedProjectView) -> bool {
-    view.visible && view.git.is_none()
+/// resolved yet. Project-less workspaces never spin: their git stays `None`
+/// by design, and the workspace name carries the widget.
+pub(super) fn git_loading(view: &SelectedWorkspaceView) -> bool {
+    view.project
+        .as_ref()
+        .is_some_and(|project| project.git.is_none())
 }
 
 /// One fixed slot of the git status cluster. Each slot renders a single
@@ -188,15 +248,18 @@ pub(super) enum GitPart {
     Rebasing,
 }
 
-pub(super) fn git_part_visible(view: &SelectedProjectView, part: GitPart) -> bool {
-    view.git.as_ref().is_some_and(|git| match part {
-        GitPart::Dirty => git.staged > 0 || git.unstaged > 0,
-        GitPart::Untracked => git.untracked > 0,
-        GitPart::Ahead => git.ahead > 0,
-        GitPart::Behind => git.behind > 0,
-        GitPart::Merging => git.merging,
-        GitPart::Rebasing => git.rebasing,
-    })
+pub(super) fn git_part_visible(view: &SelectedWorkspaceView, part: GitPart) -> bool {
+    view.project
+        .as_ref()
+        .and_then(|project| project.git.as_ref())
+        .is_some_and(|git| match part {
+            GitPart::Dirty => git.staged > 0 || git.unstaged > 0,
+            GitPart::Untracked => git.untracked > 0,
+            GitPart::Ahead => git.ahead > 0,
+            GitPart::Behind => git.behind > 0,
+            GitPart::Merging => git.merging,
+            GitPart::Rebasing => git.rebasing,
+        })
 }
 
 pub(super) fn git_part_icon(part: GitPart) -> &'static str {

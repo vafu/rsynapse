@@ -55,7 +55,7 @@ use self::brightness::{BrightnessView, brightness_status};
 use self::mpris::{MprisView, mpris_status};
 use self::network::{NetworkView, network_status};
 use self::power_profile::{PowerProfileView, power_profile_status};
-use self::selected_project::{SelectedProjectView, selected_project_status};
+use self::selected_project::{SelectedWorkspaceView, selected_project_status};
 use self::source_errors::{SourceErrorRow, source_error_count, source_error_items};
 use self::system_stats::{ArcSide, SysStatsView, sys_stats};
 use self::systray::{TrayItem, systray_items};
@@ -161,7 +161,7 @@ pub struct MainBar {
     windows: Vec<WindowNode>,
 
     #[source(selected_project_status(output_name.clone()))]
-    selected_project: SelectedProjectView,
+    selected_project: SelectedWorkspaceView,
 
     #[source(battery_status())]
     battery: BatteryView,
@@ -1277,7 +1277,10 @@ impl SimpleAsyncComponent for MainBar {
             MainBarInput::ToggleNotificationCenter => request_notification_center_toggle(),
             MainBarInput::CopyBranch => {
                 if let Some(branch) = selected_project::branch_for_clipboard(
-                    self.selected_project.branch_full.as_deref(),
+                    self.selected_project
+                        .project
+                        .as_ref()
+                        .and_then(|project| project.branch_full.as_deref()),
                 ) {
                     copy_branch_to_clipboard(branch.to_owned());
                 }

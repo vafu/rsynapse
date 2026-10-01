@@ -2,8 +2,9 @@ pub mod app;
 pub mod css;
 pub mod list;
 pub mod model;
-pub mod source;
 pub mod window;
+
+pub use shell_source as source;
 
 pub use app::ShellApp;
 pub use gtk;

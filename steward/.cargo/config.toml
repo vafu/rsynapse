@@ -1,0 +1,9 @@
+# Guard rail: the user-wide cargo config routes crates.io through an
+# internal mirror, but this crate must resolve from the public registry
+# (see ../README.md). A directory-local config cannot unset that routing,
+# so this file points it at a source that does not exist: any direct
+# `cargo` invocation here fails loudly instead of silently using the
+# mirror. Always build via ../build.sh, which runs cargo from a neutral
+# working directory with an isolated CARGO_HOME.
+[source.crates-io]
+replace-with = "public-crates-io-via-build-sh"

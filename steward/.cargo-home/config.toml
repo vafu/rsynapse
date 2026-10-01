@@ -1,0 +1,2 @@
+# Intentionally minimal: with CARGO_HOME pointed here, cargo uses
+# the public crates.io registry instead of the user-wide mirror.

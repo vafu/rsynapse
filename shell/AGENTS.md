@@ -142,7 +142,7 @@ cargo fmt --check
 Narrow checks:
 
 ```sh
-env CARGO_TARGET_DIR=/tmp/rsynapse-shell-target cargo test -p shell-core source::support::tests
+env CARGO_TARGET_DIR=/tmp/rsynapse-shell-target cargo test -p shell-source
 env CARGO_TARGET_DIR=/tmp/rsynapse-shell-target cargo test -p rsynapse-shell request
 ```
 

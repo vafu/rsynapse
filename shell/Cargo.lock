@@ -1955,15 +1955,13 @@ name = "shell-core"
 version = "0.1.0"
 dependencies = [
  "async-channel",
- "futures-util",
  "gtk4",
  "gtk4-layer-shell",
  "notify",
  "relm4",
  "rxrust",
- "tokio",
+ "shell-source",
  "tracing",
- "zbus",
 ]
 
 [[package]]
@@ -1980,6 +1978,18 @@ name = "shell-rx-macros"
 version = "0.1.0"
 dependencies = [
  "rxrust",
+]
+
+[[package]]
+name = "shell-source"
+version = "0.1.0"
+dependencies = [
+ "async-channel",
+ "futures-util",
+ "rxrust",
+ "tokio",
+ "tracing",
+ "zbus",
 ]
 
 [[package]]
