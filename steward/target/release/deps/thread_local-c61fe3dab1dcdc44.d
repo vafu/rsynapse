@@ -1,9 +1,0 @@
-/home/vfuchedzhy/proj/rsynapse/steward/target/release/deps/thread_local-c61fe3dab1dcdc44.d: /home/vfuchedzhy/proj/rsynapse/steward/.cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/thread_local-1.1.10/src/lib.rs /home/vfuchedzhy/proj/rsynapse/steward/.cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/thread_local-1.1.10/src/cached.rs /home/vfuchedzhy/proj/rsynapse/steward/.cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/thread_local-1.1.10/src/thread_id.rs
-
-/home/vfuchedzhy/proj/rsynapse/steward/target/release/deps/libthread_local-c61fe3dab1dcdc44.rlib: /home/vfuchedzhy/proj/rsynapse/steward/.cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/thread_local-1.1.10/src/lib.rs /home/vfuchedzhy/proj/rsynapse/steward/.cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/thread_local-1.1.10/src/cached.rs /home/vfuchedzhy/proj/rsynapse/steward/.cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/thread_local-1.1.10/src/thread_id.rs
-
-/home/vfuchedzhy/proj/rsynapse/steward/target/release/deps/libthread_local-c61fe3dab1dcdc44.rmeta: /home/vfuchedzhy/proj/rsynapse/steward/.cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/thread_local-1.1.10/src/lib.rs /home/vfuchedzhy/proj/rsynapse/steward/.cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/thread_local-1.1.10/src/cached.rs /home/vfuchedzhy/proj/rsynapse/steward/.cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/thread_local-1.1.10/src/thread_id.rs
-
-/home/vfuchedzhy/proj/rsynapse/steward/.cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/thread_local-1.1.10/src/lib.rs:
-/home/vfuchedzhy/proj/rsynapse/steward/.cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/thread_local-1.1.10/src/cached.rs:
-/home/vfuchedzhy/proj/rsynapse/steward/.cargo-home/registry/src/index.crates.io-1949cf8c6b5b557f/thread_local-1.1.10/src/thread_id.rs:
