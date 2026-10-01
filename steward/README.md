@@ -77,6 +77,12 @@ curl -s 'http://localhost:8080/render?target=rsynapse.switches.workspace&format=
 
 ## Metrics
 
+Focus attribution is gated by `shell_source::session::locked()` (logind
+`LockedHint`). Locking ends the current focus interval immediately; no
+app, project, workspace, or output time accrues while locked. Unlocking
+resumes from the latest niri focus, and neither transition counts as a
+workspace switch. Lockers must update logind's `LockedHint` for this to work.
+
 | metric | meaning |
 |---|---|
 | `rsynapse.focus.project.<name>.seconds` | focus seconds per locus project (10s heartbeat) |

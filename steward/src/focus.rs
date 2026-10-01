@@ -7,6 +7,7 @@ pub const MAX_ATTRIBUTION_SECS: f64 = 120.0;
 /// paths; window titles and other content never leave the process.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct FocusState {
+    pub locked: bool,
     pub workspace_id: Option<u64>,
     pub workspace_name: Option<String>,
     pub window_id: Option<u64>,
@@ -38,8 +39,12 @@ impl Tracker {
     pub fn observe(&mut self, state: FocusState, now: Instant) {
         let elapsed = self.elapsed(now);
         self.attribute(&self.current.clone(), elapsed);
-        if state.workspace_id != self.current.workspace_id {
-            *self.pending.entry("switches.workspace".to_owned()).or_insert(0.0) += 1.0;
+        if !state.locked && !self.current.locked && state.workspace_id != self.current.workspace_id
+        {
+            *self
+                .pending
+                .entry("switches.workspace".to_owned())
+                .or_insert(0.0) += 1.0;
         }
         self.current = state;
         self.last_change = now;
@@ -61,7 +66,7 @@ impl Tracker {
     }
 
     fn attribute(&mut self, state: &FocusState, elapsed: f64) {
-        if elapsed <= 0.0 {
+        if state.locked || elapsed <= 0.0 {
             return;
         }
         // Cap single attributions so suspend/resume cycles cannot dump
@@ -77,13 +82,19 @@ impl Tracker {
             );
         }
         if let Some(project) = state.project.as_deref() {
-            self.add(&format!("focus.project.{}.seconds", sanitize(project)), elapsed);
+            self.add(
+                &format!("focus.project.{}.seconds", sanitize(project)),
+                elapsed,
+            );
         }
         if let Some(app) = state.app_id.as_deref() {
             self.add(&format!("focus.app.{}.seconds", sanitize(app)), elapsed);
         }
         if let Some(output) = state.output.as_deref() {
-            self.add(&format!("focus.output.{}.seconds", sanitize(output)), elapsed);
+            self.add(
+                &format!("focus.output.{}.seconds", sanitize(output)),
+                elapsed,
+            );
         }
     }
 
@@ -121,7 +132,8 @@ const APP_ALIASES: &[(&str, &str)] = &[
 const APP_PREFIXES: &[(&str, &str)] = &[("chrome-", "chrome"), ("firefox-", "firefox")];
 
 /// Graphite path segments allow `[A-Za-z0-9_-]`; dots separate nodes.
-pub fn sanitize(value: &str) -> String {    let mut cleaned = String::with_capacity(value.len());
+pub fn sanitize(value: &str) -> String {
+    let mut cleaned = String::with_capacity(value.len());
     let mut last_underscore = false;
     for byte in value.bytes() {
         let ok = byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_';
@@ -147,6 +159,7 @@ mod tests {
 
     fn state(workspace: u64, project: &str, app: &str) -> FocusState {
         FocusState {
+            locked: false,
             workspace_id: Some(workspace),
             workspace_name: Some(project.to_owned()),
             window_id: Some(workspace * 10),
@@ -162,7 +175,10 @@ mod tests {
         let mut tracker = Tracker::new(start);
         // Adopt the state first (attributes nothing), then attribute 40s.
         tracker.observe(state(10, "rsynapse", "ghostty"), start);
-        tracker.observe(state(10, "rsynapse", "ghostty"), start + Duration::from_secs(40));
+        tracker.observe(
+            state(10, "rsynapse", "ghostty"),
+            start + Duration::from_secs(40),
+        );
         let pending = tracker.drain();
 
         assert_eq!(pending.get("focus.workspace.10.seconds"), Some(&40.0));
@@ -203,6 +219,32 @@ mod tests {
             pending.get("focus.workspace.10.seconds"),
             Some(&MAX_ATTRIBUTION_SECS)
         );
+    }
+
+    #[test]
+    fn lock_terminates_all_attribution_and_unlock_is_not_a_switch() {
+        let start = Instant::now();
+        let mut tracker = Tracker::new(start);
+        tracker.observe(state(10, "a", "codex"), start);
+        tracker.drain();
+        tracker.observe(
+            FocusState {
+                locked: true,
+                ..FocusState::default()
+            },
+            start + Duration::from_secs(5),
+        );
+        let before_lock = tracker.drain();
+        assert_eq!(before_lock.get("focus.app.codex.seconds"), Some(&5.0));
+        assert!(!before_lock.contains_key("switches.workspace"));
+        tracker.heartbeat(start + Duration::from_secs(30));
+        assert!(tracker.drain().is_empty());
+        tracker.observe(state(11, "b", "neovim"), start + Duration::from_secs(40));
+        assert!(tracker.drain().is_empty());
+        tracker.heartbeat(start + Duration::from_secs(45));
+        let after_unlock = tracker.drain();
+        assert_eq!(after_unlock.get("focus.app.neovim.seconds"), Some(&5.0));
+        assert!(!after_unlock.contains_key("focus.app.codex.seconds"));
     }
 
     #[test]

@@ -87,6 +87,11 @@ model value from this source expression."
 
 ## D-Bus Sources
 
+`shell_source::session::locked()` exposes the active user's Wayland session
+`LockedHint` through logind on the system bus. Shell UI uses the same
+observable via `shell_core::source::session::locked()`; headless consumers
+can import it without GTK. The locker must publish its state to logind.
+
 `shell_core::source::dbus` owns generic D-Bus primitives:
 
 - `property(PropertyDescriptor)` for typed property values.

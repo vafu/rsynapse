@@ -60,7 +60,8 @@ impl Metrics {
 
         let tracker = Arc::new(Mutex::new(Tracker::new(Instant::now())));
         let moved = tracker.clone();
-        let mut states = focus_state(&self.locus).into_stream();
+        let mut states = effective_focus(focus_state(&self.locus), shell_source::session::locked())
+            .into_stream();
         let _pump = tokio::spawn(async move {
             while let Some(item) = states.next().await {
                 match item {
@@ -91,6 +92,63 @@ impl Metrics {
     }
 }
 
+/// Lock changes independently terminate attribution, even without niri events.
+/// Keep consuming niri while locked so unlocking resumes the latest focus.
+fn effective_focus(
+    focus: Observable<FocusState>,
+    locked: Observable<bool>,
+) -> Observable<FocusState> {
+    focus
+        .start_with(vec![FocusState::default()])
+        .combine_latest(locked, |state, locked| {
+            if locked {
+                FocusState {
+                    locked: true,
+                    ..FocusState::default()
+                }
+            } else {
+                state
+            }
+        })
+        .distinct_until_changed()
+        .box_it()
+}
+
+#[cfg(test)]
+mod lock_tests {
+    use super::*;
+    use shell_source::rx::{ObservableFactory as _, Observer, Shared};
+
+    #[tokio::test]
+    async fn lock_without_niri_event_clears_focus_and_unlock_uses_latest() {
+        let mut focus = Shared::subject::<FocusState, String>();
+        let mut lock = Shared::subject::<bool, String>();
+        let mut stream =
+            effective_focus(focus.clone().box_it(), lock.clone().box_it()).into_stream();
+        tokio::task::yield_now().await;
+        lock.next(true);
+        assert!(stream.next().await.unwrap().unwrap().locked);
+        focus.next(FocusState {
+            workspace_id: Some(10),
+            ..FocusState::default()
+        });
+        lock.next(false);
+        assert_eq!(stream.next().await.unwrap().unwrap().workspace_id, Some(10));
+        lock.next(true);
+        let cleared = stream.next().await.unwrap().unwrap();
+        assert!(cleared.locked);
+        assert!(cleared.workspace_id.is_none());
+        focus.next(FocusState {
+            workspace_id: Some(11),
+            ..FocusState::default()
+        });
+        lock.next(false);
+        let resumed = stream.next().await.unwrap().unwrap();
+        assert!(!resumed.locked);
+        assert_eq!(resumed.workspace_id, Some(11));
+    }
+}
+
 /// Full focus state: root focus paths combined, dynamic details resolved per
 /// selection. Single process-wide subscriber; hubs stay connected while the
 /// daemon runs, so workspace switches decode from signals with no re-reads.
@@ -118,6 +176,7 @@ fn focus_state(locus: &LocusClient) -> Observable<FocusState> {
             project_for(projects, workspace_id(&workspace)),
             explicit_name_for(names, workspace_id(&workspace))
             => move |(app, output_name, project, explicit_name)| FocusState {
+                locked: false,
                 workspace_id: workspace_id(&workspace),
                 // Explicit locus name wins; project display name covers
                 // project-native workspaces; otherwise id-only.
@@ -212,11 +271,11 @@ fn project_for(
 fn hook_app_name(
     records: Observable<Vec<RelationRecord>>,
     window_id: Option<u64>,
-) -> Observable<Option<String>> {    let Some(id) = window_id else {
+) -> Observable<Option<String>> {
+    let Some(id) = window_id else {
         return shell_source::once(None);
     };
-    let subject =
-        locus::RelationEndpoint::stable_key(locus::keys::NIRI_WINDOW_ID, id.to_string());
+    let subject = locus::RelationEndpoint::stable_key(locus::keys::NIRI_WINDOW_ID, id.to_string());
     records
         .map(move |records| {
             records.into_iter().find_map(|record| {
@@ -309,10 +368,7 @@ fn window_id(path: &Option<OwnedObjectPath>) -> Option<u64> {
         .ok()
 }
 
-fn flush_batch(
-    tracker: &mut Tracker,
-    batch_sender: &mpsc::Sender<Vec<(String, f64, u64)>>,
-) {
+fn flush_batch(tracker: &mut Tracker, batch_sender: &mpsc::Sender<Vec<(String, f64, u64)>>) {
     let pending = tracker.drain();
     if pending.is_empty() {
         return;
@@ -334,11 +390,7 @@ fn run_carbon_push(receiver: mpsc::Receiver<Vec<(String, f64, u64)>>, host: &str
     let mut client = None::<GraphiteClient>;
     while let Ok(batch) = receiver.recv() {
         if client.is_none() {
-            match GraphiteClient::builder()
-                .address(host)
-                .port(port)
-                .build()
-            {
+            match GraphiteClient::builder().address(host).port(port).build() {
                 Ok(built) => client = Some(built),
                 Err(error) => {
                     eprintln!("[rsynapse-steward/metrics] carbon failed: {error}; dropping batch");
