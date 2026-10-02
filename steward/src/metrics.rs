@@ -53,6 +53,8 @@ impl Metrics {
             .expect("spawn carbon push thread");
 
         let mut tracker = Tracker::new();
+        let mut agents = crate::agent_metrics::AgentTracker::new();
+        let mut agent_events = crate::agent_metrics::snapshots(&self.locus).into_stream();
         let mut states = activity_focus(
             effective_focus(focus_state(&self.locus), shell_source::session::locked()),
             shell_source::wayland::input_idle(input_idle_threshold()?),
@@ -66,16 +68,28 @@ impl Metrics {
                 _ = shutdown.changed() => break Ok(()),
                 item = states.next() => match item {
                     Some(Ok(state)) => {
+                        agents.focus(state.window_id, !state.locked && !state.idle, Instant::now());
                         tracker.observe(state, Instant::now());
                         publish_events(&mut tracker, &batch_sender);
+                        publish_pending(agents.drain(), &batch_sender);
                     }
                     Some(Err(error)) => break Err(anyhow::anyhow!("focus/activity source failed: {error}")),
                     None => break Err(anyhow::anyhow!("focus/activity source ended")),
+                },
+                item = agent_events.next() => match item {
+                    Some(Ok(snapshot)) => {
+                        agents.update(snapshot, Instant::now());
+                        publish_pending(agents.drain(), &batch_sender);
+                    }
+                    Some(Err(error)) => break Err(anyhow::anyhow!("agent source failed: {error}")),
+                    None => break Err(anyhow::anyhow!("agent source ended")),
                 }
             }
         };
         tracker.finish(Instant::now());
+        agents.finish(Instant::now());
         publish_events(&mut tracker, &batch_sender);
+        publish_pending(agents.drain(), &batch_sender);
         drop(batch_sender);
         tokio::task::spawn_blocking(move || carbon.join())
             .await?
@@ -427,7 +441,13 @@ fn window_id(path: &Option<OwnedObjectPath>) -> Option<u64> {
 }
 
 fn publish_events(tracker: &mut Tracker, batch_sender: &mpsc::Sender<Vec<(String, f64, u64)>>) {
-    let pending = tracker.drain();
+    publish_pending(tracker.drain(), batch_sender);
+}
+
+fn publish_pending(
+    pending: std::collections::HashMap<String, f64>,
+    batch_sender: &mpsc::Sender<Vec<(String, f64, u64)>>,
+) {
     if pending.is_empty() {
         return;
     }

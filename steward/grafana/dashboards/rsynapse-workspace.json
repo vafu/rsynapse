@@ -6,7 +6,7 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "description": "Workspace detail page shared by all recorded contexts. Open from a slice in the overview's Workspace breakdown pie.",
   "links": [
     {
@@ -67,6 +67,36 @@
           {
             "text": "Idle",
             "value": "true",
+            "selected": false
+          }
+        ]
+      },
+      {
+        "name": "agent_role",
+        "label": "Agent scope",
+        "type": "custom",
+        "query": "Root sessions : root, Subagents : subagent",
+        "multi": false,
+        "includeAll": true,
+        "allValue": "*",
+        "current": {
+          "text": "Root sessions",
+          "value": "root"
+        },
+        "options": [
+          {
+            "text": "All",
+            "value": "$__all",
+            "selected": false
+          },
+          {
+            "text": "Root sessions",
+            "value": "root",
+            "selected": true
+          },
+          {
+            "text": "Subagents",
+            "value": "subagent",
             "selected": false
           }
         ]
@@ -622,6 +652,382 @@
         {
           "refId": "A",
           "target": "aliasByNode(consolidateBy(keepLastValue(rsynapse.focus.workspace_name.${workspace_name:glob}.state), 'last'), 3)"
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "type": "piechart",
+      "title": "Agent state time",
+      "maxDataPoints": 1000000,
+      "description": "Completed agent-state intervals. Independent of human focus, lock, and Activity filter. Parallel sessions add agent-seconds; use Agent scope to separate roots/subagents.",
+      "datasource": {
+        "type": "graphite",
+        "uid": "graphite"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 13
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dtdurations",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "pieType": "pie",
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "displayLabels": [
+          "name",
+          "percent"
+        ],
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "values": [
+            "value",
+            "percent"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "target": "groupByNode(consolidateBy(setXFilesFactor(rsynapse.agents.workspace_name.${workspace_name:glob}.agent.*.role.${agent_role:raw}.state.*.seconds, 0), 'sum'), 9, 'sum')"
+        }
+      ]
+    },
+    {
+      "id": 19,
+      "type": "stat",
+      "title": "Exported agent sessions",
+      "maxDataPoints": 1000000,
+      "description": "Latest known AgentDBus session-object count in the selected range. Not an OS process count; no heartbeat is sent.",
+      "datasource": {
+        "type": "graphite",
+        "uid": "graphite"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 12,
+        "y": 13
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "min": 0,
+          "noValue": "No data"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "target": "alias(sumSeries(consolidateBy(keepLastValue(rsynapse.agents.workspace_name.${workspace_name:glob}.agent.*.role.${agent_role:raw}.sessions.live.state), 'last')), 'Exported sessions')"
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "type": "stat",
+      "title": "New agent sessions",
+      "maxDataPoints": 1000000,
+      "description": "Session objects first appearing after collection's initial roster. Existing sessions on collector startup are not fabricated as starts.",
+      "datasource": {
+        "type": "graphite",
+        "uid": "graphite"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 16,
+        "y": 13
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "sum"
+          ],
+          "fields": ""
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "target": "alias(fallbackSeries(transformNull(sumSeries(consolidateBy(setXFilesFactor(rsynapse.agents.workspace_name.${workspace_name:glob}.agent.*.role.${agent_role:raw}.sessions.started.count, 0), 'sum')), 0), constantLine(0)), 'New sessions')"
+        }
+      ]
+    },
+    {
+      "id": 21,
+      "type": "stat",
+      "title": "Responses ready",
+      "maxDataPoints": 1000000,
+      "description": "Observed busy -> idle transitions. Idle on collector startup is excluded. This is a state-based completion proxy.",
+      "datasource": {
+        "type": "graphite",
+        "uid": "graphite"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 13
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "sum"
+          ],
+          "fields": ""
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "target": "alias(fallbackSeries(transformNull(sumSeries(consolidateBy(setXFilesFactor(rsynapse.agents.workspace_name.${workspace_name:glob}.agent.*.role.${agent_role:raw}.responses.completed.count, 0), 'sum')), 0), constantLine(0)), 'Responses ready')"
+        }
+      ]
+    },
+    {
+      "id": 22,
+      "type": "stat",
+      "title": "Mean response-to-read",
+      "maxDataPoints": 1000000,
+      "description": "Wall time from busy -> idle to focused, unlocked, input-active associated window. A read proxy, not proof of reading. Weighted by response count; root sessions only.",
+      "datasource": {
+        "type": "graphite",
+        "uid": "graphite"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 17
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dtdurations",
+          "min": 0,
+          "noValue": "No data"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "target": "alias(divideSeries(aggregateLine(fallbackSeries(transformNull(sumSeries(consolidateBy(setXFilesFactor(rsynapse.agents.workspace_name.${workspace_name:glob}.agent.*.role.${agent_role:raw}.response_latency.seconds_sum, 0), 'sum')), 0), constantLine(0)), 'sum'), aggregateLine(fallbackSeries(transformNull(sumSeries(consolidateBy(setXFilesFactor(rsynapse.agents.workspace_name.${workspace_name:glob}.agent.*.role.${agent_role:raw}.response_latency.count, 0), 'sum')), 0), constantLine(0)), 'sum')), 'Mean response-to-read')"
+        }
+      ]
+    },
+    {
+      "id": 23,
+      "type": "stat",
+      "title": "Mean input-active reaction",
+      "maxDataPoints": 1000000,
+      "description": "Same reaction delay, excluding human input-idle and locked periods. Root sessions only.",
+      "datasource": {
+        "type": "graphite",
+        "uid": "graphite"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 17
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dtdurations",
+          "min": 0,
+          "noValue": "No data"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "target": "alias(divideSeries(aggregateLine(fallbackSeries(transformNull(sumSeries(consolidateBy(setXFilesFactor(rsynapse.agents.workspace_name.${workspace_name:glob}.agent.*.role.${agent_role:raw}.response_latency.available_seconds_sum, 0), 'sum')), 0), constantLine(0)), 'sum'), aggregateLine(fallbackSeries(transformNull(sumSeries(consolidateBy(setXFilesFactor(rsynapse.agents.workspace_name.${workspace_name:glob}.agent.*.role.${agent_role:raw}.response_latency.count, 0), 'sum')), 0), constantLine(0)), 'sum')), 'Mean input-active reaction')"
+        }
+      ]
+    },
+    {
+      "id": 24,
+      "type": "stat",
+      "title": "Mean work cycle",
+      "maxDataPoints": 1000000,
+      "description": "Idle -> busy -> idle cycle duration, including thinking/tool-use/compacting. Cycles already in progress on collector startup are excluded.",
+      "datasource": {
+        "type": "graphite",
+        "uid": "graphite"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 0,
+        "y": 21
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dtdurations",
+          "min": 0,
+          "noValue": "No data"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "target": "alias(divideSeries(aggregateLine(fallbackSeries(transformNull(sumSeries(consolidateBy(setXFilesFactor(rsynapse.agents.workspace_name.${workspace_name:glob}.agent.*.role.${agent_role:raw}.work_cycles.seconds_sum, 0), 'sum')), 0), constantLine(0)), 'sum'), aggregateLine(fallbackSeries(transformNull(sumSeries(consolidateBy(setXFilesFactor(rsynapse.agents.workspace_name.${workspace_name:glob}.agent.*.role.${agent_role:raw}.work_cycles.count, 0), 'sum')), 0), constantLine(0)), 'sum')), 'Mean work cycle')"
+        }
+      ]
+    },
+    {
+      "id": 25,
+      "type": "stat",
+      "title": "Unread responses",
+      "maxDataPoints": 1000000,
+      "description": "Latest pending idle responses awaiting the read proxy. Responses superseded by more work or closed sessions are cancelled, not treated as read.",
+      "datasource": {
+        "type": "graphite",
+        "uid": "graphite"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 8,
+        "y": 21
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "min": 0,
+          "noValue": "No data"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "target": "alias(sumSeries(consolidateBy(keepLastValue(rsynapse.agents.workspace_name.${workspace_name:glob}.agent.*.role.${agent_role:raw}.responses.waiting.state), 'last')), 'Unread responses')"
+        }
+      ]
+    },
+    {
+      "id": 26,
+      "type": "stat",
+      "title": "Busy agent sessions",
+      "maxDataPoints": 1000000,
+      "description": "Latest known number of exported sessions thinking, using tools, or compacting.",
+      "datasource": {
+        "type": "graphite",
+        "uid": "graphite"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 16,
+        "y": 21
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "min": 0,
+          "noValue": "No data"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": ""
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "target": "alias(sumSeries(consolidateBy(keepLastValue(rsynapse.agents.workspace_name.${workspace_name:glob}.agent.*.role.${agent_role:raw}.sessions.busy.state), 'last')), 'Busy sessions')"
         }
       ]
     }

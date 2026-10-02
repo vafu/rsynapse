@@ -17,7 +17,9 @@ leaving the process (only app-ids and project names become metric paths).
   Folds niri focus streams and locus workspace→project relations into
   completed focus intervals and immediately pushes on focus changes, lock,
   and shutdown. No heartbeat or timed flush. Uses the [`graphyne`](https://crates.io/crates/graphyne)
-  crate (Apache-2.0) for the Graphite plaintext protocol.
+   crate (Apache-2.0) for the Graphite plaintext protocol.
+  It also subscribes to all AgentDBus sessions for background agent-state
+  durations, session counts, busy cycles, and response-to-read proxy latency.
 - `namer`
   Assigns workspace display names into the `org.rsynapse.workspace.name`
   relation: preferred manual names win, then the project's cwd label,
@@ -194,6 +196,60 @@ python3 steward/grafana/refresh-focus-colors.py --check
 
 This is a manual configuration refresh, not a collector timer or a background
 job. Grafana reloads the resulting dashboard files through its provisioning.
+
+## Agent metrics
+
+AgentDBus membership and live properties enter through `shell-source` D-Bus
+observables. State intervals run even when a session's window is not focused
+or the human is idle/locked. Events and shutdown close intervals immediately;
+there is no polling or timed flush in this path. Durations are agent-seconds:
+parallel sessions add together and can exceed elapsed wall time.
+
+Each metric has two attribution axes (do not sum them together):
+
+```text
+rsynapse.agents.project.<project>.agent.<agent>.role.<root,subagent>.<metric>
+rsynapse.agents.workspace_name.<context>.agent.<agent>.role.<root,subagent>.<metric>
+```
+
+Project attribution prefers the longest known project path containing the
+session cwd, then the live window's workspace-project relation. Workspace
+contexts use the live niri window and locus display name. Subagents inherit
+their parent's attribution/window where missing. Unresolved cohorts are
+explicitly `unassigned`; session IDs and paths do not become metric series.
+
+| metric suffix | meaning |
+|---|---|
+| `state.<state>.seconds` | completed thinking/tool-use/idle/compacting/other state intervals |
+| `sessions.live.state` | current exported session-object count, updated on change |
+| `sessions.busy.state` | current thinking/tool-use/compacting session count |
+| `sessions.started.count` | sessions first appearing after the initial roster baseline |
+| `responses.completed.count` | observed busy -> idle transitions (completion proxy) |
+| `responses.read.count` | idle responses acknowledged via the read proxy |
+| `responses.waiting.state` | current unread-response count |
+| `responses.unread_cancelled.count` | response superseded by work/session close before acknowledgment |
+| `response_latency.seconds_sum` / `response_latency.count` | wall-clock reaction-delay sum and sample count |
+| `response_latency.available_seconds_sum` | reaction-delay sum excluding human input-idle/locked periods |
+| `work_cycles.seconds_sum` / `work_cycles.count` | fully observed idle -> busy -> idle cycle durations and counts |
+
+Read means the associated window is focused, unlocked, and input-active. This
+mirrors the shell's seen badge as a focus-based proxy, not proof of reading.
+Locus's active session link disambiguates sessions sharing a terminal window.
+Already-visible completions yield zero delay. Startup-idle sessions are never
+invented as completions; cycles already running at startup have no full-cycle
+sample. A collector restart baselines existing sessions rather than counting
+them as newly started. Root sessions alone get human reaction metrics; child
+state times/counts remain separately selectable.
+
+The overview shows root agent work and exported sessions by project. The
+workspace detail page adds state durations, new/live/busy sessions, completions,
+unread responses, mean cycle time, and both reaction-delay means. `Agent scope`
+selects roots/subagents/All independently of the human Activity filter. Means
+are ratios of summed durations to summed counts, not averages of slot means.
+
+AgentDBus currently exposes no input/output/cache token counters. `ContextPct`
+is context occupancy, not consumed tokens; `CostUsd` is currently zero for the
+observed producers, so neither is emitted as fabricated token/cost usage.
 
 Graphite stores a 10-second time grid. Every event is sent immediately; events
 sharing a storage slot send the updated slot total so Graphite's replacement

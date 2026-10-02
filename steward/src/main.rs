@@ -1,3 +1,4 @@
+mod agent_metrics;
 mod focus;
 mod git_status;
 mod metrics;

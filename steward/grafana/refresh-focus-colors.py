@@ -68,6 +68,7 @@ def main():
     workspace_dashboard = json.loads(args.workspace_dashboard.read_text())
     panels = {p['id']: p for p in dashboard['panels'] if p['id'] in (1, 7)}
     names = {1: metric_names(args.graphite_url, 'project'), 7: metric_names(args.graphite_url, 'workspace_name')}
+    agent_projects = find_names(args.graphite_url, 'rsynapse.agents.project.*')
     previous = {}
     for panel in panels.values():
         for mapping in panel['fieldConfig']['defaults'].get('mappings', []):
@@ -76,7 +77,7 @@ def main():
                                  if name != '(none)' and 'color' in entry})
     registry = json.loads(args.registry.read_text()) if args.registry.exists() else {'contexts': {}, 'apps': {}}
     previous.update(registry['contexts'])
-    colors = assign_colors(names[1] | names[7] | set(previous), previous)
+    colors = assign_colors(names[1] | names[7] | agent_projects | set(previous), previous)
     app_names = metric_names(args.graphite_url, 'app') | find_names(args.graphite_url, 'rsynapse.focus.workspace_name.*.app.*')
     app_colors = assign_colors(app_names | set(registry['apps']), registry['apps'])
     updated_registry = {'contexts': colors, 'apps': app_colors}
@@ -92,6 +93,9 @@ def main():
     all_panels[8]['fieldConfig']['overrides'] = series_overrides(names[1], colors)
     all_panels[16]['fieldConfig']['overrides'] = series_overrides(names[7], colors)
     all_panels[2]['fieldConfig']['overrides'] = series_overrides(app_names, app_colors)
+    for panel_id in (18, 19):
+        if panel_id in all_panels:
+            all_panels[panel_id]['fieldConfig']['overrides'] = series_overrides(agent_projects, colors)
     detail_panels = {p['id']: p for p in workspace_dashboard['panels']}
     detail_panels[12]['fieldConfig']['overrides'] = series_overrides(app_names, app_colors)
     detail_panels[17]['fieldConfig']['overrides'] = series_overrides(names[7], colors)
