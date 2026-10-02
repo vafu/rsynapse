@@ -6,7 +6,7 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 7,
+  "version": 8,
   "templating": {
     "list": [
       {
@@ -1275,6 +1275,298 @@
         {
           "refId": "A",
           "target": "groupByNode(consolidateBy(keepLastValue(rsynapse.agents.project.*.agent.*.role.root.sessions.live.state), 'last'), 3, 'sum')"
+        }
+      ]
+    },
+    {
+      "id": 20,
+      "type": "piechart",
+      "title": "Token consumption by project",
+      "description": "Live root-agent input plus output consumption; currently Codex only. Historical session totals are not backfilled.",
+      "maxDataPoints": 1000000,
+      "datasource": {
+        "type": "graphite",
+        "uid": "graphite"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 38
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "noValue": "No data"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "coro-db"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#DEB6F2"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "coro-ncm"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#C2D1FF"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "coroutines-startup-sanity"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#B877D9"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "e2e-lsp"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#F29191"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "rsynapse"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#8AB8FF"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "pieType": "pie",
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "displayLabels": [
+          "name",
+          "percent"
+        ],
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "values": [
+            "value",
+            "percent"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "target": "groupByNode(consolidateBy(setXFilesFactor(rsynapse.agents.project.*.agent.*.role.root.tokens.total.count, 0), 'sum'), 3, 'sum')"
+        }
+      ]
+    },
+    {
+      "id": 21,
+      "type": "piechart",
+      "title": "Token consumption by model",
+      "description": "Live root-agent usage, attributed to the model in each usage report; currently Codex only.",
+      "maxDataPoints": 1000000,
+      "datasource": {
+        "type": "graphite",
+        "uid": "graphite"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 38
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "noValue": "No data"
+        },
+        "overrides": []
+      },
+      "options": {
+        "pieType": "pie",
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "displayLabels": [
+          "name",
+          "percent"
+        ],
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "values": [
+            "value",
+            "percent"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "target": "groupByNode(consolidateBy(setXFilesFactor(rsynapse.agents.project.*.agent.*.role.root.model.*.effort.*.tokens.total.count, 0), 'sum'), 9, 'sum')"
+        }
+      ]
+    },
+    {
+      "id": 22,
+      "type": "piechart",
+      "title": "Agent work by model",
+      "description": "Completed root-agent thinking/tool-use/compacting intervals. Model changes split intervals; ongoing intervals publish only when closed.",
+      "maxDataPoints": 1000000,
+      "datasource": {
+        "type": "graphite",
+        "uid": "graphite"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 46
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dtdurations",
+          "min": 0,
+          "noValue": "No data"
+        },
+        "overrides": []
+      },
+      "options": {
+        "pieType": "pie",
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "displayLabels": [
+          "name",
+          "percent"
+        ],
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "values": [
+            "value",
+            "percent"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "target": "groupByNode(consolidateBy(setXFilesFactor(rsynapse.agents.project.*.agent.*.role.root.model.*.effort.*.state.{thinking,tool-use,compacting}.seconds, 0), 'sum'), 9, 'sum')"
+        }
+      ]
+    },
+    {
+      "id": 23,
+      "type": "piechart",
+      "title": "Agent work by reasoning effort",
+      "description": "Completed root-agent busy intervals grouped by selected effort. Unknown means the producer has not exported effort, including non-Codex agents.",
+      "maxDataPoints": 1000000,
+      "datasource": {
+        "type": "graphite",
+        "uid": "graphite"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 46
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dtdurations",
+          "min": 0,
+          "noValue": "No data"
+        },
+        "overrides": []
+      },
+      "options": {
+        "pieType": "pie",
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "displayLabels": [
+          "name",
+          "percent"
+        ],
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "values": [
+            "value",
+            "percent"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "target": "groupByNode(consolidateBy(setXFilesFactor(rsynapse.agents.project.*.agent.*.role.root.model.*.effort.*.state.{thinking,tool-use,compacting}.seconds, 0), 'sum'), 11, 'sum')"
         }
       ]
     }

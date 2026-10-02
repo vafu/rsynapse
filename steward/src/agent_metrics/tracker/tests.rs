@@ -177,3 +177,74 @@ fn unchanged_snapshot_does_not_emit_or_reset_state_duration() {
     t.finish(start + Duration::from_secs(10));
     assert_eq!(t.drain().get(&key("state.thinking.seconds")), Some(&10.0));
 }
+
+fn usage_event(revision: u64, model: &str, effort: &str, input: u64) -> UsageEvent {
+    UsageEvent {
+        key: "session-a".to_owned(),
+        owner: ":1.10".to_owned(),
+        epoch: 0,
+        revision,
+        model: model.to_owned(),
+        effort: effort.to_owned(),
+        delta: HashMap::from([("input".to_owned(), input)]),
+    }
+}
+
+#[test]
+fn usage_is_attributed_to_report_model_and_deduplicated_across_roster_ordering() {
+    let start = Instant::now();
+    let mut t = AgentTracker::new();
+    let event = usage_event(1, "model-a", "high", 100);
+    t.usage(event.clone());
+    assert!(t.drain().is_empty());
+    let mut s = session("thinking");
+    s.model = "current-model-b".to_owned();
+    t.update(snapshot(s), start);
+    let values = t.drain();
+    assert_eq!(values.get(&key("tokens.input.count")), Some(&100.0));
+    assert_eq!(
+        values.get(&key("model.model-a.effort.high.tokens.input.count")),
+        Some(&100.0)
+    );
+    assert!(!values.keys().any(|k| k.contains("tokens.output")));
+    t.usage(event.clone());
+    assert!(t.drain().is_empty());
+    t.update(Snapshot::default(), start + Duration::from_secs(1));
+    t.drain();
+    t.usage(usage_event(2, "model-b", "low", 5));
+    assert_eq!(
+        t.drain()
+            .get(&key("model.model-b.effort.low.tokens.input.count")),
+        Some(&5.0)
+    );
+    let mut restarted = event;
+    restarted.owner = ":1.11".to_owned();
+    t.usage(restarted);
+    assert_eq!(t.drain().get(&key("tokens.input.count")), Some(&100.0));
+}
+
+#[test]
+fn model_and_effort_switches_split_state_time_without_fabricating_completions() {
+    let start = Instant::now();
+    let mut t = AgentTracker::new();
+    let mut s = session("thinking");
+    s.model = "model-a".to_owned();
+    s.effort = "high".to_owned();
+    t.update(snapshot(s.clone()), start);
+    t.drain();
+    s.model = "model-b".to_owned();
+    s.effort = "low".to_owned();
+    t.update(snapshot(s), start + Duration::from_secs(3));
+    let first = t.drain();
+    assert_eq!(
+        first.get(&key("model.model-a.effort.high.state.thinking.seconds")),
+        Some(&3.0)
+    );
+    assert!(!first.contains_key(&key("responses.completed.count")));
+    t.finish(start + Duration::from_secs(5));
+    assert_eq!(
+        t.drain()
+            .get(&key("model.model-b.effort.low.state.thinking.seconds")),
+        Some(&2.0)
+    );
+}

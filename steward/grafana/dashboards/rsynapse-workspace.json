@@ -6,7 +6,7 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 2,
+  "version": 3,
   "description": "Workspace detail page shared by all recorded contexts. Open from a slice in the overview's Workspace breakdown pie.",
   "links": [
     {
@@ -70,6 +70,46 @@
             "selected": false
           }
         ]
+      },
+      {
+        "name": "agent_model",
+        "label": "Agent model",
+        "type": "query",
+        "description": "Filters agent state-time and token panels; session/reaction panels remain Agent scope totals.",
+        "datasource": {
+          "type": "graphite",
+          "uid": "graphite"
+        },
+        "query": {
+          "refId": "agent-models",
+          "queryType": "Default",
+          "target": "rsynapse.agents.workspace_name.${workspace_name:glob}.agent.*.role.*.model.*"
+        },
+        "definition": "rsynapse.agents.workspace_name.${workspace_name:glob}.agent.*.role.*.model.*",
+        "refresh": 2,
+        "sort": 1,
+        "multi": false,
+        "includeAll": true,
+        "allValue": "*",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "options": []
+      },
+      {
+        "name": "agent_effort",
+        "label": "Reasoning effort",
+        "type": "custom",
+        "query": "unknown,none,minimal,low,medium,high,xhigh",
+        "multi": false,
+        "includeAll": true,
+        "allValue": "*",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "options": []
       },
       {
         "name": "agent_role",
@@ -704,7 +744,7 @@
       "targets": [
         {
           "refId": "A",
-          "target": "groupByNode(consolidateBy(setXFilesFactor(rsynapse.agents.workspace_name.${workspace_name:glob}.agent.*.role.${agent_role:raw}.state.*.seconds, 0), 'sum'), 9, 'sum')"
+          "target": "groupByNode(consolidateBy(setXFilesFactor(rsynapse.agents.workspace_name.${workspace_name:glob}.agent.*.role.${agent_role:raw}.model.${agent_model:glob}.effort.${agent_effort:glob}.state.*.seconds, 0), 'sum'), 13, 'sum')"
         }
       ]
     },
@@ -1028,6 +1068,360 @@
         {
           "refId": "A",
           "target": "alias(sumSeries(consolidateBy(keepLastValue(rsynapse.agents.workspace_name.${workspace_name:glob}.agent.*.role.${agent_role:raw}.sessions.busy.state), 'last')), 'Busy sessions')"
+        }
+      ]
+    },
+    {
+      "id": 27,
+      "type": "piechart",
+      "title": "Tokens by model",
+      "description": "Live consumption deltas, currently Codex only. Input includes cache; output includes reasoning. Historical session totals are baselined, never replayed as new usage.",
+      "maxDataPoints": 1000000,
+      "datasource": {
+        "type": "graphite",
+        "uid": "graphite"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 25
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "noValue": "No data"
+        },
+        "overrides": []
+      },
+      "options": {
+        "pieType": "pie",
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "displayLabels": [
+          "name",
+          "percent"
+        ],
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "values": [
+            "value",
+            "percent"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "target": "groupByNode(consolidateBy(setXFilesFactor(rsynapse.agents.workspace_name.${workspace_name:glob}.agent.*.role.${agent_role:raw}.model.${agent_model:glob}.effort.${agent_effort:glob}.tokens.total.count, 0), 'sum'), 9, 'sum')"
+        }
+      ]
+    },
+    {
+      "id": 28,
+      "type": "piechart",
+      "title": "Agent work by reasoning effort",
+      "description": "Completed thinking/tool-use/compacting intervals, grouped by selected reasoning effort. Model/effort changes split intervals; ongoing intervals appear when closed.",
+      "maxDataPoints": 1000000,
+      "datasource": {
+        "type": "graphite",
+        "uid": "graphite"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 25
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dtdurations",
+          "min": 0,
+          "noValue": "No data"
+        },
+        "overrides": []
+      },
+      "options": {
+        "pieType": "pie",
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "displayLabels": [
+          "name",
+          "percent"
+        ],
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "values": [
+            "value",
+            "percent"
+          ]
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "target": "groupByNode(consolidateBy(setXFilesFactor(rsynapse.agents.workspace_name.${workspace_name:glob}.agent.*.role.${agent_role:raw}.model.${agent_model:glob}.effort.${agent_effort:glob}.state.{thinking,tool-use,compacting}.seconds, 0), 'sum'), 11, 'sum')"
+        }
+      ]
+    },
+    {
+      "id": 29,
+      "type": "stat",
+      "title": "Input tokens",
+      "description": "All input, including cache reads/writes. Codex-only live usage; unavailable is No data.",
+      "maxDataPoints": 1000000,
+      "datasource": {
+        "type": "graphite",
+        "uid": "graphite"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 0,
+        "y": 33
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "decimals": 0,
+          "noValue": "No data"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "sum"
+          ],
+          "fields": ""
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "target": "alias(sumSeries(consolidateBy(setXFilesFactor(rsynapse.agents.workspace_name.${workspace_name:glob}.agent.*.role.${agent_role:raw}.model.${agent_model:glob}.effort.${agent_effort:glob}.tokens.input.count, 0), 'sum')), 'Input tokens')"
+        }
+      ]
+    },
+    {
+      "id": 30,
+      "type": "stat",
+      "title": "Output tokens",
+      "description": "All output, including reasoning output. Codex-only live usage.",
+      "maxDataPoints": 1000000,
+      "datasource": {
+        "type": "graphite",
+        "uid": "graphite"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 4,
+        "y": 33
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "decimals": 0,
+          "noValue": "No data"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "sum"
+          ],
+          "fields": ""
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "target": "alias(sumSeries(consolidateBy(setXFilesFactor(rsynapse.agents.workspace_name.${workspace_name:glob}.agent.*.role.${agent_role:raw}.model.${agent_model:glob}.effort.${agent_effort:glob}.tokens.output.count, 0), 'sum')), 'Output tokens')"
+        }
+      ]
+    },
+    {
+      "id": 31,
+      "type": "stat",
+      "title": "Cache-read input",
+      "description": "Subset of input served from cache; do not add to total.",
+      "maxDataPoints": 1000000,
+      "datasource": {
+        "type": "graphite",
+        "uid": "graphite"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 8,
+        "y": 33
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "decimals": 0,
+          "noValue": "No data"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "sum"
+          ],
+          "fields": ""
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "target": "alias(sumSeries(consolidateBy(setXFilesFactor(rsynapse.agents.workspace_name.${workspace_name:glob}.agent.*.role.${agent_role:raw}.model.${agent_model:glob}.effort.${agent_effort:glob}.tokens.cache_read_input.count, 0), 'sum')), 'Cache-read input')"
+        }
+      ]
+    },
+    {
+      "id": 32,
+      "type": "stat",
+      "title": "Cache-write input",
+      "description": "Subset of input written to cache; absent producer counters remain unavailable.",
+      "maxDataPoints": 1000000,
+      "datasource": {
+        "type": "graphite",
+        "uid": "graphite"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 12,
+        "y": 33
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "decimals": 0,
+          "noValue": "No data"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "sum"
+          ],
+          "fields": ""
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "target": "alias(sumSeries(consolidateBy(setXFilesFactor(rsynapse.agents.workspace_name.${workspace_name:glob}.agent.*.role.${agent_role:raw}.model.${agent_model:glob}.effort.${agent_effort:glob}.tokens.cache_write_input.count, 0), 'sum')), 'Cache-write input')"
+        }
+      ]
+    },
+    {
+      "id": 33,
+      "type": "stat",
+      "title": "Reasoning output",
+      "description": "Subset of output used for reasoning; do not add to total.",
+      "maxDataPoints": 1000000,
+      "datasource": {
+        "type": "graphite",
+        "uid": "graphite"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 16,
+        "y": 33
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "decimals": 0,
+          "noValue": "No data"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "sum"
+          ],
+          "fields": ""
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "target": "alias(sumSeries(consolidateBy(setXFilesFactor(rsynapse.agents.workspace_name.${workspace_name:glob}.agent.*.role.${agent_role:raw}.model.${agent_model:glob}.effort.${agent_effort:glob}.tokens.reasoning_output.count, 0), 'sum')), 'Reasoning output')"
+        }
+      ]
+    },
+    {
+      "id": 34,
+      "type": "stat",
+      "title": "Total tokens",
+      "description": "Input plus output. Cache/reasoning breakdowns are already included.",
+      "maxDataPoints": 1000000,
+      "datasource": {
+        "type": "graphite",
+        "uid": "graphite"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 20,
+        "y": 33
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "min": 0,
+          "decimals": 0,
+          "noValue": "No data"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "sum"
+          ],
+          "fields": ""
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "target": "alias(sumSeries(consolidateBy(setXFilesFactor(rsynapse.agents.workspace_name.${workspace_name:glob}.agent.*.role.${agent_role:raw}.model.${agent_model:glob}.effort.${agent_effort:glob}.tokens.total.count, 0), 'sum')), 'Total tokens')"
         }
       ]
     }

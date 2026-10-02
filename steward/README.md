@@ -247,9 +247,43 @@ unread responses, mean cycle time, and both reaction-delay means. `Agent scope`
 selects roots/subagents/All independently of the human Activity filter. Means
 are ratios of summed durations to summed counts, not averages of slot means.
 
-AgentDBus currently exposes no input/output/cache token counters. `ContextPct`
-is context occupancy, not consumed tokens; `CostUsd` is currently zero for the
-observed producers, so neither is emitted as fabricated token/cost usage.
+AgentDBus now exports standardized token usage and `ReasoningEffort`, currently
+implemented by its Codex adapter. Steward subscribes to typed
+`TokenUsageReported` signals through a shell-source observable using one
+namespace subscription, so roster churn does not replace usage subscriptions.
+It counts live deltas, never historical cumulative snapshots. Revisions are
+deduplicated per D-Bus owner/session/epoch, and reports arriving before roster
+attribution or just after removal are reconciled with live/recent sessions.
+
+Both axes also have model/effort detail series:
+
+```text
+rsynapse.agents.<project,workspace_name>.<context>.agent.<agent>.role.<root,subagent>.model.<model>.effort.<effort>.state.<state>.seconds
+rsynapse.agents.<project,workspace_name>.<context>.agent.<agent>.role.<root,subagent>.model.<model>.effort.<effort>.tokens.<counter>.count
+```
+
+Token counters are also emitted on the original role prefixes as
+`tokens.<counter>.count`. Counters are `input`, `output`, `cache_read_input`,
+`cache_write_input`, `reasoning_output`, and `total`. Input includes cache and
+output includes reasoning: adding all six counters would double-count usage.
+Missing producer counters remain absent, while reported zero remains zero.
+Do not sum aggregate and model-detail series or both attribution axes together.
+
+Token model/effort comes from the coherent usage report, not current session
+properties. State intervals split on model/effort changes as well as ordinary
+state/attribution changes. Existing role-level durations remain available;
+model-detail history begins with deployment. Token events are published on
+receipt (Graphite ingestion time), not backdated from the producer timestamp.
+Signals are live rather than a durable replay log, so disconnected periods are
+not reconstructed as new usage after restart.
+
+The overview adds token consumption by project/model and busy time by
+model/effort. Workspace detail adds model/effort selectors, token consumption
+by model, busy time by effort, and all six token totals. These selectors filter
+state-time/token panels; session and reaction panels remain role-level totals.
+Unavailable usage shows No data. Non-Codex agents can supply a model while
+their reasoning effort remains `unknown` and usage unavailable. `ContextPct`
+remains occupancy, not consumption; no token-derived cost is fabricated.
 
 Graphite stores a 10-second time grid. Every event is sent immediately; events
 sharing a storage slot send the updated slot total so Graphite's replacement

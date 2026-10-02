@@ -1,6 +1,6 @@
-use super::{Session, Snapshot};
+use super::{Session, Snapshot, UsageEvent};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashMap, HashSet, VecDeque},
     time::Instant,
 };
 
@@ -27,6 +27,9 @@ pub(crate) struct AgentTracker {
     active_links: HashMap<u64, String>,
     pending: HashMap<String, f64>,
     gauges: HashMap<String, f64>,
+    retired: VecDeque<Session>,
+    usage_pending: VecDeque<UsageEvent>,
+    usage_seen: HashMap<(String, String), (u64, u64)>,
 }
 
 impl AgentTracker {
@@ -46,6 +49,10 @@ impl AgentTracker {
         for key in removed {
             let member = self.members.remove(&key).unwrap();
             self.close_state(&member, now);
+            self.retired.push_back(member.session.clone());
+            if self.retired.len() > 1024 {
+                self.retired.pop_front();
+            }
             if let Some(reply) = member.unread {
                 self.increment(&reply.owner, "responses.unread_cancelled.count", 1.0);
             }
@@ -56,6 +63,7 @@ impl AgentTracker {
                 Some(mut member) => {
                     if member.session.state != session.state
                         || member.session.prefixes() != session.prefixes()
+                        || member.session.model_prefixes() != session.model_prefixes()
                     {
                         self.close_state(&member, now);
                         member.since = now;
@@ -113,6 +121,10 @@ impl AgentTracker {
             self.members.insert(member.session.key.clone(), member);
         }
         self.initialized = true;
+        let queued = std::mem::take(&mut self.usage_pending);
+        for event in queued {
+            self.usage(event);
+        }
         self.read_responses(now);
         self.refresh_gauges();
     }
@@ -190,6 +202,70 @@ impl AgentTracker {
                 ),
                 duration,
             );
+            for prefix in member.session.model_prefixes() {
+                *self
+                    .pending
+                    .entry(format!(
+                        "{prefix}.state.{}.seconds",
+                        crate::focus::sanitize(&member.session.state)
+                    ))
+                    .or_default() += duration;
+            }
+        }
+    }
+
+    pub fn usage(&mut self, event: UsageEvent) {
+        let session = self
+            .members
+            .get(&event.key)
+            .map(|m| &m.session)
+            .or_else(|| self.retired.iter().rev().find(|s| s.key == event.key))
+            .cloned();
+        let Some(mut session) = session else {
+            if self.usage_pending.len() == 1024 {
+                self.usage_pending.pop_front();
+            }
+            self.usage_pending.push_back(event);
+            return;
+        };
+        let identity = (event.owner, event.key);
+        let stamp = (event.epoch, event.revision);
+        if self
+            .usage_seen
+            .get(&identity)
+            .is_some_and(|previous| *previous >= stamp)
+        {
+            return;
+        }
+        if self.usage_seen.len() >= 4096 && !self.usage_seen.contains_key(&identity) {
+            // Bound per-session replay bookkeeping; live and recent sessions are retained.
+            self.usage_seen.retain(|(_, key), _| {
+                self.members.contains_key(key) || self.retired.iter().any(|s| &s.key == key)
+            });
+        }
+        self.usage_seen.insert(identity, stamp);
+        session.model = event.model;
+        session.effort = event.effort;
+        for (counter, value) in event.delta {
+            if !matches!(
+                counter.as_str(),
+                "input"
+                    | "output"
+                    | "cache_read_input"
+                    | "cache_write_input"
+                    | "reasoning_output"
+                    | "total"
+            ) {
+                continue;
+            }
+            let suffix = format!("tokens.{counter}.count");
+            self.increment(&session, &suffix, value as f64);
+            for prefix in session.model_prefixes() {
+                *self
+                    .pending
+                    .entry(format!("{prefix}.{suffix}"))
+                    .or_default() += value as f64;
+            }
         }
     }
 

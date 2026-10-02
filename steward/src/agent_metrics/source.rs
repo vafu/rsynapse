@@ -1,5 +1,6 @@
-use super::{Session, Snapshot};
+use super::{Session, Snapshot, UsageEvent};
 use crate::relations::{self, LocusClient};
+use futures_util::StreamExt;
 use locus::RelationRecord;
 use shell_rx_macros::combine_latest;
 use shell_source::{
@@ -69,15 +70,83 @@ fn session_values(object: AgentObject) -> Observable<Session> {
         dbus::property_or(property("Cwd"), String::new()),
         dbus::property_or(property("WindowId"), String::new()),
         dbus::property_or(property("ParentSessionId"), String::new()),
-        dbus::property_or(property("IsSubagent"), false)
-        => move |(session_id, agent, state, cwd, window, parent, subagent)| Session {
+        dbus::property_or(property("IsSubagent"), false),
+        dbus::property_or(property("ModelName"), "unknown".to_owned()),
+        dbus::property_or(property("ReasoningEffort"), "unknown".to_owned())
+        => move |(session_id, agent, state, cwd, window, parent, subagent, model, effort)| Session {
             key: object.0.as_str().to_owned(), session_id,
             agent: if agent.trim().is_empty() { object.0.as_str().split('/').nth(5).unwrap_or("unknown").to_owned() } else { crate::focus::canonical_app_id(agent.trim()) },
             state: if state.trim().is_empty() { "unknown".to_owned() } else { state },
-            cwd, window: window.parse().ok(), parent, subagent,
+            cwd, window: window.parse().ok(), parent, subagent, model, effort,
             ..Session::default()
         },
     ).distinct_until_changed().box_it()
+}
+
+/// One namespace subscription avoids losing reports when roster subscriptions churn.
+/// The backend task is exposed as a shell-source observable, like other inputs.
+pub(crate) fn usage_events() -> Observable<UsageEvent> {
+    type Report = (
+        u64,
+        u64,
+        String,
+        String,
+        String,
+        String,
+        HashMap<String, u64>,
+        HashMap<String, u64>,
+    );
+    shell_source::from_task(|sender| async move {
+        let run = async {
+            let conn = zbus::Connection::session()
+                .await
+                .map_err(|e| e.to_string())?;
+            let rule = zbus::MatchRule::builder()
+                .msg_type(zbus::message::Type::Signal)
+                .sender(AGENT_BUS)
+                .map_err(|e| e.to_string())?
+                .interface(AGENT_INTERFACE)
+                .map_err(|e| e.to_string())?
+                .member("TokenUsageReported")
+                .map_err(|e| e.to_string())?
+                .path_namespace(AGENT_ROOT)
+                .map_err(|e| e.to_string())?
+                .build();
+            let mut stream = zbus::MessageStream::for_match_rule(rule, &conn, Some(256))
+                .await
+                .map_err(|e| e.to_string())?;
+            while let Some(message) = stream.next().await {
+                let message = message.map_err(|e| e.to_string())?;
+                let header = message.header();
+                let Some(path) = header.path() else {
+                    continue;
+                };
+                let (report,): (Report,) =
+                    message.body().deserialize().map_err(|e| e.to_string())?;
+                let (epoch, revision, _timestamp, _turn, model, effort, delta, _totals) = report;
+                let event = UsageEvent {
+                    key: path.as_str().to_owned(),
+                    owner: header
+                        .sender()
+                        .map(|s| s.as_str().to_owned())
+                        .unwrap_or_default(),
+                    epoch,
+                    revision,
+                    model,
+                    effort,
+                    delta,
+                };
+                if sender.send(Ok(event)).await.is_err() {
+                    return Ok::<(), String>(());
+                }
+            }
+            Err("AgentDBus usage signal stream ended".to_owned())
+        }
+        .await;
+        if let Err(error) = run {
+            let _ = sender.send(Err(error)).await;
+        }
+    })
 }
 
 fn window_values(window: Window) -> Observable<(u64, Option<u64>)> {

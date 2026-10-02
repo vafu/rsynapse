@@ -93,7 +93,7 @@ def main():
     all_panels[8]['fieldConfig']['overrides'] = series_overrides(names[1], colors)
     all_panels[16]['fieldConfig']['overrides'] = series_overrides(names[7], colors)
     all_panels[2]['fieldConfig']['overrides'] = series_overrides(app_names, app_colors)
-    for panel_id in (18, 19):
+    for panel_id in (18, 19, 20):
         if panel_id in all_panels:
             all_panels[panel_id]['fieldConfig']['overrides'] = series_overrides(agent_projects, colors)
     detail_panels = {p['id']: p for p in workspace_dashboard['panels']}

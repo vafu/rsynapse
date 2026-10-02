@@ -54,6 +54,7 @@ impl Metrics {
 
         let mut tracker = Tracker::new();
         let mut agents = crate::agent_metrics::AgentTracker::new();
+        let mut usage_events = crate::agent_metrics::usage_events().into_stream();
         let mut agent_events = crate::agent_metrics::snapshots(&self.locus).into_stream();
         let mut states = activity_focus(
             effective_focus(focus_state(&self.locus), shell_source::session::locked()),
@@ -75,6 +76,14 @@ impl Metrics {
                     }
                     Some(Err(error)) => break Err(anyhow::anyhow!("focus/activity source failed: {error}")),
                     None => break Err(anyhow::anyhow!("focus/activity source ended")),
+                },
+                item = usage_events.next() => match item {
+                    Some(Ok(event)) => {
+                        agents.usage(event);
+                        publish_pending(agents.drain(), &batch_sender);
+                    }
+                    Some(Err(error)) => break Err(anyhow::anyhow!("agent usage source failed: {error}")),
+                    None => break Err(anyhow::anyhow!("agent usage source ended")),
                 },
                 item = agent_events.next() => match item {
                     Some(Ok(snapshot)) => {
