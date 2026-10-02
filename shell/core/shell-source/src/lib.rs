@@ -8,6 +8,7 @@ use rxrust::prelude::{
 
 pub mod dbus;
 pub mod session;
+pub mod wayland;
 mod state;
 mod stream;
 mod support;

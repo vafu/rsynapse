@@ -6,8 +6,8 @@ use zbus::{Connection, Proxy};
 const WORKSPACE_NAME_RELATION: &str = "org.rsynapse.workspace.name";
 const WORKSPACE_NAME_KIND: &str = "org.rsynapse.workspace.name";
 
-/// Display name for one workspace id, from the steward-owned name relation.
-/// Emits `None` while unknown; the view falls back to project metadata.
+/// Preferred manual name for one workspace id from locus. Automatic names
+/// fall back to the current project cwd label or `empty` in the view.
 pub(super) fn workspace_display_name(workspace_id: Option<u64>) -> Observable<Option<String>> {
     let Some(id) = workspace_id else {
         return source::once(None);
@@ -123,6 +123,11 @@ async fn send_name(
 }
 
 fn name_of(record: &RelationRecord) -> Option<String> {
+    // Automatic titles derive directly from project cwd (or "empty").
+    // Only a preferred name overrides that, including on secondary outputs.
+    if record.metadata.get("source").map(String::as_str) != Some("manual") {
+        return None;
+    }
     match &record.target {
         RelationEndpoint::StableKey { kind, id } if kind == WORKSPACE_NAME_KIND => {
             let name = id.trim().to_owned();
@@ -174,5 +179,32 @@ fn is_locus_unavailable(error: &zbus::Error) -> bool {
             matches!(error.as_ref(), zbus::fdo::Error::ServiceUnknown(_))
         }
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    #[test]
+    fn only_manual_names_override_project_cwd_or_empty() {
+        let mut record = RelationRecord {
+            subject: RelationEndpoint::stable_key(locus::keys::NIRI_WORKSPACE_ID, "7"),
+            relation: WORKSPACE_NAME_RELATION.to_owned(),
+            target: RelationEndpoint::stable_key(WORKSPACE_NAME_KIND, "noble-owl"),
+            metadata: HashMap::from([("source".to_owned(), "random".to_owned())]),
+            created_at_unix_ms: 0,
+            updated_at_unix_ms: 0,
+        };
+        assert_eq!(name_of(&record), None);
+        record
+            .metadata
+            .insert("source".to_owned(), "project".to_owned());
+        assert_eq!(name_of(&record), None);
+        record
+            .metadata
+            .insert("source".to_owned(), "manual".to_owned());
+        assert_eq!(name_of(&record), Some("noble-owl".to_owned()));
     }
 }

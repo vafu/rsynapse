@@ -1,5 +1,5 @@
 use std::{
-    sync::{Arc, Mutex, mpsc},
+    sync::mpsc,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
@@ -15,20 +15,14 @@ use shell_source::{
 use zbus::zvariant::OwnedObjectPath;
 
 use crate::{
-    focus::{FocusState, Tracker},
+    focus::{FocusState, GraphiteSlots, Tracker},
     relations::{self, LocusClient},
 };
 
 const WORKSPACE_PATH_PREFIX: &str = "/org/rsynapse/Niri/Workspaces/workspace_";
 const WINDOW_PATH_PREFIX: &str = "/org/rsynapse/Niri/Windows/window_";
 
-fn flush_secs() -> u64 {
-    std::env::var("FLUSH_SECS")
-        .ok()
-        .and_then(|secs| secs.parse().ok())
-        .filter(|secs| *secs > 0)
-        .unwrap_or(10)
-}
+mod agents;
 
 fn prefix() -> String {
     std::env::var("METRIC_PREFIX").unwrap_or_else(|_| "rsynapse".to_owned())
@@ -49,47 +43,63 @@ impl Metrics {
         }
     }
 
-    pub async fn run(self) -> anyhow::Result<()> {
+    pub async fn run(self, mut shutdown: tokio::sync::watch::Receiver<bool>) -> anyhow::Result<()> {
         let (batch_sender, batch_receiver) = mpsc::channel::<Vec<(String, f64, u64)>>();
         let host = self.carbon_host.clone();
         let port = self.carbon_port;
-        std::thread::Builder::new()
+        let carbon = std::thread::Builder::new()
             .name("carbon-push".to_owned())
             .spawn(move || run_carbon_push(batch_receiver, &host, port))
             .expect("spawn carbon push thread");
 
-        let tracker = Arc::new(Mutex::new(Tracker::new(Instant::now())));
-        let moved = tracker.clone();
-        let mut states = effective_focus(focus_state(&self.locus), shell_source::session::locked())
-            .into_stream();
-        let _pump = tokio::spawn(async move {
-            while let Some(item) = states.next().await {
-                match item {
-                    Ok(state) => {
-                        if let Ok(mut tracker) = moved.lock() {
-                            tracker.observe(state, Instant::now());
-                        }
+        let mut tracker = Tracker::new();
+        let mut states = activity_focus(
+            effective_focus(focus_state(&self.locus), shell_source::session::locked()),
+            shell_source::wayland::input_idle(input_idle_threshold()?),
+        )
+        .into_stream();
+        // Events are the only reporting trigger. No interval, heartbeat,
+        // debounce, or timed flush exists in this collection path.
+        let result = loop {
+            tokio::select! {
+                biased;
+                _ = shutdown.changed() => break Ok(()),
+                item = states.next() => match item {
+                    Some(Ok(state)) => {
+                        tracker.observe(state, Instant::now());
+                        publish_events(&mut tracker, &batch_sender);
                     }
-                    Err(error) => eprintln!("[rsynapse-steward/metrics] focus failed: {error}"),
+                    Some(Err(error)) => break Err(anyhow::anyhow!("focus/activity source failed: {error}")),
+                    None => break Err(anyhow::anyhow!("focus/activity source ended")),
                 }
             }
-        });
-
-        let mut flush = tokio::time::interval(Duration::from_secs(flush_secs()));
-        flush.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-        loop {
-            flush.tick().await;
-            if let Ok(mut tracker) = tracker.lock() {
-                tracker.heartbeat(Instant::now());
-                flush_batch(&mut tracker, &batch_sender);
-            }
-        }
-        #[allow(unreachable_code)]
-        {
-            _pump.abort();
-            Ok(())
-        }
+        };
+        tracker.finish(Instant::now());
+        publish_events(&mut tracker, &batch_sender);
+        drop(batch_sender);
+        tokio::task::spawn_blocking(move || carbon.join())
+            .await?
+            .map_err(|_| anyhow::anyhow!("carbon push thread panicked"))?;
+        result
     }
+}
+
+fn input_idle_threshold() -> anyhow::Result<Duration> {
+    let seconds: u64 = std::env::var("INPUT_IDLE_SECS")
+        .unwrap_or_else(|_| "30".to_owned())
+        .parse()?;
+    anyhow::ensure!(
+        seconds > 0 && seconds <= u32::MAX as u64 / 1000,
+        "INPUT_IDLE_SECS must be a positive Wayland timeout in seconds"
+    );
+    Ok(Duration::from_secs(seconds))
+}
+
+fn activity_focus(focus: Observable<FocusState>, idle: Observable<bool>) -> Observable<FocusState> {
+    focus
+        .combine_latest(idle, |state, idle| FocusState { idle, ..state })
+        .distinct_until_changed()
+        .box_it()
 }
 
 /// Lock changes independently terminate attribution, even without niri events.
@@ -147,6 +157,49 @@ mod lock_tests {
         assert!(!resumed.locked);
         assert_eq!(resumed.workspace_id, Some(11));
     }
+
+    #[tokio::test]
+    async fn idle_retains_focus_and_lock_still_clears_it() {
+        let mut focus = Shared::subject::<FocusState, String>();
+        let mut lock = Shared::subject::<bool, String>();
+        let mut idle = Shared::subject::<bool, String>();
+        let mut stream = activity_focus(
+            effective_focus(focus.clone().box_it(), lock.clone().box_it()),
+            idle.clone().box_it(),
+        )
+        .into_stream();
+        tokio::task::yield_now().await;
+        lock.next(false);
+        idle.next(false);
+        stream.next().await;
+        focus.next(FocusState {
+            workspace_id: Some(10),
+            ..FocusState::default()
+        });
+        assert_eq!(stream.next().await.unwrap().unwrap().workspace_id, Some(10));
+        idle.next(true);
+        let paused = stream.next().await.unwrap().unwrap();
+        assert!(paused.idle);
+        assert_eq!(paused.workspace_id, Some(10));
+        lock.next(true);
+        assert!(stream.next().await.unwrap().unwrap().locked);
+        lock.next(false);
+        let still_idle = stream.next().await.unwrap().unwrap();
+        assert!(still_idle.idle);
+        assert!(!still_idle.locked);
+        assert_eq!(still_idle.workspace_id, Some(10));
+        focus.next(FocusState {
+            workspace_id: Some(11),
+            ..FocusState::default()
+        });
+        let moved_while_idle = stream.next().await.unwrap().unwrap();
+        assert!(moved_while_idle.idle);
+        assert_eq!(moved_while_idle.workspace_id, Some(11));
+        idle.next(false);
+        let resumed = stream.next().await.unwrap().unwrap();
+        assert!(!resumed.idle);
+        assert_eq!(resumed.workspace_id, Some(11));
+    }
 }
 
 /// Full focus state: root focus paths combined, dynamic details resolved per
@@ -169,14 +222,16 @@ fn focus_state(locus: &LocusClient) -> Observable<FocusState> {
         // key, so this reuses the live upstream instead of cloning streams.
         let projects = relations::records(locus.clone(), relations::WORKSPACE_PROJECT);
         let instances = relations::records(locus.clone(), relations::WINDOW_APP_INSTANCE);
+        let agents = relations::records(locus.clone(), relations::WINDOW_AGENT_SESSION);
         let names = relations::records(locus.clone(), relations::WORKSPACE_NAME);
         combine_latest!(
-            resolve_app(window.clone(), instances),
+            resolve_app(window.clone(), instances, agents),
             resolve_output_name(output.clone()),
             project_for(projects, workspace_id(&workspace)),
             explicit_name_for(names, workspace_id(&workspace))
             => move |(app, output_name, project, explicit_name)| FocusState {
                 locked: false,
+                idle: false,
                 workspace_id: workspace_id(&workspace),
                 // Explicit locus name wins; project display name covers
                 // project-native workspaces; otherwise id-only.
@@ -206,25 +261,28 @@ fn focused_output() -> Observable<Option<OwnedObjectPath>> {
     dbus::optional_array_property::<OwnedObjectPath>(root_property("FocusedOutput"))
 }
 
-/// Canonical app identity: hook-written app-instance name first (codex,
-/// neovim, …), else the canonicalized niri AppId. One identity per window.
+/// Canonical app identity: live agent identity first (opencode, codex, …),
+/// then hook app-instance name (neovim, …), then canonicalized niri AppId.
 fn resolve_app(
     window: Option<OwnedObjectPath>,
     instances: Observable<Vec<RelationRecord>>,
+    agents: Observable<Vec<RelationRecord>>,
 ) -> Observable<Option<String>> {
     let Some(path) = window else {
         return shell_source::once(None);
     };
     let hook = hook_app_name(instances, window_id(&Some(path.clone())));
+    let agent = agents::agent_app(agents, window_id(&Some(path.clone())));
     let app_id = dbus::optional_array_property::<String>(PropertyDescriptor::new(
         niri_object(path.as_str(), niri_dbus::WINDOW_INTERFACE),
         "AppId",
     ))
     .map(|app| app.map(|app| crate::focus::canonical_app_id(&app)));
     combine_latest!(
+        agent,
         hook,
         app_id
-        => move |(hook, app_id)| hook.or(app_id),
+        => move |(agent, hook, app_id)| agent.or(hook).or(app_id),
     )
     .distinct_until_changed()
     .box_it()
@@ -368,7 +426,7 @@ fn window_id(path: &Option<OwnedObjectPath>) -> Option<u64> {
         .ok()
 }
 
-fn flush_batch(tracker: &mut Tracker, batch_sender: &mpsc::Sender<Vec<(String, f64, u64)>>) {
+fn publish_events(tracker: &mut Tracker, batch_sender: &mpsc::Sender<Vec<(String, f64, u64)>>) {
     let pending = tracker.drain();
     if pending.is_empty() {
         return;
@@ -388,7 +446,9 @@ fn flush_batch(tracker: &mut Tracker, batch_sender: &mpsc::Sender<Vec<(String, f
 
 fn run_carbon_push(receiver: mpsc::Receiver<Vec<(String, f64, u64)>>, host: &str, port: u16) {
     let mut client = None::<GraphiteClient>;
+    let mut slots = GraphiteSlots::default();
     while let Ok(batch) = receiver.recv() {
+        let batch = slots.event(batch);
         if client.is_none() {
             match GraphiteClient::builder().address(host).port(port).build() {
                 Ok(built) => client = Some(built),

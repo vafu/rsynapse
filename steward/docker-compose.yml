@@ -6,6 +6,8 @@
 # plaintext metrics on 2003; Grafana OSS (AGPL-3.0) visualizes them on
 # 3000. Every published port binds 127.0.0.1 only: nothing here is
 # reachable off this machine.
+name: metrics
+
 services:
   graphite:
     image: graphiteapp/graphite-statsd:latest
@@ -15,6 +17,7 @@ services:
       - "127.0.0.1:8080:80"
     volumes:
       - graphite-storage:/opt/graphite/storage
+      - ./graphite/storage-aggregation.conf:/opt/graphite/conf/storage-aggregation.conf:ro
 
   grafana:
     image: grafana/grafana-oss:latest

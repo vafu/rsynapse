@@ -13,6 +13,7 @@ pub const WORKSPACE_NAME: &str = "org.rsynapse.workspace.name";
 pub const PROJECT_GIT_STATUS: &str = "org.rsynapse.project.git-status";
 /// Window -> inner session (editor, agent, …), owned by external hooks.
 pub const WINDOW_APP_INSTANCE: &str = "org.rsynapse.window.app-instance";
+pub const WINDOW_AGENT_SESSION: &str = "org.rsynapse.window.agent-session";
 
 /// Stable-key kind for workspace-name targets.
 pub const WORKSPACE_NAME_KIND: &str = "org.rsynapse.workspace.name";
@@ -63,7 +64,11 @@ pub fn records(client: LocusClient, relation: &'static str) -> Observable<Vec<Re
         from_task(move |sender| {
             let client = client.clone();
             async move {
-                if sender.send(list_records(&client, relation).await).await.is_err() {
+                if sender
+                    .send(list_records(&client, relation).await)
+                    .await
+                    .is_err()
+                {
                     return;
                 }
                 let mut added = Box::pin(signal_stream(&client, "RelationAdded").await);
@@ -81,7 +86,11 @@ pub fn records(client: LocusClient, relation: &'static str) -> Observable<Vec<Re
                         return;
                     };
                     if message_matches(&message, relation) {
-                        if sender.send(list_records(&client, relation).await).await.is_err() {
+                        if sender
+                            .send(list_records(&client, relation).await)
+                            .await
+                            .is_err()
+                        {
                             return;
                         }
                     }
@@ -93,10 +102,7 @@ pub fn records(client: LocusClient, relation: &'static str) -> Observable<Vec<Re
     })
 }
 
-async fn list_records(
-    client: &LocusClient,
-    relation: &str,
-) -> Result<Vec<RelationRecord>, String> {
+async fn list_records(client: &LocusClient, relation: &str) -> Result<Vec<RelationRecord>, String> {
     client
         .list(relation)
         .await

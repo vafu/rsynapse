@@ -3,6 +3,7 @@ use shell_core::gtk::{self, prelude::*};
 pub(crate) mod cod {
     pub(crate) const COD_MOVE: &str = "\u{eb22}";
     pub(crate) const COD_WORKSPACE_UNKNOWN: &str = "\u{ebc3}";
+    pub(crate) const COD_LAYOUT: &str = "\u{ebeb}";
     pub(crate) const COD_DIFF_MODIFIED: &str = "\u{eade}";
     pub(crate) const COD_DIFF_ADDED: &str = "\u{eadc}";
     pub(crate) const COD_GIT_MERGE: &str = "\u{eafe}";
@@ -70,7 +71,7 @@ impl NerdIcon {
     }
 
     pub(crate) fn workspace() -> Self {
-        Self::new(cod::COD_WORKSPACE_UNKNOWN)
+        Self::new(cod::COD_LAYOUT)
     }
 
     pub(crate) fn move_handle() -> Self {
@@ -127,6 +128,6 @@ mod test {
 
     #[test]
     fn dedicated_constructors_use_their_own_glyph() {
-        assert_eq!(NerdIcon::workspace().glyph(), cod::COD_WORKSPACE_UNKNOWN);
+        assert_eq!(NerdIcon::workspace().glyph(), cod::COD_LAYOUT);
     }
 }

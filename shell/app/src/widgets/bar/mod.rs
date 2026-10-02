@@ -201,6 +201,8 @@ pub struct MainBar {
 
     #[source(source_error_items())]
     source_error_items: Vec<SourceError>,
+
+    _workspace_editor: Option<selected_project::WorkspaceEditor>,
 }
 
 #[shell_macros::component(model = MainBar)]
@@ -280,7 +282,14 @@ impl SimpleAsyncComponent for MainBar {
                         set_valign: gtk::Align::Center,
                         set_orientation: gtk::Orientation::Horizontal,
 
-                        gtk::Box {
+                        #[name = "workspace_title_button"]
+                        gtk::MenuButton {
+                            add_css_class: "flat",
+                            add_css_class: "selected-project-branch-button",
+                            set_has_frame: false,
+                            set_always_show_arrow: false,
+                            #[wrap(Some)]
+                            set_child = &gtk::Box {
                             add_css_class: "selected-project-segment",
                             add_css_class: "selected-project-main",
                             set_halign: gtk::Align::Center,
@@ -301,6 +310,7 @@ impl SimpleAsyncComponent for MainBar {
                                 set_xalign: 0.0,
                                 #[watch]
                                 set_label: selected_project::title_label(&model.selected_project),
+                            }
                             }
                         },
 
@@ -1110,7 +1120,7 @@ impl SimpleAsyncComponent for MainBar {
             .then(|| watch_monitors(sender.input_sender().clone()))
             .flatten();
 
-        let model = MainBar::new(
+        let mut model = MainBar::new(
             osd,
             request_server,
             workspace_bar,
@@ -1119,6 +1129,7 @@ impl SimpleAsyncComponent for MainBar {
             false,
             false,
             output_name,
+            None,
         );
         let system_stats_item = bar_item::container(&["system-stats-widget"]);
         let disk_stats_item = bar_item::container(&["disk-stats-widget"]);
@@ -1128,6 +1139,10 @@ impl SimpleAsyncComponent for MainBar {
         let battery_item = bar_item::container(&[bar_item::SQUARE_CLASS, "battery-item"]);
 
         let widgets = view_output!();
+
+        let editor = selected_project::WorkspaceEditor::new(&widgets.workspace_title_button);
+        editor.set_target(&model.selected_project);
+        model._workspace_editor = Some(editor);
 
         let input_sender = sender.input_sender().clone();
         widgets.branch_copy_button.connect_clicked(move |_| {
@@ -1265,6 +1280,9 @@ impl SimpleAsyncComponent for MainBar {
                 let previous_audio = self.audio.clone();
                 let previous_brightness = self.brightness.clone();
                 MainBar::update(self, msg);
+                if let Some(editor) = &self._workspace_editor {
+                    editor.set_target(&self.selected_project);
+                }
                 self.maybe_show_audio_osd(previous_audio);
                 self.maybe_show_brightness_osd(previous_brightness);
             }

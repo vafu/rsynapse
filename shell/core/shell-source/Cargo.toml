@@ -9,6 +9,8 @@ license.workspace = true
 async-channel = "2.5.0"
 futures-util = "0.3.32"
 rxrust.workspace = true
-tokio = { version = "1.52.3", features = ["macros", "rt", "sync"] }
+tokio = { version = "1.52.3", features = ["macros", "rt", "sync", "net"] }
 tracing.workspace = true
+wayland-client = "0.31"
+wayland-protocols = { version = "0.32", features = ["client", "staging"] }
 zbus = { version = "4.4.0", default-features = false, features = ["tokio"] }

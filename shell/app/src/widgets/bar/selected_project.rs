@@ -9,7 +9,9 @@ use super::{
 };
 
 mod git;
+mod rename;
 mod workspace;
+pub(super) use rename::WorkspaceEditor;
 
 use git::{GitStatus, git_status};
 use workspace::workspace_display_name;
@@ -18,6 +20,7 @@ use workspace::workspace_display_name;
 /// known, plus project details only when the workspace has a project.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(super) struct SelectedWorkspaceView {
+    pub(super) workspace_id: Option<u64>,
     pub(super) visible: bool,
     pub(super) name: Option<String>,
     pub(super) project: Option<ProjectView>,
@@ -40,13 +43,15 @@ pub(super) fn selected_project_status(
         let Some(selected) = workspace else {
             return source::once(SelectedWorkspaceView::default());
         };
+        let workspace_id = selected.path_id();
         combine_latest!(
             workspace_display_name(selected.path_id()),
             workspace_project_status(selected)
             => move |(name, project)| {
                 let project = project.visible.then_some(project);
                 SelectedWorkspaceView {
-                    visible: name.is_some() || project.is_some(),
+                    workspace_id,
+                    visible: true,
                     name,
                     project,
                 }
@@ -149,7 +154,7 @@ pub(super) fn title_label(view: &SelectedWorkspaceView) -> &str {
         view.project
             .as_ref()
             .map(|project| project.title.as_str())
-            .unwrap_or_default()
+            .unwrap_or("empty")
     })
 }
 

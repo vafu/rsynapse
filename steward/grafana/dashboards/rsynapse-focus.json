@@ -1,194 +1,154 @@
 {
   "uid": "rsynapse-focus",
   "title": "Rsynapse focus",
-  "tags": [
-    "rsynapse"
-  ],
+  "tags": ["rsynapse"],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 3,
+  "templating": {
+    "list": [{
+      "name": "idle",
+      "label": "Activity",
+      "type": "custom",
+      "query": "Active : false, Idle : true",
+      "multi": false,
+      "includeAll": true,
+      "allValue": "*",
+      "current": {"text": "All", "value": "$__all"},
+      "options": [
+        {"text": "All", "value": "$__all", "selected": true},
+        {"text": "Active", "value": "false", "selected": false},
+        {"text": "Idle", "value": "true", "selected": false}
+      ]
+    }]
+  },
   "panels": [
     {
-      "id": 1,
-      "type": "timeseries",
-      "title": "Focus seconds by project",
-      "datasource": {
-        "type": "graphite",
-        "uid": "graphite"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 16,
-        "x": 0,
-        "y": 0
-      },
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "stacking": {
-              "mode": "normal"
-            },
-            "fillOpacity": 80
-          }
-        },
-        "overrides": []
-      },
+      "id": 8,
+      "type": "piechart",
+      "title": "Project breakdown",
+      "maxDataPoints": 1000000,
+      "description": "Completed project focus intervals, including idle time. Filter All/Active/Idle using the Activity dropdown. Locked and unassigned time is excluded.",
+      "datasource": {"type": "graphite", "uid": "graphite"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "fieldConfig": {"defaults": {"unit": "dtdurations", "min": 0}, "overrides": []},
       "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "right"
-        }
+        "pieType": "pie",
+        "reduceOptions": {"values": false, "calcs": ["sum"], "fields": ""},
+        "displayLabels": ["name", "percent"],
+        "legend": {"displayMode": "table", "placement": "right", "showLegend": true, "values": ["value", "percent"]},
+        "tooltip": {"mode": "single", "sort": "desc"}
       },
-      "targets": [
-        {
-          "refId": "A",
-          "target": "aliasByNode(rsynapse.focus.project.*.seconds, 3)"
-        }
-      ]
+      "targets": [{"refId": "A", "target": "groupByNode(consolidateBy(setXFilesFactor(rsynapse.focus.project.*.idle.${idle:raw}.seconds, 0), 'sum'), 3, 'sum')"}]
     },
     {
       "id": 2,
       "type": "piechart",
-      "title": "App breakdown (24h)",
-      "datasource": {
-        "type": "graphite",
-        "uid": "graphite"
+      "title": "App breakdown",
+      "maxDataPoints": 1000000,
+      "description": "Completed app focus intervals, including idle time. Filter All/Active/Idle using the Activity dropdown. Locked time is excluded.",
+      "datasource": {"type": "graphite", "uid": "graphite"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "fieldConfig": {"defaults": {"unit": "dtdurations", "min": 0}, "overrides": []},
+      "options": {
+        "pieType": "pie",
+        "reduceOptions": {"values": false, "calcs": ["sum"], "fields": ""},
+        "displayLabels": ["name", "percent"],
+        "legend": {"displayMode": "table", "placement": "right", "showLegend": true, "values": ["value", "percent"]},
+        "tooltip": {"mode": "single", "sort": "desc"}
       },
-      "timeFrom": "24h",
-      "gridPos": {
-        "h": 8,
-        "w": 8,
-        "x": 16,
-        "y": 0
-      },
-      "options": {},
-      "targets": [
-        {
-          "refId": "A",
-          "target": "aliasByNode(summarize(rsynapse.focus.app.*.seconds, '24h', 'sum', true), 3)"
-        }
-      ]
+      "targets": [{"refId": "A", "target": "groupByNode(consolidateBy(setXFilesFactor(rsynapse.focus.app.*.idle.${idle:raw}.seconds, 0), 'sum'), 3, 'sum')"}]
     },
     {
       "id": 3,
       "type": "stat",
-      "title": "Workspace switches (today)",
-      "datasource": {
-        "type": "graphite",
-        "uid": "graphite"
-      },
-      "timeFrom": "24h",
-      "gridPos": {
-        "h": 4,
-        "w": 8,
-        "x": 0,
-        "y": 8
-      },
-      "options": {},
-      "targets": [
-        {
-          "refId": "A",
-          "target": "summarize(sumSeries(rsynapse.switches.workspace), '1d', 'sum')"
-        }
-      ]
+      "title": "Workspace switches",
+      "maxDataPoints": 1000000,
+      "description": "Total workspace switches within the selected dashboard range.",
+      "datasource": {"type": "graphite", "uid": "graphite"},
+      "gridPos": {"h": 4, "w": 8, "x": 0, "y": 8},
+      "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "min": 0}, "overrides": []},
+      "options": {"reduceOptions": {"values": false, "calcs": ["sum"], "fields": ""}},
+      "targets": [{"refId": "A", "target": "alias(consolidateBy(setXFilesFactor(rsynapse.switches.workspace, 0), 'sum'), 'Workspace switches')"}]
     },
     {
       "id": 4,
       "type": "timeseries",
       "title": "Switches per hour",
-      "datasource": {
-        "type": "graphite",
-        "uid": "graphite"
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 16,
-        "x": 8,
-        "y": 8
-      },
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": []
-      },
+      "datasource": {"type": "graphite", "uid": "graphite"},
+      "gridPos": {"h": 4, "w": 16, "x": 8, "y": 8},
+      "fieldConfig": {"defaults": {"unit": "short", "decimals": 0}, "overrides": []},
       "options": {},
-      "targets": [
-        {
-          "refId": "A",
-          "target": "summarize(sumSeries(rsynapse.switches.workspace), '1h', 'sum')"
-        }
-      ]
+      "targets": [{"refId": "A", "target": "alias(summarize(setXFilesFactor(rsynapse.switches.workspace, 0), '1h', 'sum'), 'Switches per hour')"}]
     },
     {
-      "id": 5,
+      "id": 1,
       "type": "timeseries",
-      "title": "Focus seconds by workspace",
-      "datasource": {
-        "type": "graphite",
-        "uid": "graphite"
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 24,
-        "x": 0,
-        "y": 12
-      },
+      "title": "Focus time by project",
+      "datasource": {"type": "graphite", "uid": "graphite"},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 12},
       "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "stacking": {
-              "mode": "normal"
-            },
-            "fillOpacity": 80
-          }
-        },
+        "defaults": {"unit": "dtdurations", "custom": {"stacking": {"mode": "normal"}, "fillOpacity": 80}},
         "overrides": []
       },
-      "options": {},
-      "targets": [
-        {
-          "refId": "A",
-          "target": "aliasByNode(rsynapse.focus.workspace.*.seconds, 3)"
-        }
-      ]
+      "options": {"legend": {"displayMode": "table", "placement": "right"}},
+      "targets": [{"refId": "A", "target": "groupByNode(setXFilesFactor(rsynapse.focus.project.*.idle.${idle:raw}.seconds, 0), 3, 'sum')"}]
     },
     {
       "id": 7,
       "type": "timeseries",
-      "title": "Focus seconds by workspace name",
-      "description": "Project display name for project-native workspaces; merges workspaces sharing a project and survives workspace-id churn.",
-      "datasource": {
-        "type": "graphite",
-        "uid": "graphite"
+      "title": "Focus time by workspace name",
+      "description": "Preferred workspace names, project cwd labels, or empty for project-less workspaces.",
+      "datasource": {"type": "graphite", "uid": "graphite"},
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 20},
+      "fieldConfig": {
+        "defaults": {"unit": "dtdurations", "custom": {"stacking": {"mode": "normal"}, "fillOpacity": 80}},
+        "overrides": []
       },
-      "gridPos": {
-        "h": 8,
-        "w": 24,
-        "x": 0,
-        "y": 20
+      "options": {"legend": {"displayMode": "table", "placement": "right"}},
+      "targets": [{"refId": "A", "target": "groupByNode(setXFilesFactor(rsynapse.focus.workspace_name.*.idle.${idle:raw}.seconds, 0), 3, 'sum')"}]
+    },
+    {
+      "id": 9,
+      "type": "piechart",
+      "title": "Activity breakdown",
+      "maxDataPoints": 1000000,
+      "description": "Active/idle durations are derived by summing workspace intervals, including project-less workspaces. Locked time is recorded separately. This overview always includes both idle states.",
+      "datasource": {"type": "graphite", "uid": "graphite"},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 28},
+      "fieldConfig": {"defaults": {"unit": "dtdurations", "min": 0}, "overrides": []},
+      "options": {
+        "pieType": "pie",
+        "reduceOptions": {"values": false, "calcs": ["sum"], "fields": ""},
+        "displayLabels": ["name", "percent"],
+        "legend": {"displayMode": "table", "placement": "right", "showLegend": true, "values": ["value", "percent"]}
       },
+      "targets": [
+        {"refId": "A", "target": "alias(sumSeries(consolidateBy(setXFilesFactor(rsynapse.focus.workspace.*.idle.false.seconds, 0), 'sum')), 'Active')"},
+        {"refId": "B", "target": "alias(sumSeries(consolidateBy(setXFilesFactor(rsynapse.focus.workspace.*.idle.true.seconds, 0), 'sum')), 'Idle')"},
+        {"refId": "C", "target": "alias(consolidateBy(setXFilesFactor(rsynapse.activity.locked.seconds, 0), 'sum'), 'Locked')"}
+      ]
+    },
+    {
+      "id": 10,
+      "type": "state-timeline",
+      "title": "Input activity",
+      "description": "Transition-only state: active, input-idle, or locked. State is held until the next event; no heartbeat is sent.",
+      "datasource": {"type": "graphite", "uid": "graphite"},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 28},
       "fieldConfig": {
         "defaults": {
-          "custom": {
-            "stacking": {
-              "mode": "normal"
-            },
-            "fillOpacity": 80
-          }
+          "mappings": [{"type": "value", "options": {
+            "0": {"text": "Idle", "color": "gray"},
+            "1": {"text": "Active", "color": "green"},
+            "2": {"text": "Locked", "color": "red"}
+          }}],
+          "custom": {"lineWidth": 0, "fillOpacity": 80}
         },
         "overrides": []
       },
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "right"
-        }
-      },
-      "targets": [
-        {
-          "refId": "A",
-          "target": "aliasByNode(rsynapse.focus.workspace_name.*.seconds, 3)"
-        }
-      ]
+      "options": {"mergeValues": true, "showValue": "auto", "rowHeight": 0.9, "legend": {"displayMode": "list", "placement": "bottom", "showLegend": true}},
+      "targets": [{"refId": "A", "target": "alias(consolidateBy(keepLastValue(rsynapse.activity.state), 'last'), 'Activity')"}]
     }
   ]
 }

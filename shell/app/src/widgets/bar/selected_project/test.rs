@@ -6,6 +6,7 @@ fn wrap(project: ProjectView) -> SelectedWorkspaceView {
     let visible = project.visible;
     SelectedWorkspaceView {
         visible,
+        workspace_id: Some(7),
         name: None,
         project: visible.then_some(project),
     }
@@ -14,6 +15,7 @@ fn wrap(project: ProjectView) -> SelectedWorkspaceView {
 fn named(project: ProjectView, name: &str) -> SelectedWorkspaceView {
     SelectedWorkspaceView {
         visible: true,
+        workspace_id: Some(7),
         name: Some(name.to_owned()),
         project: Some(project),
     }
@@ -76,6 +78,7 @@ fn workspace_falls_back_to_project_title_without_name() {
 fn workspace_shows_name_without_project() {
     let view = SelectedWorkspaceView {
         visible: true,
+        workspace_id: Some(7),
         name: Some("noble-owl".to_owned()),
         project: None,
     };
@@ -87,9 +90,21 @@ fn workspace_shows_name_without_project() {
 }
 
 #[test]
+fn nameless_workspace_shows_empty_and_has_no_git_spinner() {
+    let view = SelectedWorkspaceView {
+        visible: true,
+        workspace_id: Some(7),
+        ..SelectedWorkspaceView::default()
+    };
+    assert_eq!(super::title_label(&view), "empty");
+    assert!(!super::git_loading(&view));
+}
+
+#[test]
 fn workspace_uses_workspace_icon_without_project() {
     let plain = SelectedWorkspaceView {
         visible: true,
+        workspace_id: Some(7),
         name: Some("noble-owl".to_owned()),
         project: None,
     };

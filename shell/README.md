@@ -28,6 +28,9 @@ GTK4/Relm4 framework crates plus concrete Rsynapse UI surfaces.
   The current combined `rsynapse-shell` package. It owns the bar, OSD,
   notifications bridge, request socket, styles, and Rsynapse-specific UI
   policy.
+  Click the bar's workspace title to save a preferred name in locus.
+  Automatic titles use the project's cwd label, or `empty` without a
+  project; preferred names are preserved by steward.
 
 - `launcher`
   The launcher workspace. It owns the D-Bus launcher daemon, CLI, GTK launcher

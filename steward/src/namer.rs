@@ -1,5 +1,4 @@
-use std::collections::{HashMap, HashSet};
-
+use crate::relations::{self, LocusClient};
 use futures_util::StreamExt;
 use locus::{RelationEndpoint, RelationRecord};
 use shell_rx_macros::combine_latest;
@@ -8,14 +7,10 @@ use shell_source::{
     dbus::{self, Bus, ObjectDescriptor, PropertyDescriptor},
     rx::Observable as _,
 };
+use std::collections::HashMap;
 use zbus::zvariant::OwnedObjectPath;
 
-use crate::relations::{self, LocusClient};
-
 const WORKSPACE_PATH_PREFIX: &str = "/org/rsynapse/Niri/Workspaces/workspace_";
-
-const SOURCE_PROJECT: &str = "project";
-const SOURCE_RANDOM: &str = "random";
 
 pub struct Namer {
     locus: LocusClient,
@@ -38,141 +33,100 @@ impl Namer {
         .into_stream();
         while let Some(item) = states.next().await {
             match item {
-                Ok((focused, projects, names)) => {
-                    self.maybe_name(focused, &projects, &names).await;
+                Ok((Some(id), projects, names)) => {
+                    let subject = workspace_subject(id);
+                    let current = names.iter().find(|record| record.subject == subject);
+                    let project = project_name_for(id, &projects);
+                    if let Some((name, source)) = name_update(current, project) {
+                        let target =
+                            RelationEndpoint::stable_key(relations::WORKSPACE_NAME_KIND, name);
+                        let metadata = HashMap::from([("source".to_owned(), source.to_owned())]);
+                        self.locus
+                            .set_one(subject, relations::WORKSPACE_NAME, target, metadata)
+                            .await?;
+                    }
                 }
+                Ok(_) => {}
                 Err(error) => eprintln!("[rsynapse-steward/namer] failed: {error}"),
             }
         }
         Ok(())
     }
-
-    /// Name the focused workspace on first selection only. A workspace that
-    /// already has a name record (any source, including manual) is a cheap
-    /// noop, so names are stable and our own writes never retrigger work.
-    async fn maybe_name(
-        &self,
-        focused: Option<u64>,
-        projects: &[RelationRecord],
-        names: &[RelationRecord],
-    ) {
-        let Some(workspace) = focused else {
-            return;
-        };
-        let subject = workspace_subject(workspace);
-        if names.iter().any(|record| record.subject == subject) {
-            return;
-        }
-        let taken: HashSet<String> = names.iter().filter_map(name_of).collect();
-        let project = project_name_for(workspace, projects);
-        let Some((name, source)) = desired_name(project, workspace, &taken) else {
-            return;
-        };
-        self.set_name(&subject, &name, source).await;
-    }
-
-    async fn set_name(&self, subject: &RelationEndpoint, name: &str, source: &str) {
-        let target = locus::RelationEndpoint::stable_key(relations::WORKSPACE_NAME_KIND, name);
-        let metadata = HashMap::from([("source".to_owned(), source.to_owned())]);
-        if let Err(error) = self
-            .locus
-            .set_one(subject.clone(), relations::WORKSPACE_NAME, target, metadata)
-            .await
-        {
-            eprintln!("[rsynapse-steward/namer] set name failed: {error}");
-        }
-    }
 }
 
-/// First-write decision for a nameless focused workspace: project display
-/// name, heuristic suggestion, or a stable random word. Pure for tests.
-fn desired_name(
+/// Compare before writing: manual names survive, automatic names follow cwd,
+/// and old random defaults migrate once. Our own signals become cheap noops.
+fn name_update(
+    current: Option<&RelationRecord>,
     project: Option<String>,
-    workspace: u64,
-    taken: &HashSet<String>,
 ) -> Option<(String, &'static str)> {
-    project
-        .map(|name| (name, SOURCE_PROJECT))
-        .or_else(|| heuristic_name().map(|name| (name, "heuristic")))
-        .or_else(|| Some((random_name(workspace, taken), SOURCE_RANDOM)))
-}
-
-fn project_name_for(workspace: u64, projects: &[RelationRecord]) -> Option<String> {
-    let subject = workspace_subject(workspace);
-    projects.iter().find_map(|record| {
-        if record.subject != subject {
+    if let Some(record) = current {
+        let source = record.metadata.get("source").map(String::as_str);
+        if !matches!(source, Some("project" | "random" | "default")) {
             return None;
         }
-        record
-            .metadata
-            .get("display-main")
-            .cloned()
-            .filter(|name| !name.trim().is_empty())
-            .or_else(|| {
-                record
-                    .metadata
-                    .get("name")
-                    .cloned()
-                    .filter(|name| !name.trim().is_empty())
-            })
-            .or_else(|| {
-                record.metadata.get("path").and_then(|path| {
-                    std::path::Path::new(path)
-                        .file_name()
-                        .and_then(|name| name.to_str())
-                        .map(str::to_owned)
-                })
-            })
-    })
-}
-
-fn name_of(record: &RelationRecord) -> Option<String> {
-    match &record.target {
-        RelationEndpoint::StableKey { kind, id } if kind == relations::WORKSPACE_NAME_KIND => {
-            (!id.trim().is_empty()).then(|| id.clone())
-        }
-        _ => None,
     }
+    let (name, source) = match project {
+        Some(name) => (name, "project"),
+        None => ("empty".to_owned(), "default"),
+    };
+    if let Some(record) = current {
+        if let RelationEndpoint::StableKey { kind, id } = &record.target {
+            if kind == relations::WORKSPACE_NAME_KIND
+                && id == &name
+                && record.metadata.get("source").map(String::as_str) == Some(source)
+            {
+                return None;
+            }
+        }
+    }
+    Some((name, source))
 }
 
-/// Heuristic names for project-less workspaces (window mix, app kinds, …).
-/// Stub seam for later: ML or rule suggestions plug in here.
-fn heuristic_name() -> Option<String> {
+fn project_name_for(id: u64, projects: &[RelationRecord]) -> Option<String> {
+    let subject = workspace_subject(id);
+    let record = projects.iter().find(|record| record.subject == subject)?;
+    // Same cwd label policy as the shell's ProjectDetails: relative cwd,
+    // then cwd basename, then project path basename. Not display-main.
+    for key in ["relative-cwd", "cwd"] {
+        if let Some(value) = record.metadata.get(key).map(|s| s.trim()) {
+            if !value.is_empty() && value != "." {
+                return Some(value.to_owned());
+            }
+        }
+    }
+    if let (Some(root), Some(cwd)) = (record.metadata.get("path"), record.metadata.get("cwd-path"))
+    {
+        if let Ok(relative) = std::path::Path::new(cwd).strip_prefix(root) {
+            if !relative.as_os_str().is_empty() {
+                return Some(relative.to_string_lossy().into_owned());
+            }
+        }
+    }
+    for key in ["cwd-path", "path"] {
+        if let Some(name) = record
+            .metadata
+            .get(key)
+            .and_then(|p| std::path::Path::new(p).file_name())
+            .and_then(|s| s.to_str())
+        {
+            return Some(name.to_owned());
+        }
+    }
+    if let RelationEndpoint::StableKey { kind, id } = &record.target {
+        if kind == locus::keys::PROJECT_PATH {
+            return std::path::Path::new(id)
+                .file_name()
+                .and_then(|s| s.to_str())
+                .map(str::to_owned);
+        }
+    }
     None
 }
 
 fn workspace_subject(id: u64) -> RelationEndpoint {
     RelationEndpoint::stable_key(locus::keys::NIRI_WORKSPACE_ID, id.to_string())
 }
-
-fn random_name(workspace: u64, taken: &HashSet<String>) -> String {
-    for salt in 0..ADJECTIVES.len() * NOUNS.len() {
-        let index = (workspace as usize)
-            .wrapping_mul(31)
-            .wrapping_add(salt * 101) ;
-        let name = format!(
-            "{}-{}",
-            ADJECTIVES[index % ADJECTIVES.len()],
-            NOUNS[(index / ADJECTIVES.len()) % NOUNS.len()]
-        );
-        if !taken.contains(&name) {
-            return name;
-        }
-    }
-    format!("ws-{workspace}")
-}
-
-const ADJECTIVES: &[&str] = &[
-    "brave", "calm", "deft", "eager", "faint", "grand", "hasty", "idle", "jolly", "keen",
-    "lucid", "merry", "noble", "odd", "proud", "quick", "rusty", "sandy", "tidy", "umbral",
-    "vivid", "witty", "young", "zesty",
-];
-
-const NOUNS: &[&str] = &[
-    "otter", "fox", "heron", "mole", "newt", "owl", "panda", "quail", "raven", "stoat",
-    "tapir", "urchin", "vole", "wren", "yak", "zebra", "acorn", "birch", "cedar", "dune",
-    "ember", "fjord", "grove", "harbor",
-];
 
 fn focused_workspace_id() -> Observable<Option<u64>> {
     let descriptor = ObjectDescriptor::parse(
@@ -181,7 +135,7 @@ fn focused_workspace_id() -> Observable<Option<u64>> {
         niri_dbus::ROOT_PATH,
         niri_dbus::ROOT_INTERFACE,
     )
-    .expect("niri root descriptor should be valid");
+    .expect("niri descriptor");
     dbus::optional_array_property::<OwnedObjectPath>(PropertyDescriptor::new(
         descriptor,
         "FocusedWorkspace",
@@ -201,51 +155,50 @@ fn focused_workspace_id() -> Observable<Option<u64>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn random_names_are_stable_and_unique() {
-        let taken = HashSet::new();
-        let first = random_name(42, &taken);
-        assert_eq!(random_name(42, &taken), first);
-        assert!(first.contains('-'));
-
-        let mut taken = HashSet::from([first.clone()]);
-        let second = random_name(43, &taken);
-        assert_ne!(second, first);
-        taken.insert(second.clone());
-        assert!(!taken.contains(&random_name(44, &taken)));
-    }
-
-    #[test]
-    fn project_names_prefer_display_main() {
-        let subject = workspace_subject(7);
-        let record = RelationRecord {
-            subject: subject.clone(),
-            relation: relations::WORKSPACE_PROJECT.to_owned(),
-            target: locus::RelationEndpoint::stable_key("org.rsynapse.project.path", "/x"),
-            metadata: HashMap::from([
-                ("name".to_owned(), "coro-ncm".to_owned()),
-                ("display-main".to_owned(), "coro-uiq".to_owned()),
-            ]),
+    fn record(name: &str, source: &str) -> RelationRecord {
+        RelationRecord {
+            subject: workspace_subject(7),
+            relation: relations::WORKSPACE_NAME.to_owned(),
+            target: RelationEndpoint::stable_key(relations::WORKSPACE_NAME_KIND, name),
+            metadata: HashMap::from([("source".to_owned(), source.to_owned())]),
             created_at_unix_ms: 0,
             updated_at_unix_ms: 0,
-        };
-        assert_eq!(
-            project_name_for(7, std::slice::from_ref(&record)),
-            Some("coro-uiq".to_owned())
-        );
-        assert_eq!(project_name_for(8, std::slice::from_ref(&record)), None);
+        }
     }
-
     #[test]
-    fn first_write_prefers_project_then_random() {
-        let taken = HashSet::new();
+    fn defaults_are_empty_and_idempotent() {
         assert_eq!(
-            desired_name(Some("coro-uiq".to_owned()), 7, &taken),
-            Some(("coro-uiq".to_owned(), SOURCE_PROJECT))
+            name_update(None, None),
+            Some(("empty".to_owned(), "default"))
         );
-        let (name, source) = desired_name(None, 7, &taken).expect("random fallback");
-        assert_eq!(source, SOURCE_RANDOM);
-        assert!(name.contains('-'));
+        assert_eq!(name_update(Some(&record("empty", "default")), None), None);
+        assert_eq!(
+            name_update(Some(&record("noble-owl", "random")), None),
+            Some(("empty".to_owned(), "default"))
+        );
+    }
+    #[test]
+    fn manual_names_survive_project_updates() {
+        assert_eq!(
+            name_update(
+                Some(&record("my workspace", "manual")),
+                Some("cwd".to_owned())
+            ),
+            None
+        );
+    }
+    #[test]
+    fn auto_names_follow_project_cwd() {
+        assert_eq!(
+            name_update(Some(&record("empty", "default")), Some("cwd".to_owned())),
+            Some(("cwd".to_owned(), "project"))
+        );
+        let mut project = record("ignored", "project");
+        project.metadata = HashMap::from([
+            ("path".to_owned(), "/repo".to_owned()),
+            ("cwd-path".to_owned(), "/repo/subdir".to_owned()),
+            ("display-main".to_owned(), "wrong".to_owned()),
+        ]);
+        assert_eq!(project_name_for(7, &[project]), Some("subdir".to_owned()));
     }
 }

@@ -92,6 +92,13 @@ model value from this source expression."
 observable via `shell_core::source::session::locked()`; headless consumers
 can import it without GTK. The locker must publish its state to logind.
 
+`shell_source::wayland::input_idle(Duration)` exposes native input-idle state
+using ext-idle-notify v2 on the first Wayland seat. It ignores idle inhibitors
+and emits `true` after the threshold without input, then `false` on resumed
+input. The compositor owns the inactivity timeout; clients use async socket
+readiness, with no polling. Initial state is active as defined by the protocol.
+Subscriptions are shared by threshold and cancel their connection on drop.
+
 `shell_core::source::dbus` owns generic D-Bus primitives:
 
 - `property(PropertyDescriptor)` for typed property values.

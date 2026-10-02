@@ -65,17 +65,14 @@ async fn project_paths(locus: &LocusClient) -> Vec<String> {
     records
         .into_iter()
         .filter_map(|record| {
-            project_path(&record.target)
-                .or_else(|| metadata_value(&record.metadata, &["path"]))
+            project_path(&record.target).or_else(|| metadata_value(&record.metadata, &["path"]))
         })
         .collect()
 }
 
 fn project_path(endpoint: &locus::RelationEndpoint) -> Option<String> {
     match endpoint {
-        locus::RelationEndpoint::StableKey { kind, id }
-            if kind == locus::keys::PROJECT_PATH =>
-        {
+        locus::RelationEndpoint::StableKey { kind, id } if kind == locus::keys::PROJECT_PATH => {
             non_empty(id.clone())
         }
         _ => None,

@@ -1,8 +1,8 @@
 mod focus;
 mod git_status;
-mod relations;
 mod metrics;
 mod namer;
+mod relations;
 
 use crate::relations::LocusClient;
 use git_status::GitStatus;
@@ -19,18 +19,27 @@ async fn main() -> anyhow::Result<()> {
         .unwrap_or(2003);
 
     let metrics = Metrics::new(locus.clone(), carbon_host, carbon_port);
-    let metrics = tokio::spawn(async move { metrics.run().await });
+    let (shutdown, shutdown_signal) = tokio::sync::watch::channel(false);
+    let mut metrics = tokio::spawn(async move { metrics.run(shutdown_signal).await });
     let namer = Namer::new(locus.clone());
     let namer = tokio::spawn(async move { namer.run().await });
     let git_status = GitStatus::new(locus.clone());
     let git_status = tokio::spawn(async move { git_status.run().await });
 
+    let mut terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
     tokio::select! {
         biased;
-        result = metrics => report("metrics", result),
+        result = &mut metrics => report("metrics", result),
         result = namer => report("namer", result),
         result = git_status => report("git_status", result),
-        _ = tokio::signal::ctrl_c() => Ok(()),
+        _ = tokio::signal::ctrl_c() => {
+            let _ = shutdown.send(true);
+            report("metrics", metrics.await)
+        },
+        _ = terminate.recv() => {
+            let _ = shutdown.send(true);
+            report("metrics", metrics.await)
+        },
     }
 }
 
