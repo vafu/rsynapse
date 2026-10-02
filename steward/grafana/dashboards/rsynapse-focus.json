@@ -1,26 +1,45 @@
 {
   "uid": "rsynapse-focus",
   "title": "Rsynapse focus",
-  "tags": ["rsynapse"],
+  "tags": [
+    "rsynapse"
+  ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 3,
+  "version": 6,
   "templating": {
-    "list": [{
-      "name": "idle",
-      "label": "Activity",
-      "type": "custom",
-      "query": "Active : false, Idle : true",
-      "multi": false,
-      "includeAll": true,
-      "allValue": "*",
-      "current": {"text": "All", "value": "$__all"},
-      "options": [
-        {"text": "All", "value": "$__all", "selected": true},
-        {"text": "Active", "value": "false", "selected": false},
-        {"text": "Idle", "value": "true", "selected": false}
-      ]
-    }]
+    "list": [
+      {
+        "name": "idle",
+        "label": "Activity",
+        "type": "custom",
+        "query": "Active : false, Idle : true",
+        "multi": false,
+        "includeAll": true,
+        "allValue": "*",
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "options": [
+          {
+            "text": "All",
+            "value": "$__all",
+            "selected": true
+          },
+          {
+            "text": "Active",
+            "value": "false",
+            "selected": false
+          },
+          {
+            "text": "Idle",
+            "value": "true",
+            "selected": false
+          }
+        ]
+      }
+    ]
   },
   "panels": [
     {
@@ -28,36 +47,556 @@
       "type": "piechart",
       "title": "Project breakdown",
       "maxDataPoints": 1000000,
-      "description": "Completed project focus intervals, including idle time. Filter All/Active/Idle using the Activity dropdown. Locked and unassigned time is excluded.",
-      "datasource": {"type": "graphite", "uid": "graphite"},
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
-      "fieldConfig": {"defaults": {"unit": "dtdurations", "min": 0}, "overrides": []},
+      "description": "Completed project focus intervals in the selected range and Activity filter. Unassigned and locked time is excluded.",
+      "datasource": {
+        "type": "graphite",
+        "uid": "graphite"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 0,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dtdurations",
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "coro-db"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#DEB6F2"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "coro-ncm"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#C2D1FF"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "coroutines-startup-sanity"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#B877D9"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "e2e-lsp"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#F29191"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "rsynapse"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#8AB8FF"
+                }
+              }
+            ]
+          }
+        ]
+      },
       "options": {
         "pieType": "pie",
-        "reduceOptions": {"values": false, "calcs": ["sum"], "fields": ""},
-        "displayLabels": ["name", "percent"],
-        "legend": {"displayMode": "table", "placement": "right", "showLegend": true, "values": ["value", "percent"]},
-        "tooltip": {"mode": "single", "sort": "desc"}
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "displayLabels": [
+          "name",
+          "percent"
+        ],
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "values": [
+            "value",
+            "percent"
+          ]
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "desc"
+        }
       },
-      "targets": [{"refId": "A", "target": "groupByNode(consolidateBy(setXFilesFactor(rsynapse.focus.project.*.idle.${idle:raw}.seconds, 0), 'sum'), 3, 'sum')"}]
+      "targets": [
+        {
+          "refId": "A",
+          "target": "groupByNode(consolidateBy(setXFilesFactor(rsynapse.focus.project.*.idle.${idle:raw}.seconds, 0), 'sum'), 3, 'sum')"
+        }
+      ]
     },
     {
       "id": 2,
       "type": "piechart",
       "title": "App breakdown",
       "maxDataPoints": 1000000,
-      "description": "Completed app focus intervals, including idle time. Filter All/Active/Idle using the Activity dropdown. Locked time is excluded.",
-      "datasource": {"type": "graphite", "uid": "graphite"},
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
-      "fieldConfig": {"defaults": {"unit": "dtdurations", "min": 0}, "overrides": []},
+      "description": "Completed app focus intervals in the selected range and Activity filter. Locked time is excluded.",
+      "datasource": {
+        "type": "graphite",
+        "uid": "graphite"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dtdurations",
+          "min": 0
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "chrome"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#B877D9"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "codex"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#FADE2A"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "firefox"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#C2D1FF"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "ghostty"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#F29191"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "neovim"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#5794F2"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "opencode"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#56D9D3"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "slack"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#B3A2F7"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "update-manager"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#F2495C"
+                }
+              }
+            ]
+          }
+        ]
+      },
       "options": {
         "pieType": "pie",
-        "reduceOptions": {"values": false, "calcs": ["sum"], "fields": ""},
-        "displayLabels": ["name", "percent"],
-        "legend": {"displayMode": "table", "placement": "right", "showLegend": true, "values": ["value", "percent"]},
-        "tooltip": {"mode": "single", "sort": "desc"}
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "displayLabels": [
+          "name",
+          "percent"
+        ],
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "values": [
+            "value",
+            "percent"
+          ]
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "desc"
+        }
       },
-      "targets": [{"refId": "A", "target": "groupByNode(consolidateBy(setXFilesFactor(rsynapse.focus.app.*.idle.${idle:raw}.seconds, 0), 'sum'), 3, 'sum')"}]
+      "targets": [
+        {
+          "refId": "A",
+          "target": "groupByNode(consolidateBy(setXFilesFactor(rsynapse.focus.app.*.idle.${idle:raw}.seconds, 0), 'sum'), 3, 'sum')"
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "type": "piechart",
+      "title": "Workspace breakdown",
+      "maxDataPoints": 1000000,
+      "description": "Click a slice to open that workspace's detail dashboard with the same time range and Activity filter.",
+      "datasource": {
+        "type": "graphite",
+        "uid": "graphite"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dtdurations",
+          "min": 0,
+          "links": [
+            {
+              "title": "Open workspace details",
+              "url": "/d/rsynapse-workspace/rsynapse-workspace?var-workspace_name=${__field.displayName:percentencode}&${__url_time_range}&${idle:queryparam}",
+              "targetBlank": false
+            }
+          ]
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "android_snapchat"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#FFCC99"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "coro-db"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#DEB6F2"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "coro-ncm"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#C2D1FF"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "coro-uiq"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#5794F2"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "coroutines-startup-sanity"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#B877D9"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "e2e-lsp"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#F29191"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "empty"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#F2495C"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "office"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#FFB357"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "personal"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#B8E986"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "rsynapse"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#8AB8FF"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "test"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#FF9830"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "vivid-grove"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#56D9D3"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "pieType": "pie",
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "displayLabels": [
+          "name",
+          "percent"
+        ],
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "values": [
+            "value",
+            "percent"
+          ]
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "target": "groupByNode(consolidateBy(setXFilesFactor(rsynapse.focus.workspace_name.*.idle.${idle:raw}.seconds, 0), 'sum'), 3, 'sum')"
+        }
+      ]
     },
     {
       "id": 3,
@@ -65,90 +604,437 @@
       "title": "Workspace switches",
       "maxDataPoints": 1000000,
       "description": "Total workspace switches within the selected dashboard range.",
-      "datasource": {"type": "graphite", "uid": "graphite"},
-      "gridPos": {"h": 4, "w": 8, "x": 0, "y": 8},
-      "fieldConfig": {"defaults": {"unit": "short", "decimals": 0, "min": 0}, "overrides": []},
-      "options": {"reduceOptions": {"values": false, "calcs": ["sum"], "fields": ""}},
-      "targets": [{"refId": "A", "target": "alias(consolidateBy(setXFilesFactor(rsynapse.switches.workspace, 0), 'sum'), 'Workspace switches')"}]
+      "datasource": {
+        "type": "graphite",
+        "uid": "graphite"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 8,
+        "x": 0,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "sum"
+          ],
+          "fields": ""
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "target": "alias(consolidateBy(setXFilesFactor(rsynapse.switches.workspace, 0), 'sum'), 'Workspace switches')"
+        }
+      ]
     },
     {
       "id": 4,
       "type": "timeseries",
       "title": "Switches per hour",
-      "datasource": {"type": "graphite", "uid": "graphite"},
-      "gridPos": {"h": 4, "w": 16, "x": 8, "y": 8},
-      "fieldConfig": {"defaults": {"unit": "short", "decimals": 0}, "overrides": []},
+      "datasource": {
+        "type": "graphite",
+        "uid": "graphite"
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 16,
+        "x": 8,
+        "y": 8
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0
+        },
+        "overrides": []
+      },
       "options": {},
-      "targets": [{"refId": "A", "target": "alias(summarize(setXFilesFactor(rsynapse.switches.workspace, 0), '1h', 'sum'), 'Switches per hour')"}]
+      "targets": [
+        {
+          "refId": "A",
+          "target": "alias(summarize(setXFilesFactor(rsynapse.switches.workspace, 0), '1h', 'sum'), 'Switches per hour')"
+        }
+      ]
     },
     {
       "id": 1,
-      "type": "timeseries",
-      "title": "Focus time by project",
-      "datasource": {"type": "graphite", "uid": "graphite"},
-      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 12},
+      "type": "state-timeline",
+      "title": "Focused project",
+      "description": "One categorical lane showing the focused project. Idle retains the same name; None means unassigned, locked, or no focus.",
+      "datasource": {
+        "type": "graphite",
+        "uid": "graphite"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 24,
+        "x": 0,
+        "y": 12
+      },
       "fieldConfig": {
-        "defaults": {"unit": "dtdurations", "custom": {"stacking": {"mode": "normal"}, "fillOpacity": 80}},
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "(none)": {
+                  "text": "None",
+                  "color": "gray"
+                },
+                "coro-db": {
+                  "text": "coro-db",
+                  "color": "#DEB6F2"
+                },
+                "coro-ncm": {
+                  "text": "coro-ncm",
+                  "color": "#C2D1FF"
+                },
+                "coroutines-startup-sanity": {
+                  "text": "coroutines-startup-sanity",
+                  "color": "#B877D9"
+                },
+                "e2e-lsp": {
+                  "text": "e2e-lsp",
+                  "color": "#F29191"
+                },
+                "rsynapse": {
+                  "text": "rsynapse",
+                  "color": "#8AB8FF"
+                }
+              }
+            }
+          ],
+          "custom": {
+            "lineWidth": 0,
+            "fillOpacity": 80
+          }
+        },
         "overrides": []
       },
-      "options": {"legend": {"displayMode": "table", "placement": "right"}},
-      "targets": [{"refId": "A", "target": "groupByNode(setXFilesFactor(rsynapse.focus.project.*.idle.${idle:raw}.seconds, 0), 3, 'sum')"}]
+      "options": {
+        "mergeValues": true,
+        "showValue": "always",
+        "rowHeight": 0.9,
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "target": "group(aliasByNode(consolidateBy(keepLastValue(rsynapse.focus.project.*.state), 'last'), 3), alias(consolidateBy(keepLastValue(rsynapse.focus.no_project.state), 'last'), '(none)'))"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "seriesToRows",
+          "options": {}
+        },
+        {
+          "id": "filterByValue",
+          "options": {
+            "type": "include",
+            "match": "all",
+            "filters": [
+              {
+                "fieldName": "Value",
+                "config": {
+                  "id": "greater",
+                  "options": {
+                    "value": 0
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Value": true
+            },
+            "renameByName": {
+              "Metric": "Focused project"
+            }
+          }
+        }
+      ]
     },
     {
       "id": 7,
-      "type": "timeseries",
-      "title": "Focus time by workspace name",
-      "description": "Preferred workspace names, project cwd labels, or empty for project-less workspaces.",
-      "datasource": {"type": "graphite", "uid": "graphite"},
-      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 20},
+      "type": "state-timeline",
+      "title": "Focused workspace",
+      "description": "One categorical lane showing the focused workspace name. Idle retains the name; None means locked or no workspace focus.",
+      "datasource": {
+        "type": "graphite",
+        "uid": "graphite"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 24,
+        "x": 0,
+        "y": 17
+      },
       "fieldConfig": {
-        "defaults": {"unit": "dtdurations", "custom": {"stacking": {"mode": "normal"}, "fillOpacity": 80}},
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "(none)": {
+                  "text": "None",
+                  "color": "gray"
+                },
+                "android_snapchat": {
+                  "text": "android_snapchat",
+                  "color": "#FFCC99"
+                },
+                "coro-db": {
+                  "text": "coro-db",
+                  "color": "#DEB6F2"
+                },
+                "coro-ncm": {
+                  "text": "coro-ncm",
+                  "color": "#C2D1FF"
+                },
+                "coro-uiq": {
+                  "text": "coro-uiq",
+                  "color": "#5794F2"
+                },
+                "coroutines-startup-sanity": {
+                  "text": "coroutines-startup-sanity",
+                  "color": "#B877D9"
+                },
+                "e2e-lsp": {
+                  "text": "e2e-lsp",
+                  "color": "#F29191"
+                },
+                "empty": {
+                  "text": "empty",
+                  "color": "#F2495C"
+                },
+                "office": {
+                  "text": "office",
+                  "color": "#FFB357"
+                },
+                "personal": {
+                  "text": "personal",
+                  "color": "#B8E986"
+                },
+                "rsynapse": {
+                  "text": "rsynapse",
+                  "color": "#8AB8FF"
+                },
+                "test": {
+                  "text": "test",
+                  "color": "#FF9830"
+                },
+                "vivid-grove": {
+                  "text": "vivid-grove",
+                  "color": "#56D9D3"
+                }
+              }
+            }
+          ],
+          "custom": {
+            "lineWidth": 0,
+            "fillOpacity": 80
+          }
+        },
         "overrides": []
       },
-      "options": {"legend": {"displayMode": "table", "placement": "right"}},
-      "targets": [{"refId": "A", "target": "groupByNode(setXFilesFactor(rsynapse.focus.workspace_name.*.idle.${idle:raw}.seconds, 0), 3, 'sum')"}]
+      "options": {
+        "mergeValues": true,
+        "showValue": "always",
+        "rowHeight": 0.9,
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "target": "group(aliasByNode(consolidateBy(keepLastValue(rsynapse.focus.workspace_name.*.state), 'last'), 3), alias(consolidateBy(keepLastValue(rsynapse.focus.no_workspace_name.state), 'last'), '(none)'))"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "seriesToRows",
+          "options": {}
+        },
+        {
+          "id": "filterByValue",
+          "options": {
+            "type": "include",
+            "match": "all",
+            "filters": [
+              {
+                "fieldName": "Value",
+                "config": {
+                  "id": "greater",
+                  "options": {
+                    "value": 0
+                  }
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Value": true
+            },
+            "renameByName": {
+              "Metric": "Focused workspace"
+            }
+          }
+        }
+      ]
     },
     {
       "id": 9,
       "type": "piechart",
       "title": "Activity breakdown",
       "maxDataPoints": 1000000,
-      "description": "Active/idle durations are derived by summing workspace intervals, including project-less workspaces. Locked time is recorded separately. This overview always includes both idle states.",
-      "datasource": {"type": "graphite", "uid": "graphite"},
-      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 28},
-      "fieldConfig": {"defaults": {"unit": "dtdurations", "min": 0}, "overrides": []},
+      "description": "Active/idle totals derive from workspace durations. Locked time is separate. Always includes both idle states.",
+      "datasource": {
+        "type": "graphite",
+        "uid": "graphite"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 22
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dtdurations",
+          "min": 0
+        },
+        "overrides": []
+      },
       "options": {
         "pieType": "pie",
-        "reduceOptions": {"values": false, "calcs": ["sum"], "fields": ""},
-        "displayLabels": ["name", "percent"],
-        "legend": {"displayMode": "table", "placement": "right", "showLegend": true, "values": ["value", "percent"]}
+        "reduceOptions": {
+          "values": false,
+          "calcs": [
+            "sum"
+          ],
+          "fields": ""
+        },
+        "displayLabels": [
+          "name",
+          "percent"
+        ],
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "values": [
+            "value",
+            "percent"
+          ]
+        }
       },
       "targets": [
-        {"refId": "A", "target": "alias(sumSeries(consolidateBy(setXFilesFactor(rsynapse.focus.workspace.*.idle.false.seconds, 0), 'sum')), 'Active')"},
-        {"refId": "B", "target": "alias(sumSeries(consolidateBy(setXFilesFactor(rsynapse.focus.workspace.*.idle.true.seconds, 0), 'sum')), 'Idle')"},
-        {"refId": "C", "target": "alias(consolidateBy(setXFilesFactor(rsynapse.activity.locked.seconds, 0), 'sum'), 'Locked')"}
+        {
+          "refId": "A",
+          "target": "alias(sumSeries(consolidateBy(setXFilesFactor(rsynapse.focus.workspace.*.idle.false.seconds, 0), 'sum')), 'Active')"
+        },
+        {
+          "refId": "B",
+          "target": "alias(sumSeries(consolidateBy(setXFilesFactor(rsynapse.focus.workspace.*.idle.true.seconds, 0), 'sum')), 'Idle')"
+        },
+        {
+          "refId": "C",
+          "target": "alias(consolidateBy(setXFilesFactor(rsynapse.activity.locked.seconds, 0), 'sum'), 'Locked')"
+        }
       ]
     },
     {
       "id": 10,
       "type": "state-timeline",
       "title": "Input activity",
-      "description": "Transition-only state: active, input-idle, or locked. State is held until the next event; no heartbeat is sent.",
-      "datasource": {"type": "graphite", "uid": "graphite"},
-      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 28},
+      "description": "Transition-only active, idle, and locked state. No heartbeat is sent.",
+      "datasource": {
+        "type": "graphite",
+        "uid": "graphite"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 22
+      },
       "fieldConfig": {
         "defaults": {
-          "mappings": [{"type": "value", "options": {
-            "0": {"text": "Idle", "color": "gray"},
-            "1": {"text": "Active", "color": "green"},
-            "2": {"text": "Locked", "color": "red"}
-          }}],
-          "custom": {"lineWidth": 0, "fillOpacity": 80}
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "Idle",
+                  "color": "gray"
+                },
+                "1": {
+                  "text": "Active",
+                  "color": "green"
+                },
+                "2": {
+                  "text": "Locked",
+                  "color": "red"
+                }
+              }
+            }
+          ],
+          "custom": {
+            "lineWidth": 0,
+            "fillOpacity": 80
+          }
         },
         "overrides": []
       },
-      "options": {"mergeValues": true, "showValue": "auto", "rowHeight": 0.9, "legend": {"displayMode": "list", "placement": "bottom", "showLegend": true}},
-      "targets": [{"refId": "A", "target": "alias(consolidateBy(keepLastValue(rsynapse.activity.state), 'last'), 'Activity')"}]
+      "options": {
+        "mergeValues": true,
+        "showValue": "auto",
+        "rowHeight": 0.9,
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "target": "alias(consolidateBy(keepLastValue(rsynapse.activity.state), 'last'), 'Activity')"
+        }
+      ]
     }
   ]
 }

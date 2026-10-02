@@ -25,6 +25,7 @@ struct Interval {
 #[derive(Debug, Default)]
 pub struct Tracker {
     current: FocusState,
+    presence_initialized: bool,
     intervals: HashMap<&'static str, Interval>,
     pending: HashMap<String, f64>,
 }
@@ -35,6 +36,7 @@ impl Tracker {
     }
 
     pub fn observe(&mut self, state: FocusState, now: Instant) {
+        self.observe_focus_states(&state);
         let (activity, code) = if state.locked {
             ("locked", 2.0)
         } else if state.idle {
@@ -150,10 +152,52 @@ impl Tracker {
                 }
             }
         }
+        // Joint app/context attribution cannot be reconstructed by joining
+        // the separate aggregate series later. End this interval on either
+        // a workspace or window switch, including two windows of the same app.
+        let next = if state.locked {
+            None
+        } else {
+            state
+                .workspace_name
+                .as_ref()
+                .zip(state.app_id.as_ref())
+                .map(|(workspace, app)| {
+                    format!(
+                        "focus.workspace_name.{}.app.{}.idle.{}.seconds",
+                        sanitize(workspace),
+                        sanitize(app),
+                        state.idle
+                    )
+                })
+        };
+        if workspace_changed
+            || window_changed
+            || self
+                .intervals
+                .get("workspace_app")
+                .map(|i| i.metric.as_str())
+                != next.as_deref()
+        {
+            self.end("workspace_app", now);
+            if let Some(metric) = next {
+                self.intervals.insert(
+                    "workspace_app",
+                    Interval {
+                        metric,
+                        started: now,
+                    },
+                );
+            }
+        }
         self.current = state;
     }
 
     pub fn finish(&mut self, now: Instant) {
+        self.observe_focus_states(&FocusState {
+            locked: true,
+            ..FocusState::default()
+        });
         for dimension in [
             "workspace",
             "workspace_name",
@@ -162,13 +206,69 @@ impl Tracker {
             "project",
             "output",
             "activity",
+            "workspace_app",
         ] {
             self.end(dimension, now);
         }
+        self.current = FocusState {
+            locked: true,
+            ..FocusState::default()
+        };
     }
 
     pub fn drain(&mut self) -> HashMap<String, f64> {
         std::mem::take(&mut self.pending)
+    }
+
+    /// Presence gauges are separate from duration increments. Write only
+    /// transitions: 0 not focused, 1 active focus, 2 idle focus. Window switches
+    /// inside the same project/context do not redraw these timelines.
+    fn observe_focus_states(&mut self, state: &FocusState) {
+        let before_code = if self.current.idle { 2.0 } else { 1.0 };
+        let after_code = if state.idle { 2.0 } else { 1.0 };
+        for (dimension, before, after) in [
+            (
+                "project",
+                self.current.project.as_deref(),
+                state.project.as_deref(),
+            ),
+            (
+                "workspace_name",
+                self.current.workspace_name.as_deref(),
+                state.workspace_name.as_deref(),
+            ),
+        ] {
+            let before = if self.current.locked {
+                None
+            } else {
+                before.map(sanitize)
+            };
+            let after = if state.locked {
+                None
+            } else {
+                after.map(sanitize)
+            };
+            if !self.presence_initialized || before.is_none() != after.is_none() {
+                self.pending.insert(
+                    format!("focus.no_{dimension}.state"),
+                    if after.is_none() { 1.0 } else { 0.0 },
+                );
+            }
+            if before == after && before_code == after_code {
+                continue;
+            }
+            if before != after {
+                if let Some(name) = before {
+                    self.pending
+                        .insert(format!("focus.{dimension}.{name}.state"), 0.0);
+                }
+            }
+            if let Some(name) = after {
+                self.pending
+                    .insert(format!("focus.{dimension}.{name}.state"), after_code);
+            }
+        }
+        self.presence_initialized = true;
     }
 
     fn end(&mut self, dimension: &str, now: Instant) {
@@ -415,6 +515,7 @@ mod tests {
             "focus.app.codex.idle.true.seconds",
             "focus.project.project-1.idle.true.seconds",
             "focus.output.DP-2.idle.true.seconds",
+            "focus.workspace_name.ws-1.app.codex.idle.true.seconds",
         ] {
             assert_eq!(locked.get(metric), Some(&60.0), "{metric}");
         }
@@ -480,6 +581,69 @@ mod tests {
     }
 
     #[test]
+    fn codex_windows_in_different_contexts_are_attributed_separately() {
+        let start = Instant::now();
+        let mut t = Tracker::new();
+        t.observe(state(1, 10, "codex"), start);
+        t.drain();
+        t.observe(state(2, 20, "codex"), start + Duration::from_secs(6));
+        let first = t.drain();
+        assert_eq!(
+            first.get("focus.workspace_name.ws-1.app.codex.idle.false.seconds"),
+            Some(&6.0)
+        );
+        assert!(!first.contains_key("focus.workspace_name.ws-2.app.codex.idle.false.seconds"));
+        t.finish(start + Duration::from_secs(10));
+        assert_eq!(
+            t.drain()
+                .get("focus.workspace_name.ws-2.app.codex.idle.false.seconds"),
+            Some(&4.0)
+        );
+    }
+
+    #[test]
+    fn workspace_move_and_rename_split_joint_app_timer_without_window_change() {
+        let start = Instant::now();
+        let mut t = Tracker::new();
+        t.observe(state(1, 10, "codex"), start);
+        t.drain();
+        t.observe(state(2, 10, "codex"), start + Duration::from_secs(2));
+        assert_eq!(
+            t.drain()
+                .get("focus.workspace_name.ws-1.app.codex.idle.false.seconds"),
+            Some(&2.0)
+        );
+        let mut renamed = state(2, 10, "codex");
+        renamed.workspace_name = Some("preferred".to_owned());
+        t.observe(renamed, start + Duration::from_secs(5));
+        assert_eq!(
+            t.drain()
+                .get("focus.workspace_name.ws-2.app.codex.idle.false.seconds"),
+            Some(&3.0)
+        );
+        t.finish(start + Duration::from_secs(9));
+        assert_eq!(
+            t.drain()
+                .get("focus.workspace_name.preferred.app.codex.idle.false.seconds"),
+            Some(&4.0)
+        );
+    }
+
+    #[test]
+    fn joint_app_timer_ends_on_each_window_switch_even_with_same_app_and_context() {
+        let start = Instant::now();
+        let mut t = Tracker::new();
+        t.observe(state(1, 10, "codex"), start);
+        t.drain();
+        t.observe(state(1, 20, "codex"), start + Duration::from_secs(3));
+        assert_eq!(
+            t.drain()
+                .get("focus.workspace_name.ws-1.app.codex.idle.false.seconds"),
+            Some(&3.0)
+        );
+    }
+
+    #[test]
     fn activity_gauge_uses_last_value_not_sum_in_same_storage_slot() {
         let mut slots = GraphiteSlots::default();
         let name = "rsynapse.activity.state".to_owned();
@@ -495,10 +659,87 @@ mod tests {
     }
 
     #[test]
+    fn focus_state_gauges_follow_focus_idle_lock_and_shutdown() {
+        let start = Instant::now();
+        let mut t = Tracker::new();
+        t.observe(state(1, 10, "codex"), start);
+        let initial = t.drain();
+        assert_eq!(initial.get("focus.workspace_name.ws-1.state"), Some(&1.0));
+        assert_eq!(initial.get("focus.project.project-1.state"), Some(&1.0));
+        t.observe(state(1, 20, "neovim"), start + Duration::from_secs(2));
+        assert!(
+            !t.drain()
+                .keys()
+                .any(|key| key.starts_with("focus.") && key.ends_with(".state"))
+        );
+        t.observe(
+            FocusState {
+                idle: true,
+                ..state(1, 20, "neovim")
+            },
+            start + Duration::from_secs(3),
+        );
+        let idle = t.drain();
+        assert_eq!(idle.get("focus.workspace_name.ws-1.state"), Some(&2.0));
+        assert_eq!(idle.get("focus.project.project-1.state"), Some(&2.0));
+        t.observe(
+            FocusState {
+                idle: true,
+                ..state(2, 30, "codex")
+            },
+            start + Duration::from_secs(4),
+        );
+        let moved = t.drain();
+        assert_eq!(moved.get("focus.workspace_name.ws-1.state"), Some(&0.0));
+        assert_eq!(moved.get("focus.workspace_name.ws-2.state"), Some(&2.0));
+        assert_eq!(moved.get("focus.project.project-1.state"), Some(&0.0));
+        t.observe(
+            FocusState {
+                locked: true,
+                ..FocusState::default()
+            },
+            start + Duration::from_secs(5),
+        );
+        assert_eq!(t.drain().get("focus.workspace_name.ws-2.state"), Some(&0.0));
+        t.observe(state(2, 30, "codex"), start + Duration::from_secs(6));
+        assert_eq!(t.drain().get("focus.workspace_name.ws-2.state"), Some(&1.0));
+        t.finish(start + Duration::from_secs(7));
+        let shutdown = t.drain();
+        assert_eq!(shutdown.get("focus.workspace_name.ws-2.state"), Some(&0.0));
+        assert_eq!(shutdown.get("focus.project.project-2.state"), Some(&0.0));
+        t.finish(start + Duration::from_secs(8));
+        assert!(t.drain().is_empty());
+    }
+
+    #[test]
     fn app_names_are_canonical_and_graphite_safe() {
         assert_eq!(canonical_app_id("com.mitchellh.ghostty"), "ghostty");
         assert_eq!(canonical_app_id("google-chrome"), "chrome");
         assert_eq!(sanitize("a.b"), "a_b");
         assert_eq!(sanitize(""), "unknown");
+    }
+
+    #[test]
+    fn no_focus_states_cover_lock_and_projectless_workspaces() {
+        let start = Instant::now();
+        let mut t = Tracker::new();
+        let mut projectless = state(1, 10, "firefox");
+        projectless.project = None;
+        t.observe(projectless, start);
+        let initial = t.drain();
+        assert_eq!(initial.get("focus.no_project.state"), Some(&1.0));
+        assert_eq!(initial.get("focus.no_workspace_name.state"), Some(&0.0));
+        t.observe(state(1, 10, "codex"), start + Duration::from_secs(1));
+        assert_eq!(t.drain().get("focus.no_project.state"), Some(&0.0));
+        t.observe(
+            FocusState {
+                locked: true,
+                ..FocusState::default()
+            },
+            start + Duration::from_secs(2),
+        );
+        let locked = t.drain();
+        assert_eq!(locked.get("focus.no_project.state"), Some(&1.0));
+        assert_eq!(locked.get("focus.no_workspace_name.state"), Some(&1.0));
     }
 }

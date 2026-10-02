@@ -40,9 +40,16 @@ leaving the process (only app-ids and project names become metric paths).
 - `grafana/`
   Provisioned Graphite datasource and the starter "Rsynapse focus"
   dashboard (project and app pies, workspace-switch total, switches/hour,
-  project timeline, workspace-name timeline). Pies and switch totals use
+  project and workspace-name state timelines). Pies and switch totals use
   the selected dashboard time range; focus durations render in readable
   time units. Pies sum each series rather than taking its last sample.
+  Click the overview's Workspace breakdown pie to open the shared workspace
+  detail page (UID `rsynapse-workspace`): app usage, idle percentage, total
+  duration, active/idle breakdown, and that workspace's focus state. The link
+  passes the clicked workspace, time range, and Activity filter. The detail
+  page has a single-select context dropdown and a link back to the overview.
+  Overview project/workspace focus charts each have one categorical lane
+  containing the focused name or None, rather than one row per entity.
 
 ## Registry note
 
@@ -101,6 +108,11 @@ starts active; its first idle timeout begins when the source is created.
 |---|---|
 | `rsynapse.focus.project.<name>.idle.<true,false>.seconds` | completed focus duration per locus project, split by idle state |
 | `rsynapse.focus.workspace_name.<name>.idle.<true,false>.seconds` | same, keyed by workspace display name |
+| `rsynapse.focus.workspace_name.<name>.app.<app>.idle.<true,false>.seconds` | joint app usage within a workspace context |
+| `rsynapse.focus.project.<name>.state` | transition-only focus gauge: 0 not focused, 1 active focus, 2 idle focus |
+| `rsynapse.focus.workspace_name.<name>.state` | same focus states per workspace display name |
+| `rsynapse.focus.no_project.state` | 1 when there is no focused project, 0 when a project is focused |
+| `rsynapse.focus.no_workspace_name.state` | 1 when there is no focused workspace, 0 otherwise |
 | `rsynapse.focus.app.<name>.idle.<true,false>.seconds` | focus duration per canonical app (`opencode`, `codex`, `neovim`, etc.), split by idle state |
 | `rsynapse.focus.workspace.<id>.idle.<true,false>.seconds` | focus duration per niri workspace id, including project-less workspaces |
 | `rsynapse.focus.window.<id>.idle.<true,false>.seconds` | completed window focus duration, split by idle state |
@@ -131,6 +143,57 @@ Grafana's Activity filter selects All/Active/Idle for app/project/workspace
 charts; All sums both idle states. Locked duration stays separate because no
 workspace/app is focused while locked. Historical unsplit focus series are no
 longer written or used by the dashboard.
+
+## Workspace drill-down
+
+The `workspace_name` query variable uses `rsynapse.focus.workspace_name.*`
+to discover recorded contexts, including historical names and `empty`.
+These are metric nodes, not an inventory of projects that have never produced
+metrics. Workspaces with the same display name aggregate into the same context.
+The overview has no repeated rows. Its workspace pie carries a single data
+link using the clicked field display name; the destination uses the URL's
+`var-workspace_name` to scope all workspace panels.
+
+Joint workspace/app intervals end on workspace, window/app, workspace-name,
+idle, lock, and shutdown boundaries. This separates Codex windows in different
+contexts and starts new collection from deployment onward; old independent
+app/workspace series cannot reconstruct that association retroactively.
+
+App pies group the joint series by app and follow the global Activity filter.
+Idle percentage is the ratio of **summed** idle workspace duration to **summed**
+total workspace duration within the selected range, not an average of point
+percentages. It and the Active / idle panel always include both idle states,
+independently of the app Activity filter. Workspace-level totals include time
+without an app window; no measured time produces No data for idle percentage.
+
+The overview's focus timelines combine held-last presence gauges, convert
+them to rows, keep only positive states, and retain Time + Metric as a single
+string-valued lane. Separate no-focus gauges provide an explicit None segment
+for locks, unassigned projects, or missing workspace focus. These gauges live
+outside the workspace-name namespace so they cannot become workspace choices.
+Idle transitions keep the same focused name; the Input activity lane shows
+active/idle/locked status separately. Only real transitions are published.
+
+## Dashboard colors
+
+`grafana/focus-colors.json` is the shared name-to-color registry. Context
+colors are applied to project/workspace pies, the single-lane focus timelines,
+and the selected workspace's detail focus chart. App colors are shared by
+the overview and detail app pies. None/not-focused stays gray.
+
+Grafana's classic palette colors a field, not different string values within
+one timeline field. Explicit value mappings color the timeline categories;
+fixed-color series overrides apply the same assignments to the other panels.
+Colors are independent of the selected time range and preserved as new names
+are added. Refresh the provisioned mappings after new contexts/apps appear:
+
+```sh
+python3 steward/grafana/refresh-focus-colors.py
+python3 steward/grafana/refresh-focus-colors.py --check
+```
+
+This is a manual configuration refresh, not a collector timer or a background
+job. Grafana reloads the resulting dashboard files through its provisioning.
 
 Graphite stores a 10-second time grid. Every event is sent immediately; events
 sharing a storage slot send the updated slot total so Graphite's replacement

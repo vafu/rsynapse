@@ -1,0 +1,26 @@
+{
+  "contexts": {
+    "android_snapchat": "#FFCC99",
+    "coro-db": "#DEB6F2",
+    "coro-ncm": "#C2D1FF",
+    "coro-uiq": "#5794F2",
+    "coroutines-startup-sanity": "#B877D9",
+    "e2e-lsp": "#F29191",
+    "empty": "#F2495C",
+    "office": "#FFB357",
+    "personal": "#B8E986",
+    "rsynapse": "#8AB8FF",
+    "test": "#FF9830",
+    "vivid-grove": "#56D9D3"
+  },
+  "apps": {
+    "chrome": "#B877D9",
+    "codex": "#FADE2A",
+    "firefox": "#C2D1FF",
+    "ghostty": "#F29191",
+    "neovim": "#5794F2",
+    "opencode": "#56D9D3",
+    "slack": "#B3A2F7",
+    "update-manager": "#F2495C"
+  }
+}
