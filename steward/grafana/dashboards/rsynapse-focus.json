@@ -6,7 +6,7 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 8,
+  "version": 9,
   "templating": {
     "list": [
       {
@@ -1282,7 +1282,7 @@
       "id": 20,
       "type": "piechart",
       "title": "Token consumption by project",
-      "description": "Live root-agent input plus output consumption; currently Codex only. Historical session totals are not backfilled.",
+      "description": "Live root-agent Codex and OpenCode input plus output consumption. Historical session totals are not backfilled.",
       "maxDataPoints": 1000000,
       "datasource": {
         "type": "graphite",
@@ -1412,7 +1412,7 @@
       "id": 21,
       "type": "piechart",
       "title": "Token consumption by model",
-      "description": "Live root-agent usage, attributed to the model in each usage report; currently Codex only.",
+      "description": "Live root-agent Codex and OpenCode usage, attributed to the model in each usage report.",
       "maxDataPoints": 1000000,
       "datasource": {
         "type": "graphite",
@@ -1520,7 +1520,7 @@
       "id": 23,
       "type": "piechart",
       "title": "Agent work by reasoning effort",
-      "description": "Completed root-agent busy intervals grouped by selected effort. Unknown means the producer has not exported effort, including non-Codex agents.",
+      "description": "Completed root-agent busy intervals grouped by selected effort. Codex and OpenCode export effort; unavailable or budget-only settings remain unknown.",
       "maxDataPoints": 1000000,
       "datasource": {
         "type": "graphite",

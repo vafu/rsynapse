@@ -248,7 +248,7 @@ selects roots/subagents/All independently of the human Activity filter. Means
 are ratios of summed durations to summed counts, not averages of slot means.
 
 AgentDBus now exports standardized token usage and `ReasoningEffort`, currently
-implemented by its Codex adapter. Steward subscribes to typed
+implemented by its Codex and OpenCode adapters. Steward subscribes to typed
 `TokenUsageReported` signals through a shell-source observable using one
 namespace subscription, so roster churn does not replace usage subscriptions.
 It counts live deltas, never historical cumulative snapshots. Revisions are
@@ -281,8 +281,13 @@ The overview adds token consumption by project/model and busy time by
 model/effort. Workspace detail adds model/effort selectors, token consumption
 by model, busy time by effort, and all six token totals. These selectors filter
 state-time/token panels; session and reaction panels remain role-level totals.
-Unavailable usage shows No data. Non-Codex agents can supply a model while
-their reasoning effort remains `unknown` and usage unavailable. `ContextPct`
+Unavailable usage shows No data. Agents without telemetry support can supply a
+model while their reasoning effort remains `unknown` and usage unavailable.
+OpenCode uses the same signals and series, so no separate collector is needed.
+Its plugin normalizes exclusive cache/reasoning buckets to inclusive input/output
+and emits unique completed model steps. Effective request options provide effort;
+budget-only thinking settings remain `unknown`. Replace the installed plugin and
+restart OpenCode to enable these hooks in existing installations. `ContextPct`
 remains occupancy, not consumption; no token-derived cost is fabricated.
 
 Graphite stores a 10-second time grid. Every event is sent immediately; events
