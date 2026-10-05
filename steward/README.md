@@ -290,6 +290,40 @@ budget-only thinking settings remain `unknown`. Replace the installed plugin and
 restart OpenCode to enable these hooks in existing installations. `ContextPct`
 remains occupancy, not consumption; no token-derived cost is fabricated.
 
+## Daily workday log
+
+Open **Today and daily workday log** from the overview, or the
+`rsynapse-workday` dashboard. It tracks three independent daily goals:
+
+- **8 hours elapsed span:** first active presence to latest active presence,
+  including breaks between them. The fixed span finish is start plus 8 hours.
+- **8 hours unlocked:** active plus idle time after the day's first active,
+  excluding lock. Pre-start idle time does not count.
+- **4 hours active:** input-active and unlocked time after the first active.
+
+The Today panels show start, span finish, earliest finish satisfying all three
+targets, live unlocked/active totals, and signed target differences. Negative
+means under target; positive means over. The earliest-finish estimate assumes
+you remain active and unlocked from now. Lock or idle can push it later.
+The daily history table records start, planned span finish, last active, totals,
+and over/under for each goal. It updates on activity/focus events; the live
+panels account for the open interval using the checkpoint and availability flags.
+Grafana refreshes the view; the collector has no heartbeat or daily polling.
+
+Steward owns the `org.rsynapse.workday.summary` locus relation, keyed by local
+calendar date. Locus durably stores the typed JSON summary in relation metadata.
+Graphite exposes latest-value gauges as `rsynapse.workday.<YYYY-MM-DD,today>.*.state`.
+Dates and midnight splitting use the session's local timezone and calendar,
+including DST. If activity carries across midnight, the next day's first active
+presence is midnight. A restart preserves records and does not count unobserved
+collector downtime. Graceful shutdown closes the open interval.
+
+When today's record is missing, startup makes one best-effort read of existing
+Graphite activity history to seed today's start/totals; this is subject to its
+storage resolution. `GRAPHITE_URL` defaults to `http://127.0.0.1:8080`. Without
+history, the first observed active state starts the record. Historical daily
+records begin with collection and survive steward restarts through locus.
+
 Graphite stores a 10-second time grid. Every event is sent immediately; events
 sharing a storage slot send the updated slot total so Graphite's replacement
 semantics do not lose rapid switches. This requires no scheduling or waiting.

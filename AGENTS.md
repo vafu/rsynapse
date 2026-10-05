@@ -52,7 +52,8 @@ components.
   status. It computes, locus stores, the shell renders. It resolves
   dependencies from public crates.io via `steward/build.sh`; see
   `steward/README.md`. Steward-owned relations: `org.rsynapse.workspace.name`
-  and `org.rsynapse.project.git-status`.
+  and `org.rsynapse.project.git-status`. Daily workday records are stored under
+  `org.rsynapse.workday.summary`.
 
 ## Relation Service Shape
 

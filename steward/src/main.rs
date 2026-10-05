@@ -4,6 +4,7 @@ mod git_status;
 mod metrics;
 mod namer;
 mod relations;
+mod workdays;
 
 use crate::relations::LocusClient;
 use git_status::GitStatus;

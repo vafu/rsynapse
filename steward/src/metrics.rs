@@ -44,6 +44,7 @@ impl Metrics {
     }
 
     pub async fn run(self, mut shutdown: tokio::sync::watch::Receiver<bool>) -> anyhow::Result<()> {
+        let mut workdays = crate::workdays::Workdays::load(&self.locus).await?;
         let (batch_sender, batch_receiver) = mpsc::channel::<Vec<(String, f64, u64)>>();
         let host = self.carbon_host.clone();
         let port = self.carbon_port;
@@ -69,6 +70,7 @@ impl Metrics {
                 _ = shutdown.changed() => break Ok(()),
                 item = states.next() => match item {
                     Some(Ok(state)) => {
+                        publish_pending(workdays.observe(&state, &self.locus).await?, &batch_sender);
                         agents.focus(state.window_id, !state.locked && !state.idle, Instant::now());
                         tracker.observe(state, Instant::now());
                         publish_events(&mut tracker, &batch_sender);
@@ -97,6 +99,18 @@ impl Metrics {
         };
         tracker.finish(Instant::now());
         agents.finish(Instant::now());
+        publish_pending(
+            workdays
+                .observe(
+                    &FocusState {
+                        locked: true,
+                        ..FocusState::default()
+                    },
+                    &self.locus,
+                )
+                .await?,
+            &batch_sender,
+        );
         publish_events(&mut tracker, &batch_sender);
         publish_pending(agents.drain(), &batch_sender);
         drop(batch_sender);
