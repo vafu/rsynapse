@@ -1,0 +1,12 @@
+[Unit]
+Description=Rsynapse local dashboard API
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=@LOCAL_BIN@/rsynapse-dashboard-api
+Restart=on-failure
+RestartSec=2
+
+[Install]
+WantedBy=default.target

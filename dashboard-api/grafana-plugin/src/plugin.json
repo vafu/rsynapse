@@ -1,0 +1,16 @@
+{
+  "type": "panel",
+  "name": "Rsynapse goals",
+  "id": "rsynapse-goals-panel",
+  "skipDataQuery": true,
+  "info": {
+    "description": "Edit daily outcomes and habits stored in locus through the local dashboard API.",
+    "author": {"name": "Rsynapse"},
+    "keywords": ["goals", "rsynapse", "productivity"],
+    "logos": {"small": "img/logo.svg", "large": "img/logo.svg"},
+    "version": "0.1.1",
+    "updated": "2026-10-07",
+    "links": []
+  },
+  "dependencies": {"grafanaDependency": ">=13.0.0", "plugins": []}
+}

@@ -180,12 +180,50 @@ pub struct RelationRecord {
     pub updated_at_unix_ms: u64,
 }
 
+/// Persistence is explicit and independent of endpoint kinds.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, Type)]
+pub struct RelationState {
+    pub record: RelationRecord,
+    pub persist: bool,
+}
+
 #[proxy(
     interface = "org.rsynapse.Locus.Relations1",
     default_service = "org.rsynapse.Locus",
     default_path = "/org/rsynapse/Locus"
 )]
 pub trait Relations {
+    async fn set_with_persistence(
+        &self,
+        subject: RelationEndpoint,
+        relation: &str,
+        target: RelationEndpoint,
+        metadata: HashMap<String, String>,
+        persist: bool,
+    ) -> zbus::Result<RelationState>;
+
+    async fn set_one_with_persistence(
+        &self,
+        subject: RelationEndpoint,
+        relation: &str,
+        target: RelationEndpoint,
+        metadata: HashMap<String, String>,
+        persist: bool,
+    ) -> zbus::Result<RelationState>;
+
+    async fn set_persistence(
+        &self,
+        subject: RelationEndpoint,
+        relation: &str,
+        target: RelationEndpoint,
+        persist: bool,
+    ) -> zbus::Result<RelationState>;
+
+    async fn list_with_persistence(&self, relation: &str) -> zbus::Result<Vec<RelationState>>;
+
+    #[zbus(signal)]
+    async fn persistence_changed(&self, state: RelationState) -> zbus::Result<()>;
+
     #[zbus(property)]
     fn record_count(&self) -> zbus::Result<u64>;
 

@@ -1,0 +1,80 @@
+{
+  "uid": "rsynapse-productivity",
+  "title": "Rsynapse productivity components",
+  "tags": ["rsynapse"], "timezone": "browser", "schemaVersion": 39, "version": 3,
+  "description": "Calibration inputs and explicit goals. No composite productivity score or personal-time penalty weights have been chosen.",
+  "time": {"from": "now-30d", "to": "now"}, "refresh": "30s",
+  "links": [{"type": "link", "title": "Workday targets", "url": "/d/rsynapse-workday/rsynapse-workday"}, {"type": "link", "title": "Focus overview", "url": "/d/rsynapse-focus/rsynapse-focus"}],
+  "panels": [
+    {
+      "id": 1, "type": "stat", "title": "Today — productive background overlap",
+      "description": "Wall-time union: you are input-idle, unlocked, focused on another window/session, and at least one explicitly work-classified or open-goal-related root agent is thinking or using tools. Parallel agents do not multiply credit. Compaction/subagents/personal/unknown agents are excluded.",
+      "timeFrom": "now/d", "hideTimeOverride": true, "maxDataPoints": 1000000,
+      "datasource": {"type": "graphite", "uid": "graphite"}, "gridPos": {"h": 5, "w": 24, "x": 0, "y": 0},
+      "fieldConfig": {"defaults": {"unit": "dtdurations", "min": 0, "noValue": "No data", "color": {"mode": "fixed", "fixedColor": "blue"}}, "overrides": []},
+      "options": {"reduceOptions": {"values": false, "calcs": ["lastNotNull"], "fields": ""}, "graphMode": "none", "textMode": "value_and_name", "orientation": "horizontal"},
+      "targets": [
+        {"refId": "A", "target": "alias(sumSeries(keepLastValue(rsynapse.productivity.today.background_idle_seconds.state), multiplySeries(keepLastValue(rsynapse.productivity.today.background_idle_active.state), maxSeries(constantLine(0), diffSeries(scale(constantLine(${__to}), 0.001), keepLastValue(rsynapse.productivity.today.checkpoint.state))))), 'Productive background overlap')"},
+        {"refId": "B", "target": "alias(sumSeries(keepLastValue(rsynapse.productivity.today.goal_background_idle_seconds.state), multiplySeries(keepLastValue(rsynapse.productivity.today.goal_background_idle_active.state), maxSeries(constantLine(0), diffSeries(scale(constantLine(${__to}), 0.001), keepLastValue(rsynapse.productivity.today.checkpoint.state))))), 'Goal-related subset')"},
+        {"refId": "C", "target": "alias(sumSeries(keepLastValue(rsynapse.productivity.today.idle_agents_with_idle_human_seconds.state), multiplySeries(keepLastValue(rsynapse.productivity.today.idle_agents_with_idle_human_active.state), maxSeries(constantLine(0), diffSeries(scale(constantLine(${__to}), 0.001), keepLastValue(rsynapse.productivity.today.checkpoint.state))))), 'Work agents idle while you idle')"}
+      ]
+    },
+    {
+      "id": 2, "type": "stat", "title": "Today — personal time and classification coverage",
+      "description": "Personal active/idle time is measured separately for future penalties. Neither includes lock. Unclassified active time reveals missing configuration; context names are not heuristically classified.",
+      "timeFrom": "now/d", "hideTimeOverride": true, "maxDataPoints": 1000000,
+      "datasource": {"type": "graphite", "uid": "graphite"}, "gridPos": {"h": 5, "w": 24, "x": 0, "y": 5},
+      "fieldConfig": {"defaults": {"unit": "dtdurations", "min": 0, "noValue": "No data", "color": {"mode": "fixed", "fixedColor": "orange"}}, "overrides": []},
+      "options": {"reduceOptions": {"values": false, "calcs": ["lastNotNull"], "fields": ""}, "graphMode": "none", "textMode": "value_and_name", "orientation": "horizontal"},
+      "targets": [
+        {"refId": "A", "target": "alias(sumSeries(keepLastValue(rsynapse.productivity.today.personal_active_seconds.state), multiplySeries(keepLastValue(rsynapse.productivity.today.personal_active_active.state), maxSeries(constantLine(0), diffSeries(scale(constantLine(${__to}), 0.001), keepLastValue(rsynapse.productivity.today.checkpoint.state))))), 'Personal active')"},
+        {"refId": "B", "target": "alias(sumSeries(keepLastValue(rsynapse.productivity.today.personal_idle_seconds.state), multiplySeries(keepLastValue(rsynapse.productivity.today.personal_idle_active.state), maxSeries(constantLine(0), diffSeries(scale(constantLine(${__to}), 0.001), keepLastValue(rsynapse.productivity.today.checkpoint.state))))), 'Personal idle')"},
+        {"refId": "C", "target": "alias(sumSeries(keepLastValue(rsynapse.productivity.today.unclassified_active_seconds.state), multiplySeries(keepLastValue(rsynapse.productivity.today.unclassified_active_active.state), maxSeries(constantLine(0), diffSeries(scale(constantLine(${__to}), 0.001), keepLastValue(rsynapse.productivity.today.checkpoint.state))))), 'Unclassified active')"}
+      ]
+    },
+    {
+      "id": 3, "type": "stat", "title": "Today — distraction / background-work overlap",
+      "description": "These are subsets, not additional time to add to the totals. Personal time with background work is exposed so future scoring cannot reward distraction more than waiting in a work context. Locked work is separate from the idle-on-another-window reward.",
+      "timeFrom": "now/d", "hideTimeOverride": true, "maxDataPoints": 1000000,
+      "datasource": {"type": "graphite", "uid": "graphite"}, "gridPos": {"h": 5, "w": 24, "x": 0, "y": 10},
+      "fieldConfig": {"defaults": {"unit": "dtdurations", "min": 0, "noValue": "No data"}, "overrides": []},
+      "options": {"reduceOptions": {"values": false, "calcs": ["lastNotNull"], "fields": ""}, "graphMode": "none", "textMode": "value_and_name", "orientation": "horizontal"},
+      "targets": [
+        {"refId": "A", "target": "alias(sumSeries(keepLastValue(rsynapse.productivity.today.personal_active_with_background_work_seconds.state), multiplySeries(keepLastValue(rsynapse.productivity.today.personal_active_with_background_work_active.state), maxSeries(constantLine(0), diffSeries(scale(constantLine(${__to}), 0.001), keepLastValue(rsynapse.productivity.today.checkpoint.state))))), 'Personal active with background work')"},
+        {"refId": "B", "target": "alias(sumSeries(keepLastValue(rsynapse.productivity.today.personal_idle_with_background_work_seconds.state), multiplySeries(keepLastValue(rsynapse.productivity.today.personal_idle_with_background_work_active.state), maxSeries(constantLine(0), diffSeries(scale(constantLine(${__to}), 0.001), keepLastValue(rsynapse.productivity.today.checkpoint.state))))), 'Personal idle with background work')"},
+        {"refId": "C", "target": "alias(sumSeries(keepLastValue(rsynapse.productivity.today.work_while_locked_seconds.state), multiplySeries(keepLastValue(rsynapse.productivity.today.work_while_locked_active.state), maxSeries(constantLine(0), diffSeries(scale(constantLine(${__to}), 0.001), keepLastValue(rsynapse.productivity.today.checkpoint.state))))), 'Work agent while locked')"}
+      ]
+    },
+    {
+      "id": 4, "type": "rsynapse-goals-panel", "title": "Daily goals — plan, edit and review",
+      "description": "Goal records come directly from locus through the local dashboard API. Create and edit full titles, success criteria, priorities and statuses here; outcome goals can be linked to agent sessions. Steward only observes associations needed by its activity metrics.",
+      "gridPos": {"h": 14, "w": 24, "x": 0, "y": 15},
+      "options": {"apiUrl": "http://127.0.0.1:8770"}, "targets": []
+    },
+    {
+      "id": 6, "type": "table", "title": "Explicit workspace classifications",
+      "datasource": {"type": "graphite", "uid": "graphite"}, "gridPos": {"h": 5, "w": 24, "x": 0, "y": 29},
+      "fieldConfig": {"defaults": {}, "overrides": [{"matcher": {"id": "byName", "options": "Classification"}, "properties": [{"id": "mappings", "value": [{"type": "value", "options": {"0": {"text": "Unclassified"}, "1": {"text": "Work"}, "2": {"text": "Personal"}}}]}]}]},
+      "options": {"showHeader": true},
+      "targets": [{"refId": "A", "target": "aliasByNode(keepLastValue(rsynapse.productivity.classification.workspace_name.*.state), 4)"}],
+      "transformations": [{"id": "reduce", "options": {"mode": "seriesToRows", "reducers": ["lastNotNull"]}}, {"id": "organize", "options": {"renameByName": {"Field": "Context", "Last *": "Classification"}}}]
+    },
+    {
+      "id": 7, "type": "table", "title": "Daily productivity component log",
+      "description": "Event-closed union durations, stored durably in locus. Today may lag live panels until the next event. No retrospective overlap is invented from independent human/agent totals. Subsets must not be added to their parent totals.",
+      "datasource": {"type": "graphite", "uid": "graphite"}, "gridPos": {"h": 10, "w": 24, "x": 0, "y": 34},
+      "fieldConfig": {"defaults": {"unit": "dtdurations", "noValue": "—"}, "overrides": []}, "options": {"showHeader": true, "sortBy": [{"displayName": "Day", "desc": true}]},
+      "targets": [{"refId": "A", "target": "aliasSub(aliasByNode(keepLastValue(rsynapse.productivity.20*.*_seconds.state), 2, 3), '^(.*)\\.(.*)$', '{\"Day\":\"\\1\",\"Metric\":\"\\2\"}')"}],
+      "transformations": [
+        {"id": "reduce", "options": {"mode": "seriesToRows", "reducers": ["lastNotNull"]}}, {"id": "extractFields", "options": {"source": "Field", "format": "json", "replace": false}},
+        {"id": "groupingToMatrix", "options": {"columnField": "Metric", "rowField": "Day", "valueField": "Last *"}},
+        {"id": "organize", "options": {"renameByName": {"Day\\Metric": "Day", "background_idle_seconds": "Productive background", "goal_background_idle_seconds": "Goal-related subset", "personal_active_seconds": "Personal active", "personal_idle_seconds": "Personal idle", "personal_active_with_background_work_seconds": "Personal active + agent", "personal_idle_with_background_work_seconds": "Personal idle + agent", "work_while_locked_seconds": "Agent while locked", "unclassified_active_seconds": "Unclassified active", "idle_agents_with_idle_human_seconds": "Idle agents + idle human"}}}
+      ]
+    },
+    {
+      "id": 8, "type": "text", "title": "Activity-context preferences",
+      "gridPos": {"h": 6, "w": 24, "x": 0, "y": 44},
+      "options": {"mode": "markdown", "content": "Manage goals in the editor above: select the day, add outcomes or habits, edit criteria, and update status explicitly. Outcome sessions can be linked through the Sessions button. Full records stay in locus, not Graphite.\n\nActivity-context preferences remain collector configuration:\n```sh\nrsynapse-steward classify workspace personal personal\nrsynapse-steward classify workspace rsynapse work\nrsynapse-steward classify project /path/to/project work\nrsynapse-steward classify list\n```\nOpen outcome associations may qualify agent work; personal classification always vetoes credit. Habits never grant credit. No combined productivity score is finalized."}
+    }
+  ]
+}

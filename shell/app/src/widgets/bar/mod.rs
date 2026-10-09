@@ -202,7 +202,11 @@ pub struct MainBar {
     #[source(source_error_items())]
     source_error_items: Vec<SourceError>,
 
-    _workspace_editor: Option<selected_project::WorkspaceEditor>,
+    _workspace_popup: Option<selected_project::WorkspacePopup>,
+    _project_initializer: Option<selected_project::ProjectInitializer>,
+
+    #[source(selected_project::project_catalog())]
+    project_catalog: selected_project::ProjectCatalog,
 }
 
 #[shell_macros::component(model = MainBar)]
@@ -288,29 +292,18 @@ impl SimpleAsyncComponent for MainBar {
                             add_css_class: "selected-project-branch-button",
                             set_has_frame: false,
                             set_always_show_arrow: false,
+                            set_tooltip_text: Some("Workspace settings"),
                             #[wrap(Some)]
-                            set_child = &gtk::Box {
+                            set_child = &adw::ButtonContent {
                             add_css_class: "selected-project-segment",
                             add_css_class: "selected-project-main",
                             set_halign: gtk::Align::Center,
                             set_valign: gtk::Align::Center,
-                            set_orientation: gtk::Orientation::Horizontal,
-
-                            gtk::Label {
-                                set_css_classes: &["selected-project-icon", "nerdicon"],
-                                set_halign: gtk::Align::Center,
-                                set_valign: gtk::Align::Center,
-                                #[watch]
-                                set_nerd_icon: selected_project::icon(&model.selected_project),
-                            },
-
-                            gtk::Label {
-                                set_ellipsize: gtk::pango::EllipsizeMode::End,
-                                set_valign: gtk::Align::Center,
-                                set_xalign: 0.0,
-                                #[watch]
-                                set_label: selected_project::title_label(&model.selected_project),
-                            }
+                            set_can_shrink: true,
+                            #[watch]
+                            set_icon_name: selected_project::icon_name(&model.selected_project),
+                            #[watch]
+                            set_label: selected_project::title_label(&model.selected_project),
                             }
                         },
 
@@ -1130,6 +1123,7 @@ impl SimpleAsyncComponent for MainBar {
             false,
             output_name,
             None,
+            None,
         );
         let system_stats_item = bar_item::container(&["system-stats-widget"]);
         let disk_stats_item = bar_item::container(&["disk-stats-widget"]);
@@ -1140,9 +1134,16 @@ impl SimpleAsyncComponent for MainBar {
 
         let widgets = view_output!();
 
-        let editor = selected_project::WorkspaceEditor::new(&widgets.workspace_title_button);
-        editor.set_target(&model.selected_project);
-        model._workspace_editor = Some(editor);
+        let initializer =
+            selected_project::ProjectInitializer::new(&widgets.workspace_title_button);
+        let popup = selected_project::WorkspacePopup::new(
+            &widgets.workspace_title_button,
+            initializer.clone(),
+        );
+        popup.set_catalog(&model.project_catalog);
+        popup.set_target(&model.selected_project);
+        model._workspace_popup = Some(popup);
+        model._project_initializer = Some(initializer);
 
         let input_sender = sender.input_sender().clone();
         widgets.branch_copy_button.connect_clicked(move |_| {
@@ -1280,8 +1281,9 @@ impl SimpleAsyncComponent for MainBar {
                 let previous_audio = self.audio.clone();
                 let previous_brightness = self.brightness.clone();
                 MainBar::update(self, msg);
-                if let Some(editor) = &self._workspace_editor {
-                    editor.set_target(&self.selected_project);
+                if let Some(popup) = &self._workspace_popup {
+                    popup.set_catalog(&self.project_catalog);
+                    popup.set_target(&self.selected_project);
                 }
                 self.maybe_show_audio_osd(previous_audio);
                 self.maybe_show_brightness_osd(previous_brightness);
@@ -1409,6 +1411,14 @@ fn main_bar_input_name(msg: &MainBarInput) -> &'static str {
 impl MainBar {
     fn handle_request(&self, request: request::PendingRequest) {
         let response = match request.request {
+            request::ShellRequest::ProjectInit => {
+                if let Some(initializer) = &self._project_initializer {
+                    initializer.open_focused();
+                    request::RequestResponse::Ok
+                } else {
+                    request::RequestResponse::Error("Project picker is unavailable".to_owned())
+                }
+            }
             request::ShellRequest::Hints(action) => {
                 hints::apply(action);
                 request::RequestResponse::Ok

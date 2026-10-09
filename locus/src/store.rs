@@ -5,12 +5,38 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use locus::{RelationEndpoint, RelationRecord, keys};
+use locus::{RelationEndpoint, RelationRecord, RelationState};
+
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+struct StoredRecord {
+    #[serde(flatten)]
+    record: RelationRecord,
+    // Only deserialization uses this default: old disk records were durable.
+    #[serde(default = "legacy_persist")]
+    persist: bool,
+}
+
+fn legacy_persist() -> bool {
+    true
+}
+
+impl std::ops::Deref for StoredRecord {
+    type Target = RelationRecord;
+    fn deref(&self) -> &Self::Target {
+        &self.record
+    }
+}
+
+impl std::ops::DerefMut for StoredRecord {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.record
+    }
+}
 
 #[derive(Debug)]
 pub struct RelationStore {
     path: PathBuf,
-    records: Vec<RelationRecord>,
+    records: Vec<StoredRecord>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -47,12 +73,23 @@ impl RelationStore {
         target: RelationEndpoint,
         metadata: HashMap<String, String>,
     ) -> io::Result<SetOutcome> {
+        self.set_with_persistence(subject, relation, target, metadata, None)
+    }
+
+    pub fn set_with_persistence(
+        &mut self,
+        subject: RelationEndpoint,
+        relation: String,
+        target: RelationEndpoint,
+        metadata: HashMap<String, String>,
+        persist: Option<bool>,
+    ) -> io::Result<SetOutcome> {
         validate_endpoint("subject", &subject)?;
         validate_relation(&relation)?;
         validate_endpoint("target", &target)?;
 
         let mut next = self.records.clone();
-        let outcome = set_in_records(&mut next, subject, relation, target, metadata);
+        let outcome = set_in_records(&mut next, subject, relation, target, metadata, persist);
         self.persist_changed_records(&next)?;
         self.records = next;
         Ok(outcome)
@@ -65,6 +102,17 @@ impl RelationStore {
         target: RelationEndpoint,
         metadata: HashMap<String, String>,
     ) -> io::Result<ReplaceOutcome> {
+        self.set_one_with_persistence(subject, relation, target, metadata, None)
+    }
+
+    pub fn set_one_with_persistence(
+        &mut self,
+        subject: RelationEndpoint,
+        relation: String,
+        target: RelationEndpoint,
+        metadata: HashMap<String, String>,
+        persist: Option<bool>,
+    ) -> io::Result<ReplaceOutcome> {
         validate_endpoint("subject", &subject)?;
         validate_relation(&relation)?;
         validate_endpoint("target", &target)?;
@@ -75,13 +123,13 @@ impl RelationStore {
             let should_remove =
                 record.subject == subject && record.relation == relation && record.target != target;
             if should_remove {
-                removed.push(record.clone());
+                removed.push(record.record.clone());
             } else {
                 next.push(record.clone());
             }
         }
 
-        let set = set_in_records(&mut next, subject, relation, target, metadata);
+        let set = set_in_records(&mut next, subject, relation, target, metadata, persist);
         self.persist_changed_records(&next)?;
         self.records = next;
         Ok(ReplaceOutcome { set, removed })
@@ -107,7 +155,7 @@ impl RelationStore {
         let record = next.remove(index);
         self.persist_changed_records(&next)?;
         self.records = next;
-        Ok(Some(record))
+        Ok(Some(record.record))
     }
 
     pub fn clear(
@@ -122,7 +170,7 @@ impl RelationStore {
         let mut retained = Vec::with_capacity(self.records.len());
         for record in &self.records {
             if &record.subject == subject && record.relation == relation {
-                removed.push(record.clone());
+                removed.push(record.record.clone());
             } else {
                 retained.push(record.clone());
             }
@@ -141,7 +189,7 @@ impl RelationStore {
         let mut retained = Vec::with_capacity(self.records.len());
         for record in &self.records {
             if &record.subject == subject {
-                removed.push(record.clone());
+                removed.push(record.record.clone());
             } else {
                 retained.push(record.clone());
             }
@@ -180,7 +228,7 @@ impl RelationStore {
             .records
             .iter()
             .filter(|record| relation.is_empty() || record.relation == relation)
-            .cloned()
+            .map(|record| record.record.clone())
             .collect::<Vec<_>>();
         records.sort_by(|left, right| {
             left.relation
@@ -206,43 +254,89 @@ impl RelationStore {
         self.records.len()
     }
 
-    fn persist_changed_records(&self, records: &[RelationRecord]) -> io::Result<()> {
+    pub fn list_with_persistence(&self, relation: &str) -> Vec<RelationState> {
+        let mut states = self
+            .records
+            .iter()
+            .filter(|stored| relation.is_empty() || stored.relation == relation)
+            .map(|stored| RelationState {
+                record: stored.record.clone(),
+                persist: stored.persist,
+            })
+            .collect::<Vec<_>>();
+        states.sort_by(|left, right| {
+            left.record
+                .relation
+                .cmp(&right.record.relation)
+                .then_with(|| left.record.subject.cmp(&right.record.subject))
+                .then_with(|| left.record.target.cmp(&right.record.target))
+        });
+        states
+    }
+
+    pub fn set_persistence(
+        &mut self,
+        subject: &RelationEndpoint,
+        relation: &str,
+        target: &RelationEndpoint,
+        persist: bool,
+    ) -> io::Result<RelationState> {
+        validate_endpoint("subject", subject)?;
+        validate_relation(relation)?;
+        validate_endpoint("target", target)?;
+        let mut next = self.records.clone();
+        let record = next
+            .iter_mut()
+            .find(|record| {
+                &record.subject == subject
+                    && record.relation == relation
+                    && &record.target == target
+            })
+            .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "relation record not found"))?;
+        record.persist = persist;
+        let state = RelationState {
+            record: record.record.clone(),
+            persist,
+        };
+        self.persist_changed_records(&next)?;
+        self.records = next;
+        Ok(state)
+    }
+
+    fn persist_changed_records(&self, records: &[StoredRecord]) -> io::Result<()> {
         if persistent_records(&self.records) == persistent_records(records) {
             return Ok(());
         }
         self.persist_records(records)
     }
 
-    fn persist_records(&self, records: &[RelationRecord]) -> io::Result<()> {
-        if let Some(parent) = self.path.parent() {
-            fs::create_dir_all(parent)?;
-        }
+    fn persist_records(&self, records: &[StoredRecord]) -> io::Result<()> {
+        let parent = self
+            .path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+            .unwrap_or_else(|| Path::new("."));
+        fs::create_dir_all(parent)?;
 
         let tmp = self.path.with_extension("json.tmp");
         let persistent = persistent_records(records);
         let data = serde_json::to_vec_pretty(&persistent).map_err(io::Error::other)?;
-        fs::write(&tmp, data)?;
-        fs::rename(tmp, &self.path)
+        use std::io::Write;
+        let mut file = fs::File::create(&tmp)?;
+        file.write_all(&data)?;
+        file.sync_all()?;
+        fs::rename(tmp, &self.path)?;
+        fs::File::open(parent)?.sync_all()?;
+        Ok(())
     }
 }
 
-fn persistent_records(records: &[RelationRecord]) -> Vec<RelationRecord> {
+fn persistent_records(records: &[StoredRecord]) -> Vec<StoredRecord> {
     records
         .iter()
-        .filter(|record| is_persistable_record(record))
+        .filter(|record| record.persist)
         .cloned()
         .collect()
-}
-
-fn is_persistable_record(record: &RelationRecord) -> bool {
-    is_persistable_endpoint(&record.subject) && is_persistable_endpoint(&record.target)
-}
-
-fn is_persistable_endpoint(endpoint: &RelationEndpoint) -> bool {
-    !matches!(
-        endpoint,
-        RelationEndpoint::StableKey { kind, .. } if kind == keys::NIRI_WINDOW_ID
-    )
 }
 
 pub fn default_store_path() -> PathBuf {
@@ -306,21 +400,25 @@ fn validate_nonblank(endpoint: &str, field: &str, value: &str) -> io::Result<()>
 }
 
 fn set_in_records(
-    records: &mut Vec<RelationRecord>,
+    records: &mut Vec<StoredRecord>,
     subject: RelationEndpoint,
     relation: String,
     target: RelationEndpoint,
     metadata: HashMap<String, String>,
+    persist: Option<bool>,
 ) -> SetOutcome {
     let now = unix_ms();
     match records.iter_mut().find(|record| {
         record.subject == subject && record.relation == relation && record.target == target
     }) {
         Some(record) => {
+            if let Some(persist) = persist {
+                record.persist = persist;
+            }
             record.metadata = metadata;
             record.updated_at_unix_ms = now;
             SetOutcome {
-                record: record.clone(),
+                record: record.record.clone(),
                 created: false,
             }
         }
@@ -333,7 +431,10 @@ fn set_in_records(
                 created_at_unix_ms: now,
                 updated_at_unix_ms: now,
             };
-            records.push(record.clone());
+            records.push(StoredRecord {
+                record: record.clone(),
+                persist: persist.unwrap_or(false),
+            });
             SetOutcome {
                 record,
                 created: true,
@@ -358,9 +459,135 @@ fn invalid_data(error: serde_json::Error) -> io::Error {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use locus::keys;
 
     fn key(kind: &str, id: &str) -> RelationEndpoint {
         RelationEndpoint::stable_key(kind, id)
+    }
+
+    #[test]
+    fn false_disk_entries_are_removed_and_failed_disabling_retains_policy() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("relations.json");
+        let durable = StoredRecord {
+            record: record(window(1), "test", project("one")),
+            persist: true,
+        };
+        let transient = StoredRecord {
+            record: record(workspace(2), "test", project("two")),
+            persist: false,
+        };
+        fs::write(
+            &path,
+            serde_json::to_vec(&vec![durable.clone(), transient]).unwrap(),
+        )
+        .unwrap();
+        let mut store = RelationStore::open(path.clone()).unwrap();
+        assert_eq!(store.len(), 1);
+        assert_eq!(
+            serde_json::from_slice::<Vec<StoredRecord>>(&fs::read(&path).unwrap()).unwrap(),
+            vec![durable]
+        );
+        fs::remove_file(&path).unwrap();
+        fs::create_dir(&path).unwrap();
+        store
+            .set_persistence(&window(1), "test", &project("one"), false)
+            .unwrap_err();
+        assert!(store.list_with_persistence("")[0].persist);
+        assert_eq!(store.len(), 1);
+    }
+
+    #[test]
+    fn defaults_toggles_snapshots_and_restart_are_endpoint_independent() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("relations.json");
+        let mut store = RelationStore::open(path.clone()).unwrap();
+        // Neither stable workspace IDs nor window IDs imply a persistence policy.
+        for subject in [workspace(5), window(24)] {
+            store
+                .set(subject, "test".into(), project("test"), HashMap::new())
+                .unwrap();
+        }
+        assert!(
+            store
+                .list_with_persistence("")
+                .iter()
+                .all(|state| !state.persist)
+        );
+        assert!(!path.exists());
+        assert!(
+            RelationStore::open(path.clone())
+                .unwrap()
+                .list("")
+                .is_empty()
+        );
+
+        let before = store.list("");
+        let enabled = store
+            .set_persistence(&window(24), "test", &project("test"), true)
+            .unwrap();
+        assert!(enabled.persist);
+        assert_eq!(before, store.list("")); // toggling changes neither metadata nor timestamps
+        let restarted = RelationStore::open(path.clone()).unwrap();
+        assert_eq!(restarted.list_with_persistence(""), vec![enabled.clone()]);
+        let snapshot: serde_json::Value =
+            serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+        assert_eq!(snapshot[0]["persist"], true);
+
+        // Legacy updates preserve explicit policy.
+        store
+            .set(window(24), "test".into(), project("test"), HashMap::new())
+            .unwrap();
+        assert!(
+            store
+                .list_with_persistence("")
+                .iter()
+                .find(|s| s.record.subject == window(24))
+                .unwrap()
+                .persist
+        );
+        store
+            .set_persistence(&window(24), "test", &project("test"), false)
+            .unwrap();
+        assert_eq!(store.len(), 2);
+        assert_eq!(fs::read_to_string(&path).unwrap(), "[]");
+        assert_eq!(RelationStore::open(path).unwrap().len(), 0);
+    }
+
+    #[test]
+    fn explicit_set_and_replace_commit_policy_atomically() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("relations.json");
+        let mut store = RelationStore::open(path.clone()).unwrap();
+        store
+            .set_with_persistence(
+                window(1),
+                "test".into(),
+                project("old"),
+                HashMap::new(),
+                Some(true),
+            )
+            .unwrap();
+        store
+            .set_one_with_persistence(
+                window(1),
+                "test".into(),
+                project("new"),
+                HashMap::new(),
+                Some(false),
+            )
+            .unwrap();
+        assert_eq!(store.targets(&window(1), "test"), vec![project("new")]);
+        assert_eq!(RelationStore::open(path.clone()).unwrap().len(), 0);
+        fs::remove_file(&path).unwrap();
+        fs::create_dir(&path).unwrap();
+        store
+            .set_persistence(&window(1), "test", &project("new"), true)
+            .unwrap_err();
+        assert!(!store.list_with_persistence("")[0].persist);
+        store
+            .set_persistence(&window(99), "test", &project("new"), true)
+            .unwrap_err();
     }
 
     fn workspace(id: u64) -> RelationEndpoint {
@@ -414,6 +641,9 @@ mod tests {
         let record = outcome.record;
 
         assert!(outcome.created);
+        store
+            .set_persistence(&record.subject, &record.relation, &record.target, true)
+            .expect("enable persistence");
         assert_eq!(record.created_at_unix_ms, record.updated_at_unix_ms);
         assert_eq!(
             store.targets(&workspace(5), "org.rsynapse.WorkspaceProject"),
@@ -503,6 +733,10 @@ mod tests {
             )
             .expect("set icon override");
 
+        store
+            .set_persistence(&subject, relation, &target, true)
+            .expect("persist icon override");
+
         let store = RelationStore::open(path).expect("reload store");
         assert_eq!(store.targets(&subject, relation), vec![target]);
     }
@@ -543,7 +777,7 @@ mod tests {
     }
 
     #[test]
-    fn window_relations_are_memory_only() {
+    fn new_window_relations_default_to_memory_only() {
         let temp = tempfile::tempdir().expect("tempdir");
         let path = temp.path().join("relations.json");
         let mut store = RelationStore::open(path.clone()).expect("open store");
@@ -570,7 +804,7 @@ mod tests {
     }
 
     #[test]
-    fn loading_drops_persisted_window_relations() {
+    fn migration_preserves_all_legacy_disk_records_as_persistent() {
         let temp = tempfile::tempdir().expect("tempdir");
         let path = temp.path().join("relations.json");
         let records = vec![
@@ -593,14 +827,19 @@ mod tests {
 
         let store = RelationStore::open(path.clone()).expect("open store");
 
-        assert!(store.list("org.rsynapse.window.agent-session").is_empty());
+        assert_eq!(store.list("org.rsynapse.window.agent-session").len(), 1);
         assert_eq!(store.list("org.rsynapse.workspace.project").len(), 1);
+        assert!(
+            store
+                .list_with_persistence("")
+                .iter()
+                .all(|state| state.persist)
+        );
 
         let persisted: Vec<RelationRecord> =
             serde_json::from_slice(&fs::read(path).expect("read cleaned persistent store"))
                 .expect("parse cleaned persistent store");
-        assert_eq!(persisted.len(), 1);
-        assert_eq!(persisted[0].relation, "org.rsynapse.workspace.project");
+        assert_eq!(persisted.len(), 2);
     }
 
     #[test]
@@ -737,15 +976,25 @@ mod tests {
             )
             .expect("initial set");
 
+        store
+            .set_persistence(
+                &workspace(1),
+                "org.rsynapse.WorkspaceProject",
+                &project("old"),
+                true,
+            )
+            .expect("persist initial record");
+
         fs::remove_file(&path).expect("remove persisted file");
         fs::create_dir(&path).expect("replace store path with directory");
 
         let error = store
-            .set(
+            .set_with_persistence(
                 workspace(1),
                 "org.rsynapse.WorkspaceProject".to_owned(),
                 project("new"),
                 HashMap::new(),
+                Some(true),
             )
             .expect_err("persist should fail");
         assert_ne!(error.kind(), io::ErrorKind::InvalidInput);
@@ -768,6 +1017,15 @@ mod tests {
                 HashMap::new(),
             )
             .expect("initial set");
+
+        store
+            .set_persistence(
+                &workspace(1),
+                "org.rsynapse.WorkspaceProject",
+                &project("old"),
+                true,
+            )
+            .expect("persist initial record");
 
         fs::remove_file(&path).expect("remove persisted file");
         fs::create_dir(&path).expect("replace store path with directory");

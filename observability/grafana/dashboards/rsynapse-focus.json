@@ -6,8 +6,10 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 12,
+  "version": 17,
+  "refresh": "1m",
   "links": [
+    {"type": "link", "title": "Productivity components and goals", "url": "/d/rsynapse-productivity/rsynapse-productivity-components"},
     {"type": "link", "title": "Today and daily workday log", "url": "/d/rsynapse-workday/rsynapse-workday", "keepTime": true}
   ],
   "templating": {
@@ -47,20 +49,24 @@
   "panels": [
     {
       "id": 25,
-      "type": "stat",
+      "type": "rsynapse-workday-panel",
       "title": "Today's workday — start / span finish",
-      "description": "First recorded active presence today and its 8-hour elapsed-span deadline. Open Workday targets for 8-hour unlocked and 4-hour active goals, live over/under, and the durable daily log.",
+      "description": "Defaults this dashboard to recorded Started today → now on load. Explicit bookmarked/manual ranges are preserved. Click the start to apply it manually. Also shows the 8-hour span deadline and a link to full workday targets.",
       "timeFrom": "now/d",
       "hideTimeOverride": true,
       "maxDataPoints": 1000000,
       "links": [{"title": "Workday targets and daily log", "url": "/d/rsynapse-workday/rsynapse-workday", "targetBlank": false}],
       "datasource": {"type": "graphite", "uid": "graphite"},
       "gridPos": {"h": 5, "w": 24, "x": 0, "y": 0},
-      "fieldConfig": {"defaults": {"unit": "dateTimeAsIso", "noValue": "Not started"}, "overrides": []},
-      "options": {"reduceOptions": {"values": false, "calcs": ["lastNotNull"], "fields": ""}, "graphMode": "none", "textMode": "value_and_name", "orientation": "horizontal"},
+      "fieldConfig": {"defaults": {"unit": "dateTimeAsIso", "noValue": "Not started"}, "overrides": [
+        {"matcher": {"id": "byName", "options": "Started today"}, "properties": [
+          {"id": "links", "value": [{"title": "Use started today → now", "url": "/d/rsynapse-focus/rsynapse-focus?from=${__value.raw}&to=now&${__all_variables}", "targetBlank": false}]}
+        ]}
+      ]},
+      "options": {"autoStartRange": true},
       "targets": [
         {"refId": "A", "target": "alias(scale(keepLastValue(rsynapse.workday.today.started.state), 1000), 'Started today')"},
-        {"refId": "B", "target": "alias(scale(keepLastValue(rsynapse.workday.today.planned_finish.state), 1000), '8-hour span finish')"}
+        {"refId": "B", "target": "alias(scale(keepLastValue(rsynapse.workday.today.planned_finish.state), 1000), 'Span target finish')"}
       ]
     },
     {

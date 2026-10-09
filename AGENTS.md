@@ -47,13 +47,21 @@ components.
   remain authoritative for their own properties.
 
 - `steward/`
-  A headless session daemon (`rsynapse-steward`) built on `shell-source`
-  observables: focus-time metrics, workspace naming, and per-project git
-  status. It computes, locus stores, the shell renders. It resolves
-  dependencies from public crates.io via `steward/build.sh`; see
-  `steward/README.md`. Steward-owned relations: `org.rsynapse.workspace.name`
-  and `org.rsynapse.project.git-status`. Daily workday records are stored under
-  `org.rsynapse.workday.summary`.
+  A single-binary shell-source listener/side-effect host: metrics, naming,
+  session association policy and domain refresh triggers. It manages desktop
+  bindings through locusd and writes standard Carbon metrics to Graphite.
+  It does not own project-management CRUD or Grafana deployment.
+
+- `projd/`
+  Reusable persistent project-management D-Bus service `projd` and its `proj`
+  CLI. Own projects, checkouts, CWD contexts, metadata and goals here. It is
+  unaware of shells, niri, locus, steward, AgentDBus and Grafana. Agents are
+  clients through proj. No project metadata mirrors in locus.
+
+- `dashboard-api/`
+  HTTP/SSE and Grafana UI adapter over projd and integration services, with no
+  project-management store. `observability/` owns shared Grafana/Graphite
+  deployment. No composite productivity formula is finalized.
 
 ## Relation Service Shape
 
@@ -83,6 +91,7 @@ typed session relation service rather than a general RDF desktop database.
 - Keep niri protocol projection in `niri-dbus`.
 - Keep cross-service links in `locus`.
 - Keep agent state in AgentDBus/adjacent agent service repos.
+- Keep project-management state in projd; cross-service references stay in locusd.
 - Keep project/note state in remarked-related repos unless a shared project
   service is intentionally introduced.
 

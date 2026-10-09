@@ -1,0 +1,83 @@
+{
+  "uid": "rsynapse-workday",
+  "title": "Rsynapse workday",
+  "tags": ["rsynapse"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 4,
+  "time": {"from": "now-30d", "to": "now"},
+  "refresh": "30s",
+  "links": [{"type": "link", "title": "Productivity components and goals", "url": "/d/rsynapse-productivity/rsynapse-productivity-components"}, {"type": "link", "title": "Focus overview", "url": "/d/rsynapse-focus/rsynapse-focus", "keepTime": true}],
+  "panels": [
+    {
+      "id": 1, "type": "stat", "title": "Today — start and finish",
+      "description": "Local-calendar-day start is first active presence. Span finish and earliest finish use the configured targets (default 8h span, 6h unlocked, 4h active). The estimate assumes you remain active and unlocked from now. Edit targets in the productivity dashboard.",
+      "timeFrom": "now/d", "hideTimeOverride": true, "maxDataPoints": 1000000,
+      "datasource": {"type": "graphite", "uid": "graphite"},
+      "gridPos": {"h": 5, "w": 24, "x": 0, "y": 0},
+      "fieldConfig": {"defaults": {"unit": "dateTimeAsIso", "noValue": "Not started", "color": {"mode": "fixed", "fixedColor": "blue"}}, "overrides": [
+        {"matcher": {"id": "byName", "options": "Started"}, "properties": [
+          {"id": "links", "value": [{"title": "Use started today → now on the overview", "url": "/d/rsynapse-focus/rsynapse-focus?from=${__value.raw}&to=now", "targetBlank": false}]}
+        ]}
+      ]},
+      "options": {"reduceOptions": {"values": false, "calcs": ["lastNotNull"], "fields": ""}, "graphMode": "none", "textMode": "value_and_name", "orientation": "horizontal", "colorMode": "value"},
+      "targets": [
+        {"refId": "A", "target": "alias(scale(keepLastValue(rsynapse.workday.today.started.state), 1000), 'Started')"},
+        {"refId": "B", "target": "alias(scale(keepLastValue(rsynapse.workday.today.planned_finish.state), 1000), 'Span target finish')"},
+        {"refId": "C", "target": "alias(scale(multiplySeries(maxSeries(keepLastValue(rsynapse.workday.today.planned_finish.state), sumSeries(scale(constantLine(${__to}), 0.001), maxSeries(constantLine(0), diffSeries(keepLastValue(rsynapse.workday.today.unlocked_target.state), sumSeries(keepLastValue(rsynapse.workday.today.unlocked_seconds.state), multiplySeries(keepLastValue(rsynapse.workday.today.unlocked.state), maxSeries(constantLine(0), diffSeries(scale(constantLine(${__to}), 0.001), keepLastValue(rsynapse.workday.today.checkpoint.state)))))), diffSeries(keepLastValue(rsynapse.workday.today.active_target.state), sumSeries(keepLastValue(rsynapse.workday.today.active_seconds.state), multiplySeries(keepLastValue(rsynapse.workday.today.active.state), maxSeries(constantLine(0), diffSeries(scale(constantLine(${__to}), 0.001), keepLastValue(rsynapse.workday.today.checkpoint.state))))))))), divideSeries(keepLastValue(rsynapse.workday.today.started.state), keepLastValue(rsynapse.workday.today.started.state))), 1000), 'Earliest finish — all targets')"}
+      ]
+    },
+    {
+      "id": 2, "type": "stat", "title": "Today — over / under targets",
+      "description": "Negative = still under target; positive = over target. Elapsed span runs from first active to latest active presence, including breaks between them. Unlocked includes idle but excludes lock, starting at first active. Active excludes idle and lock. Midnight and DST use the session's local calendar.",
+      "timeFrom": "now/d", "hideTimeOverride": true, "maxDataPoints": 1000000,
+      "datasource": {"type": "graphite", "uid": "graphite"},
+      "gridPos": {"h": 5, "w": 24, "x": 0, "y": 5},
+      "fieldConfig": {"defaults": {"unit": "s", "noValue": "Not started", "thresholds": {"mode": "absolute", "steps": [{"color": "orange", "value": null}, {"color": "green", "value": 0}]}}, "overrides": []},
+      "options": {"reduceOptions": {"values": false, "calcs": ["lastNotNull"], "fields": ""}, "graphMode": "none", "textMode": "value_and_name", "orientation": "horizontal", "colorMode": "value"},
+      "targets": [
+        {"refId": "A", "target": "alias(multiplySeries(diffSeries(sumSeries(diffSeries(keepLastValue(rsynapse.workday.today.last_active.state), keepLastValue(rsynapse.workday.today.started.state)), multiplySeries(keepLastValue(rsynapse.workday.today.active.state), maxSeries(constantLine(0), diffSeries(scale(constantLine(${__to}), 0.001), keepLastValue(rsynapse.workday.today.checkpoint.state))))), keepLastValue(rsynapse.workday.today.span_target.state)), fallbackSeries(divideSeries(keepLastValue(rsynapse.workday.today.span_target.state), keepLastValue(rsynapse.workday.today.span_target.state)), removeAboveValue(constantLine(1), 0))), 'Elapsed over/under')"},
+        {"refId": "B", "target": "alias(multiplySeries(diffSeries(sumSeries(keepLastValue(rsynapse.workday.today.unlocked_seconds.state), multiplySeries(keepLastValue(rsynapse.workday.today.unlocked.state), maxSeries(constantLine(0), diffSeries(scale(constantLine(${__to}), 0.001), keepLastValue(rsynapse.workday.today.checkpoint.state))))), keepLastValue(rsynapse.workday.today.unlocked_target.state)), fallbackSeries(divideSeries(keepLastValue(rsynapse.workday.today.unlocked_target.state), keepLastValue(rsynapse.workday.today.unlocked_target.state)), removeAboveValue(constantLine(1), 0))), 'Unlocked over/under')"},
+        {"refId": "C", "target": "alias(multiplySeries(diffSeries(sumSeries(keepLastValue(rsynapse.workday.today.active_seconds.state), multiplySeries(keepLastValue(rsynapse.workday.today.active.state), maxSeries(constantLine(0), diffSeries(scale(constantLine(${__to}), 0.001), keepLastValue(rsynapse.workday.today.checkpoint.state))))), keepLastValue(rsynapse.workday.today.active_target.state)), fallbackSeries(divideSeries(keepLastValue(rsynapse.workday.today.active_target.state), keepLastValue(rsynapse.workday.today.active_target.state)), removeAboveValue(constantLine(1), 0))), 'Active over/under')"}
+      ]
+    },
+    {
+      "id": 3, "type": "stat", "title": "Today — unlocked and active totals",
+      "timeFrom": "now/d", "hideTimeOverride": true, "maxDataPoints": 1000000,
+      "description": "Live totals and configured targets after today's first active presence. Defaults are 6h unlocked and 4h active. Open intervals are included using the last recorded activity flags.",
+      "datasource": {"type": "graphite", "uid": "graphite"},
+      "gridPos": {"h": 5, "w": 24, "x": 0, "y": 10},
+      "fieldConfig": {"defaults": {"unit": "dtdurations", "min": 0, "noValue": "Not started"}, "overrides": []},
+      "options": {"reduceOptions": {"values": false, "calcs": ["lastNotNull"], "fields": ""}, "graphMode": "none", "textMode": "value_and_name", "orientation": "horizontal"},
+      "targets": [
+        {"refId": "A", "target": "alias(sumSeries(keepLastValue(rsynapse.workday.today.unlocked_seconds.state), multiplySeries(keepLastValue(rsynapse.workday.today.unlocked.state), maxSeries(constantLine(0), diffSeries(scale(constantLine(${__to}), 0.001), keepLastValue(rsynapse.workday.today.checkpoint.state))))), 'Unlocked total')"},
+        {"refId": "B", "target": "alias(sumSeries(keepLastValue(rsynapse.workday.today.active_seconds.state), multiplySeries(keepLastValue(rsynapse.workday.today.active.state), maxSeries(constantLine(0), diffSeries(scale(constantLine(${__to}), 0.001), keepLastValue(rsynapse.workday.today.checkpoint.state))))), 'Active total')"},
+        {"refId": "C", "target": "alias(keepLastValue(rsynapse.workday.today.unlocked_target.state), 'Unlocked target')"},
+        {"refId": "D", "target": "alias(keepLastValue(rsynapse.workday.today.active_target.state), 'Active target')"}
+      ]
+    },
+    {
+      "id": 4, "type": "table", "title": "Daily workday log",
+      "description": "Durable local-calendar-day records stored by steward in locus. Latest recorded values per day: span finish, last active, unlocked/active totals, and signed target differences. Today may lag the live panels until the next activity/focus event. Historical rows survive steward restarts.",
+      "datasource": {"type": "graphite", "uid": "graphite"},
+      "gridPos": {"h": 12, "w": 24, "x": 0, "y": 15},
+      "fieldConfig": {"defaults": {"unit": "dtdurations", "noValue": "—"}, "overrides": [
+        {"matcher": {"id": "byName", "options": "Started"}, "properties": [{"id": "unit", "value": "dateTimeAsIso"}]},
+        {"matcher": {"id": "byName", "options": "Span finish"}, "properties": [{"id": "unit", "value": "dateTimeAsIso"}]},
+        {"matcher": {"id": "byName", "options": "Last active"}, "properties": [{"id": "unit", "value": "dateTimeAsIso"}]},
+        {"matcher": {"id": "byRegexp", "options": "over/under"}, "properties": [{"id": "unit", "value": "s"}]}
+      ]},
+      "options": {"showHeader": true, "sortBy": [{"displayName": "Day", "desc": true}]},
+      "targets": [{"refId": "A", "target": "aliasSub(aliasByNode(consolidateBy(keepLastValue(rsynapse.workday.20*.{started,planned_finish,last_active,span_delta,unlocked_delta,active_delta,active_seconds,unlocked_seconds,span_target,unlocked_target,active_target}.state), 'last'), 2, 3), '^(.*)\\.(.*)$', '{\"Day\":\"\\1\",\"Metric\":\"\\2\"}')"}],
+      "transformations": [
+        {"id": "reduce", "options": {"mode": "seriesToRows", "reducers": ["lastNotNull"]}},
+        {"id": "extractFields", "options": {"source": "Field", "format": "json", "replace": false}},
+        {"id": "groupingToMatrix", "options": {"columnField": "Metric", "rowField": "Day", "valueField": "Last *"}},
+        {"id": "calculateField", "options": {"mode": "binary", "binary": {"left": "started", "operator": "*", "right": "1000"}, "alias": "Started"}},
+        {"id": "calculateField", "options": {"mode": "binary", "binary": {"left": "planned_finish", "operator": "*", "right": "1000"}, "alias": "Span finish"}},
+        {"id": "calculateField", "options": {"mode": "binary", "binary": {"left": "last_active", "operator": "*", "right": "1000"}, "alias": "Last active"}},
+        {"id": "organize", "options": {"excludeByName": {"started": true, "planned_finish": true, "last_active": true}, "renameByName": {"Day\\Metric": "Day", "span_delta": "Elapsed over/under", "unlocked_delta": "Unlocked over/under", "active_delta": "Active over/under", "active_seconds": "Active", "unlocked_seconds": "Unlocked", "span_target": "Span target", "unlocked_target": "Unlocked target", "active_target": "Active target"}}}
+      ]
+    }
+  ]
+}

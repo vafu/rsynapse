@@ -1,0 +1,5 @@
+{
+  "type": "panel", "name": "Rsynapse workday start", "id": "rsynapse-workday-panel",
+  "info": {"description": "Recorded daily start and default started-to-now dashboard range.", "author": {"name": "Rsynapse"}, "keywords": ["rsynapse", "workday"], "logos": {"small": "img/logo.svg", "large": "img/logo.svg"}, "version": "0.1.1", "updated": "2026-10-07", "links": []},
+  "dependencies": {"grafanaDependency": ">=13.0.0", "plugins": []}
+}

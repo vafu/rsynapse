@@ -4,7 +4,7 @@ use tokio::sync::Mutex;
 use tracing::info;
 use zbus::{connection::Builder, fdo, interface, object_server::SignalContext};
 
-use locus::{BUS_NAME, OBJECT_PATH, RelationEndpoint, RelationRecord};
+use locus::{BUS_NAME, OBJECT_PATH, RelationEndpoint, RelationRecord, RelationState};
 
 use crate::store::{RelationStore, SetOutcome, default_store_path};
 
@@ -37,6 +37,87 @@ impl RelationsService {
 
 #[interface(name = "org.rsynapse.Locus.Relations1")]
 impl RelationsService {
+    async fn set_with_persistence(
+        &self,
+        subject: RelationEndpoint,
+        relation: String,
+        target: RelationEndpoint,
+        metadata: HashMap<String, String>,
+        persist: bool,
+        #[zbus(signal_context)] ctxt: SignalContext<'_>,
+    ) -> fdo::Result<RelationState> {
+        let outcome = self
+            .store
+            .lock()
+            .await
+            .set_with_persistence(subject, relation, target, metadata, Some(persist))
+            .map_err(fdo_error)?;
+        let state = RelationState {
+            record: outcome.record.clone(),
+            persist,
+        };
+        self.emit_store_properties(&ctxt).await?;
+        Self::emit_set_outcome(&ctxt, outcome).await?;
+        Self::persistence_changed(&ctxt, state.clone()).await?;
+        Ok(state)
+    }
+
+    async fn set_one_with_persistence(
+        &self,
+        subject: RelationEndpoint,
+        relation: String,
+        target: RelationEndpoint,
+        metadata: HashMap<String, String>,
+        persist: bool,
+        #[zbus(signal_context)] ctxt: SignalContext<'_>,
+    ) -> fdo::Result<RelationState> {
+        let outcome = self
+            .store
+            .lock()
+            .await
+            .set_one_with_persistence(subject, relation, target, metadata, Some(persist))
+            .map_err(fdo_error)?;
+        let state = RelationState {
+            record: outcome.set.record.clone(),
+            persist,
+        };
+        self.emit_store_properties(&ctxt).await?;
+        for removed in outcome.removed {
+            Self::relation_removed(&ctxt, removed).await?;
+        }
+        Self::emit_set_outcome(&ctxt, outcome.set).await?;
+        Self::persistence_changed(&ctxt, state.clone()).await?;
+        Ok(state)
+    }
+
+    async fn set_persistence(
+        &self,
+        subject: RelationEndpoint,
+        relation: String,
+        target: RelationEndpoint,
+        persist: bool,
+        #[zbus(signal_context)] ctxt: SignalContext<'_>,
+    ) -> fdo::Result<RelationState> {
+        let state = self
+            .store
+            .lock()
+            .await
+            .set_persistence(&subject, &relation, &target, persist)
+            .map_err(fdo_error)?;
+        Self::persistence_changed(&ctxt, state.clone()).await?;
+        Ok(state)
+    }
+
+    async fn list_with_persistence(&self, relation: String) -> Vec<RelationState> {
+        self.store.lock().await.list_with_persistence(&relation)
+    }
+
+    #[zbus(signal)]
+    async fn persistence_changed(
+        ctxt: &SignalContext<'_>,
+        state: RelationState,
+    ) -> zbus::Result<()>;
+
     #[zbus(property)]
     async fn record_count(&self) -> u64 {
         self.store.lock().await.len().try_into().unwrap_or(u64::MAX)
@@ -206,6 +287,7 @@ impl RelationsService {
 fn fdo_error(error: std::io::Error) -> fdo::Error {
     match error.kind() {
         std::io::ErrorKind::InvalidInput => fdo::Error::InvalidArgs(error.to_string()),
+        std::io::ErrorKind::NotFound => fdo::Error::FileNotFound(error.to_string()),
         _ => fdo::Error::Failed(error.to_string()),
     }
 }

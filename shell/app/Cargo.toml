@@ -13,8 +13,8 @@ path = "src/bin/rsynapse-notifications.rs"
 [dependencies]
 async-channel = "2.5.0"
 futures-util = "0.3.32"
-adw = { package = "libadwaita", version = "0.9.1" }
-gtk = { package = "gtk4", version = "=0.11.3" }
+adw = { package = "libadwaita", version = "0.9.1", features = ["v1_7"] }
+gtk = { package = "gtk4", version = "=0.11.3", features = ["v4_12"] }
 libc = "0.2.186"
 locus = { path = "../../locus" }
 notify = "6.1.1"

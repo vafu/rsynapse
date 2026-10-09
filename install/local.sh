@@ -33,18 +33,22 @@ install_templates() {
 echo "Installing release binaries to $local_bin"
 cargo_install "$repo_root/locus"
 cargo_install "$repo_root/niri-dbus"
+bash "$repo_root/projd/build.sh" --locked
+install -d "$local_bin"
+install -m 0755 "$repo_root/steward/target/release/projd" "$local_bin/projd"
+install -m 0755 "$repo_root/steward/target/release/proj" "$local_bin/proj"
 cargo_install "$repo_root/shell/app"
 cargo_install "$repo_root/shell/launcher/rsynapse-daemon"
 cargo_install "$repo_root/shell/launcher/rsynapse-cli"
 cargo_install "$repo_root/shell/launcher/rsynapse-ui"
 
-echo "Building rsynapse-steward against public crates.io"
+echo "Building steward against public crates.io"
 "$repo_root/steward/build.sh"
-install -m 0755 "$repo_root/steward/target/release/rsynapse-steward" "$local_bin/rsynapse-steward"
+install -m 0755 "$repo_root/steward/target/release/steward" "$local_bin/steward"
+ln -sfn steward "$local_bin/rsynapse-steward"
 
 echo "Installing helper scripts to $local_bin"
 install -d "$local_bin" "$script_dir"
-install -m 0755 "$repo_root/install/bin/proj" "$local_bin/proj"
 install -m 0755 "$repo_root/install/bin/rsynapse-open-url" "$script_dir/rsynapse-open-url"
 
 echo "Installing Rsynapse git hooks to $git_hooks_dir"

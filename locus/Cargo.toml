@@ -4,6 +4,16 @@ version = "0.1.0"
 edition = "2024"
 description = "D-Bus relation store for desktop object associations"
 publish = false
+default-run = "locusd"
+autobins = false
+
+[[bin]]
+name = "locusd"
+path = "src/main.rs"
+
+[[bin]]
+name = "locus"
+path = "src/bin/locus.rs"
 
 [dependencies]
 anyhow = "1.0.100"

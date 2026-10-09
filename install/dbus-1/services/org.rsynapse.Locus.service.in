@@ -1,4 +1,4 @@
 [D-BUS Service]
 Name=org.rsynapse.Locus
-Exec=@LOCAL_BIN@/locus
-
+Exec=@LOCAL_BIN@/locusd
+SystemdService=locusd.service

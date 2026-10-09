@@ -60,11 +60,17 @@ fn selected_project_uses_root_cwd_name_without_relative_cwd() {
 }
 
 #[test]
-fn workspace_prefers_name_over_project_title() {
+fn workspace_preserves_name_but_displays_project_title_while_assigned() {
     let view = named(project_view(split_project(), None), "coro-uiq");
 
     assert!(super::visible(&view));
-    assert_eq!(super::title_label(&view), "coro-uiq");
+    assert_eq!(super::title_label(&view), "platform/taskexecution");
+    assert_eq!(view.name.as_deref(), Some("coro-uiq"));
+    let unassigned = SelectedWorkspaceView {
+        project: None,
+        ..view
+    };
+    assert_eq!(super::title_label(&unassigned), "coro-uiq");
 }
 
 #[test]
@@ -101,7 +107,7 @@ fn nameless_workspace_shows_empty_and_has_no_git_spinner() {
 }
 
 #[test]
-fn workspace_uses_workspace_icon_without_project() {
+fn workspace_button_uses_folder_plus_without_project() {
     let plain = SelectedWorkspaceView {
         visible: true,
         workspace_id: Some(7),
@@ -110,14 +116,8 @@ fn workspace_uses_workspace_icon_without_project() {
     };
     let project = wrap(project_view(split_project(), None));
 
-    assert_eq!(
-        super::icon(&plain).glyph(),
-        crate::widgets::nerd_icon::NerdIcon::workspace().glyph()
-    );
-    assert_eq!(
-        super::icon(&project).glyph(),
-        crate::widgets::nerd_icon::NerdIcon::folder().glyph()
-    );
+    assert_eq!(super::icon_name(&plain), "folder-new-symbolic");
+    assert_eq!(super::icon_name(&project), "folder-symbolic");
 }
 
 #[test]
@@ -126,6 +126,19 @@ fn selected_project_spins_while_git_resolves() {
 
     assert!(super::visible(&loading));
     assert!(git_loading(&loading));
+}
+
+#[test]
+fn associated_workspace_does_not_offer_init_before_title_loads() {
+    let view = wrap(project_view(
+        ProjectDetails {
+            has_project: true,
+            ..ProjectDetails::default()
+        },
+        None,
+    ));
+    assert!(view.project.is_some());
+    assert_eq!(super::title_label(&view), "project");
 }
 
 #[test]

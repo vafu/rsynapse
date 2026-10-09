@@ -9,8 +9,6 @@ use zbus::{Connection, Proxy};
 pub const WORKSPACE_PROJECT: &str = "org.rsynapse.workspace.project";
 /// Workspace display name (owned by the steward namer).
 pub const WORKSPACE_NAME: &str = "org.rsynapse.workspace.name";
-/// Per-project git status snapshot (owned by the steward git poller).
-pub const PROJECT_GIT_STATUS: &str = "org.rsynapse.project.git-status";
 /// Window -> inner session (editor, agent, …), owned by external hooks.
 pub const WINDOW_APP_INSTANCE: &str = "org.rsynapse.window.app-instance";
 pub const WINDOW_AGENT_SESSION: &str = "org.rsynapse.window.agent-session";
@@ -26,6 +24,33 @@ pub struct LocusClient {
 }
 
 impl LocusClient {
+    pub async fn set_with_persistence(
+        &self,
+        subject: RelationEndpoint,
+        relation: &str,
+        target: RelationEndpoint,
+        metadata: HashMap<String, String>,
+        persist: bool,
+    ) -> anyhow::Result<()> {
+        self.proxy
+            .call::<_, _, locus::RelationState>(
+                "SetWithPersistence",
+                &(subject, relation, target, metadata, persist),
+            )
+            .await?;
+        Ok(())
+    }
+    pub async fn unset(
+        &self,
+        subject: RelationEndpoint,
+        relation: &str,
+        target: RelationEndpoint,
+    ) -> anyhow::Result<()> {
+        self.proxy
+            .call::<_, _, bool>("Unset", &(subject, relation, target))
+            .await?;
+        Ok(())
+    }
     pub async fn connect() -> anyhow::Result<Self> {
         let connection = Connection::session().await?;
         let proxy = Proxy::new_owned(
@@ -42,15 +67,19 @@ impl LocusClient {
         Ok(self.proxy.call("List", &(relation,)).await?)
     }
 
-    pub async fn set_one(
+    pub async fn set_one_with_persistence(
         &self,
         subject: RelationEndpoint,
         relation: &str,
         target: RelationEndpoint,
         metadata: HashMap<String, String>,
+        persist: bool,
     ) -> anyhow::Result<()> {
         self.proxy
-            .call::<_, _, RelationRecord>("SetOne", &(subject, relation, target, metadata))
+            .call::<_, _, locus::RelationState>(
+                "SetOneWithPersistence",
+                &(subject, relation, target, metadata, persist),
+            )
             .await?;
         Ok(())
     }
@@ -64,6 +93,12 @@ pub fn records(client: LocusClient, relation: &'static str) -> Observable<Vec<Re
         from_task(move |sender| {
             let client = client.clone();
             async move {
+                // Subscribe before the initial snapshot so policy edits during
+                // startup cannot fall into the List/subscribe gap.
+                let mut added = Box::pin(signal_stream(&client, "RelationAdded").await);
+                let mut updated = Box::pin(signal_stream(&client, "RelationUpdated").await);
+                let mut removed = Box::pin(signal_stream(&client, "RelationRemoved").await);
+                let mut cleared = Box::pin(signal_stream(&client, "RelationCleared").await);
                 if sender
                     .send(list_records(&client, relation).await)
                     .await
@@ -71,10 +106,6 @@ pub fn records(client: LocusClient, relation: &'static str) -> Observable<Vec<Re
                 {
                     return;
                 }
-                let mut added = Box::pin(signal_stream(&client, "RelationAdded").await);
-                let mut updated = Box::pin(signal_stream(&client, "RelationUpdated").await);
-                let mut removed = Box::pin(signal_stream(&client, "RelationRemoved").await);
-                let mut cleared = Box::pin(signal_stream(&client, "RelationCleared").await);
                 loop {
                     let refresh = tokio::select! {
                         message = added.next() => message,

@@ -1,13 +1,45 @@
 //! Durable, event-driven workday ledger. Locus stores records; Graphite renders them.
-use crate::{focus::FocusState, relations::LocusClient};
+use crate::{
+    focus::FocusState,
+    relations::{self, LocusClient},
+};
 use chrono::{Local, TimeZone};
+use goal_model::{PREFERENCES_KIND, WORKDAY_TARGETS, WorkdayTargets};
 use locus::RelationEndpoint;
 use serde::{Deserialize, Serialize};
+use shell_source::{Observable, rx::Observable as _};
 use std::collections::{BTreeMap, HashMap};
 
 const RELATION: &str = "org.rsynapse.workday.summary";
-const TOTAL: f64 = 8.0 * 3600.0;
-const ACTIVE: f64 = 4.0 * 3600.0;
+fn legacy_targets() -> WorkdayTargets {
+    WorkdayTargets {
+        span_hours: 8.0,
+        unlocked_hours: 8.0,
+        active_hours: 4.0,
+    }
+}
+fn preferences(records: &[locus::RelationRecord]) -> WorkdayTargets {
+    records
+        .iter()
+        .find_map(|r| {
+            let RelationEndpoint::StableKey { kind, id } = &r.subject else {
+                return None;
+            };
+            if kind != PREFERENCES_KIND || id != "default" {
+                return None;
+            }
+            serde_json::from_str::<WorkdayTargets>(r.metadata.get("targets")?)
+                .ok()
+                .filter(|t| t.validate().is_ok())
+        })
+        .unwrap_or_default()
+}
+pub fn target_preferences(locus: &LocusClient) -> Observable<WorkdayTargets> {
+    relations::records(locus.clone(), WORKDAY_TARGETS)
+        .map(|records| preferences(&records))
+        .distinct_until_changed()
+        .box_it()
+}
 
 #[derive(Clone, Default, PartialEq, Serialize, Deserialize)]
 struct Day {
@@ -18,15 +50,18 @@ struct Day {
     checkpoint: f64,
     active: bool,
     unlocked: bool,
+    #[serde(default = "legacy_targets")]
+    targets: WorkdayTargets,
 }
 
 #[derive(Default)]
 pub struct Workdays {
     days: BTreeMap<String, Day>,
     previous: Option<(f64, bool, bool)>,
+    targets: WorkdayTargets,
 }
 
-fn date(timestamp: f64) -> String {
+pub(crate) fn date(timestamp: f64) -> String {
     Local
         .timestamp_opt(timestamp as i64, 0)
         .single()
@@ -35,7 +70,7 @@ fn date(timestamp: f64) -> String {
         .to_string()
 }
 
-fn next_midnight(timestamp: f64) -> f64 {
+pub(crate) fn next_midnight(timestamp: f64) -> f64 {
     let day = Local
         .timestamp_opt(timestamp as i64, 0)
         .single()
@@ -53,6 +88,7 @@ fn next_midnight(timestamp: f64) -> f64 {
 impl Workdays {
     pub async fn load(locus: &LocusClient) -> anyhow::Result<Self> {
         let mut ledger = Self::default();
+        ledger.targets = preferences(&locus.list(WORKDAY_TARGETS).await?);
         for record in locus.list(RELATION).await? {
             if let RelationEndpoint::StableKey { id, .. } = record.subject {
                 if let Some(json) = record.metadata.get("summary") {
@@ -69,6 +105,9 @@ impl Workdays {
             if let Err(error) = ledger.seed_today(now).await {
                 eprintln!("workday history unavailable: {error}");
             }
+        }
+        if let Some(day) = ledger.days.get_mut(&date(now)) {
+            day.targets = ledger.targets;
         }
         Ok(ledger)
     }
@@ -137,7 +176,11 @@ impl Workdays {
                 let end = next_midnight(cursor).min(now);
                 let key = date(cursor);
                 if was_active || self.days.contains_key(&key) {
-                    let day = self.days.entry(key).or_default();
+                    let targets = self.targets;
+                    let day = self.days.entry(key).or_insert_with(|| Day {
+                        targets,
+                        ..Day::default()
+                    });
                     if day.started == 0.0 && was_active {
                         day.started = cursor;
                     }
@@ -157,7 +200,11 @@ impl Workdays {
         }
         let key = date(now);
         if active || self.days.contains_key(&key) {
-            let day = self.days.entry(key).or_default();
+            let targets = self.targets;
+            let day = self.days.entry(key).or_insert_with(|| Day {
+                targets,
+                ..Day::default()
+            });
             if day.started == 0.0 && active {
                 day.started = now;
             }
@@ -180,15 +227,45 @@ impl Workdays {
         let initial = self.previous.is_none();
         let before = self.days.clone();
         self.observe_flags(now, !state.idle && !state.locked, !state.locked);
+        self.persist(locus, now, &before, initial).await
+    }
+
+    fn apply_targets(&mut self, targets: WorkdayTargets, now: f64) {
+        if let Some((_, active, unlocked)) = self.previous {
+            self.observe_flags(now, active, unlocked);
+        }
+        self.targets = targets;
+        if let Some(day) = self.days.get_mut(&date(now)) {
+            day.targets = targets;
+        }
+    }
+    pub async fn set_targets(
+        &mut self,
+        targets: WorkdayTargets,
+        locus: &LocusClient,
+    ) -> anyhow::Result<HashMap<String, f64>> {
+        let now = chrono::Utc::now().timestamp_millis() as f64 / 1000.0;
+        let before = self.days.clone();
+        self.apply_targets(targets, now);
+        self.persist(locus, now, &before, false).await
+    }
+    async fn persist(
+        &self,
+        locus: &LocusClient,
+        now: f64,
+        before: &BTreeMap<String, Day>,
+        initial: bool,
+    ) -> anyhow::Result<HashMap<String, f64>> {
         let mut metrics = HashMap::new();
         for (key, day) in &self.days {
             if initial || before.get(key) != Some(day) {
                 locus
-                    .set_one(
+                    .set_one_with_persistence(
                         RelationEndpoint::stable_key("org.rsynapse.calendar-day", key),
                         RELATION,
                         RelationEndpoint::stable_key("org.rsynapse.workday", key),
                         HashMap::from([("summary".to_owned(), serde_json::to_string(day)?)]),
+                        true,
                     )
                     .await?;
                 Self::metrics(&mut metrics, key, day);
@@ -203,16 +280,31 @@ impl Workdays {
     fn metrics(metrics: &mut HashMap<String, f64>, key: &str, day: &Day) {
         for (field, value) in [
             ("started", day.started),
-            ("planned_finish", day.started + TOTAL),
+            (
+                "planned_finish",
+                day.started + day.targets.span_hours * 3600.0,
+            ),
             ("last_active", day.last_active),
             ("active_seconds", day.active_seconds),
             ("unlocked_seconds", day.unlocked_seconds),
             ("checkpoint", day.checkpoint),
             ("active", if day.active { 1.0 } else { 0.0 }),
             ("unlocked", if day.unlocked { 1.0 } else { 0.0 }),
-            ("span_delta", day.last_active - day.started - TOTAL),
-            ("unlocked_delta", day.unlocked_seconds - TOTAL),
-            ("active_delta", day.active_seconds - ACTIVE),
+            ("span_target", day.targets.span_hours * 3600.0),
+            ("unlocked_target", day.targets.unlocked_hours * 3600.0),
+            ("active_target", day.targets.active_hours * 3600.0),
+            (
+                "span_delta",
+                day.last_active - day.started - day.targets.span_hours * 3600.0,
+            ),
+            (
+                "unlocked_delta",
+                day.unlocked_seconds - day.targets.unlocked_hours * 3600.0,
+            ),
+            (
+                "active_delta",
+                day.active_seconds - day.targets.active_hours * 3600.0,
+            ),
         ] {
             metrics.insert(format!("workday.{key}.{field}.state"), value);
         }
@@ -273,6 +365,7 @@ mod tests {
         let mut restored = Workdays {
             days: serde_json::from_str(&serialized).unwrap(),
             previous: None,
+            ..Workdays::default()
         };
         restored.observe_flags(start + 7200.0, true, true);
         assert_eq!(restored.days[&date(start)].started, start);
@@ -280,5 +373,29 @@ mod tests {
         restored.observe_flags(start + 10800.0, false, false);
         assert_eq!(restored.days[&date(start)].active_seconds, 7200.0);
         assert_eq!(restored.days[&date(start)].unlocked_seconds, 7200.0);
+    }
+
+    #[test]
+    fn target_edits_apply_today_and_preserve_prior_day_targets() {
+        let start = Local
+            .with_ymd_and_hms(2026, 10, 2, 23, 0, 0)
+            .unwrap()
+            .timestamp() as f64;
+        let mut ledger = Workdays {
+            targets: legacy_targets(),
+            ..Workdays::default()
+        };
+        ledger.observe_flags(start, true, true);
+        let tomorrow = next_midnight(start) + 3600.0;
+        ledger.observe_flags(tomorrow, true, true);
+        let before = ledger.days[&date(tomorrow)].active_seconds;
+        ledger.apply_targets(WorkdayTargets::default(), tomorrow);
+        assert_eq!(ledger.days[&date(start)].targets.unlocked_hours, 8.0);
+        assert_eq!(ledger.days[&date(tomorrow)].targets.unlocked_hours, 6.0);
+        assert_eq!(ledger.days[&date(tomorrow)].active_seconds, before);
+        let mut value = serde_json::to_value(&ledger.days[&date(start)]).unwrap();
+        value.as_object_mut().unwrap().remove("targets");
+        let legacy: Day = serde_json::from_value(value).unwrap();
+        assert_eq!(legacy.targets.unlocked_hours, 8.0);
     }
 }

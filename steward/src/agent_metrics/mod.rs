@@ -18,6 +18,7 @@ pub(super) struct Session {
     pub subagent: bool,
     pub project: String,
     pub workspace: String,
+    pub workspace_id: Option<u64>,
     pub model: String,
     pub effort: String,
 }

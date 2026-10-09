@@ -45,6 +45,9 @@ impl Metrics {
 
     pub async fn run(self, mut shutdown: tokio::sync::watch::Receiver<bool>) -> anyhow::Result<()> {
         let mut workdays = crate::workdays::Workdays::load(&self.locus).await?;
+        let mut workday_targets = crate::workdays::target_preferences(&self.locus).into_stream();
+        let mut productivity = crate::productivity::Tracker::load(&self.locus).await?;
+        let mut policies = crate::productivity::policies(&self.locus).into_stream();
         let (batch_sender, batch_receiver) = mpsc::channel::<Vec<(String, f64, u64)>>();
         let host = self.carbon_host.clone();
         let port = self.carbon_port;
@@ -70,6 +73,8 @@ impl Metrics {
                 _ = shutdown.changed() => break Ok(()),
                 item = states.next() => match item {
                     Some(Ok(state)) => {
+                        productivity.focus(state.clone(), crate::productivity::tracker_now());
+                        publish_pending(productivity.publish(&self.locus).await?, &batch_sender);
                         publish_pending(workdays.observe(&state, &self.locus).await?, &batch_sender);
                         agents.focus(state.window_id, !state.locked && !state.idle, Instant::now());
                         tracker.observe(state, Instant::now());
@@ -89,16 +94,33 @@ impl Metrics {
                 },
                 item = agent_events.next() => match item {
                     Some(Ok(snapshot)) => {
+                        productivity.agents(snapshot.clone(), crate::productivity::tracker_now());
+                        publish_pending(productivity.publish(&self.locus).await?, &batch_sender);
                         agents.update(snapshot, Instant::now());
                         publish_pending(agents.drain(), &batch_sender);
                     }
                     Some(Err(error)) => break Err(anyhow::anyhow!("agent source failed: {error}")),
                     None => break Err(anyhow::anyhow!("agent source ended")),
+                },
+                item = policies.next() => match item {
+                    Some(Ok(policy)) => {
+                        productivity.policy(policy, crate::productivity::tracker_now());
+                        publish_pending(productivity.publish(&self.locus).await?, &batch_sender);
+                    }
+                    Some(Err(error)) => break Err(anyhow::anyhow!("productivity policy source failed: {error}")),
+                    None => break Err(anyhow::anyhow!("productivity policy source ended")),
+                },
+                item = workday_targets.next() => match item {
+                    Some(Ok(targets)) => publish_pending(workdays.set_targets(targets,&self.locus).await?,&batch_sender),
+                    Some(Err(error)) => break Err(anyhow::anyhow!("workday target source failed: {error}")),
+                    None => break Err(anyhow::anyhow!("workday target source ended")),
                 }
             }
         };
         tracker.finish(Instant::now());
         agents.finish(Instant::now());
+        productivity.finish(crate::productivity::tracker_now());
+        publish_pending(productivity.publish(&self.locus).await?, &batch_sender);
         publish_pending(
             workdays
                 .observe(

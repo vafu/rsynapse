@@ -1,0 +1,11 @@
+[Unit]
+Description=Reusable project-management service
+
+[Service]
+Type=dbus
+BusName=org.rsynapse.Proj
+ExecStart=@LOCAL_BIN@/projd
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

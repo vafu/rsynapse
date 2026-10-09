@@ -8,6 +8,7 @@ use zbus::{Connection, Proxy};
 use super::niri::NiriWorkspace;
 
 const WORKSPACE_PROJECT_RELATION: &str = "org.rsynapse.workspace.project";
+mod projd;
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(in crate::widgets::bar) struct ProjectDetails {
@@ -18,16 +19,18 @@ pub(in crate::widgets::bar) struct ProjectDetails {
     pub(in crate::widgets::bar) branch: Option<String>,
     pub(in crate::widgets::bar) cwd_label: Option<String>,
     pub(in crate::widgets::bar) path: Option<String>,
+    pub(in crate::widgets::bar) context_id: Option<String>,
 }
 
 pub(in crate::widgets::bar) fn project_details(
     workspace: NiriWorkspace,
 ) -> Observable<ProjectDetails> {
-    source::switch_map(workspace.id().map(workspace_subject).box_it(), |subject| {
-        locus_workspace_project(subject)
-    })
-    .distinct_until_changed()
-    .box_it()
+    projd::resolve(
+        source::switch_map(workspace.id().map(workspace_subject).box_it(), |subject| {
+            locus_workspace_project(subject)
+        })
+        .box_it(),
+    )
 }
 
 fn locus_workspace_project(subject: RelationEndpoint) -> Observable<ProjectDetails> {
@@ -194,6 +197,7 @@ impl From<RelationRecord> for ProjectDetails {
             branch: metadata_value(&record.metadata, &["branch"]),
             cwd_label,
             path,
+            context_id: metadata_value(&record.metadata, &["context-id"]),
         }
     }
 }

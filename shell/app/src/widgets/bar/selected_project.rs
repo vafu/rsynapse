@@ -9,11 +9,16 @@ use super::{
 };
 
 mod git;
+mod init;
+mod picker;
+mod popup;
 mod rename;
 mod workspace;
-pub(super) use rename::WorkspaceEditor;
+pub(super) use init::ProjectInitializer;
+pub(super) use picker::{ProjectCatalog, project_catalog};
+pub(super) use popup::WorkspacePopup;
 
-use git::{GitStatus, git_status};
+use git::{GitStatus, git_status, summary as git_summary};
 use workspace::workspace_display_name;
 
 /// Workspace-level view: always carries the workspace display name when
@@ -29,6 +34,7 @@ pub(super) struct SelectedWorkspaceView {
 /// Project-level view: title, branch, and git metadata for a linked project.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(super) struct ProjectView {
+    pub(super) path: Option<String>,
     pub(super) visible: bool,
     pub(super) title: String,
     pub(super) branch: Option<String>,
@@ -101,9 +107,11 @@ fn project_view(project: ProjectDetails, git: Option<GitStatus>) -> ProjectView 
         .clone()
         .map(|branch| display_branch(branch, &title))
         .filter(|branch| distinct_from(branch, &title));
-    let visible = non_empty(&title).is_some();
+    // Association presence is independent of whether its title has loaded yet.
+    let visible = true;
 
     ProjectView {
+        path: project.path,
         visible,
         title,
         branch,
@@ -141,21 +149,20 @@ pub(super) fn visible(view: &SelectedWorkspaceView) -> bool {
     view.visible
 }
 
-pub(super) fn icon(view: &SelectedWorkspaceView) -> NerdIcon {
+pub(super) fn icon_name(view: &SelectedWorkspaceView) -> &'static str {
     if view.project.is_some() {
-        NerdIcon::folder()
+        "folder-symbolic"
     } else {
-        NerdIcon::workspace()
+        "folder-new-symbolic"
     }
 }
 
 pub(super) fn title_label(view: &SelectedWorkspaceView) -> &str {
-    view.name.as_deref().and_then(non_empty).unwrap_or_else(|| {
-        view.project
-            .as_ref()
-            .map(|project| project.title.as_str())
-            .unwrap_or("empty")
-    })
+    if let Some(project) = &view.project {
+        non_empty(&project.title).unwrap_or("project")
+    } else {
+        view.name.as_deref().and_then(non_empty).unwrap_or("empty")
+    }
 }
 
 pub(super) fn branch_visible(view: &SelectedWorkspaceView) -> bool {
@@ -278,29 +285,6 @@ pub(super) fn git_part_icon(part: GitPart) -> &'static str {
         GitPart::Merging => cod::COD_GIT_MERGE,
         GitPart::Rebasing => cod::COD_SYNC,
     }
-}
-
-fn git_summary(git: &GitStatus) -> String {
-    let mut lines = vec![format!(
-        "git: {} staged, {} unstaged, {} untracked",
-        git.staged, git.unstaged, git.untracked
-    )];
-    if git.ahead > 0 || git.behind > 0 {
-        lines.push(format!(
-            "upstream: ahead {}, behind {}",
-            git.ahead, git.behind
-        ));
-    }
-    if git.merging {
-        lines.push("merging".to_owned());
-    }
-    if git.rebasing {
-        lines.push("rebasing".to_owned());
-    }
-    if git.stashes > 0 {
-        lines.push(format!("stashes: {}", git.stashes));
-    }
-    lines.join("\n")
 }
 
 #[cfg(test)]

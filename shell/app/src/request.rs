@@ -28,6 +28,7 @@ impl RequestTarget {
 /// Product-level request understood by one of the rsynapse shell processes.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ShellRequest {
+    ProjectInit,
     Hints(HintsAction),
     Notifications(NotificationCenterAction),
 }
@@ -35,7 +36,7 @@ pub enum ShellRequest {
 impl ShellRequest {
     pub const fn target(&self) -> RequestTarget {
         match self {
-            Self::Hints(_) => RequestTarget::Shell,
+            Self::Hints(_) | Self::ProjectInit => RequestTarget::Shell,
             Self::Notifications(_) => RequestTarget::Notifications,
         }
     }
@@ -259,6 +260,7 @@ fn parse_request(args: &[String]) -> Result<ShellRequest, String> {
         return Err("missing request command".to_owned());
     };
     match command {
+        "project-init" if args.len() == 1 => Ok(ShellRequest::ProjectInit),
         "hints" => parse_hints_request(&args[1..]).map(ShellRequest::Hints),
         "notifications" | "notification-center" => {
             parse_notification_center_request(&args[1..]).map(ShellRequest::Notifications)
@@ -404,6 +406,12 @@ mod tests {
 
     #[test]
     fn routes_requests_to_process_targets() {
+        assert_eq!(
+            parse_request(&args(&["project-init"])).unwrap(),
+            ShellRequest::ProjectInit
+        );
+        assert_eq!(ShellRequest::ProjectInit.target(), RequestTarget::Shell);
+        assert!(parse_request(&args(&["project-init", "extra"])).is_err());
         assert_eq!(
             parse_request(&args(&["hints", "toggle"])).unwrap().target(),
             RequestTarget::Shell

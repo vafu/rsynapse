@@ -7,11 +7,12 @@ use rxrust::prelude::{
 };
 
 pub mod dbus;
+pub mod proj;
 pub mod session;
-pub mod wayland;
 mod state;
 mod stream;
 mod support;
+pub mod wayland;
 
 pub use rxrust;
 pub use rxrust::prelude as rx;

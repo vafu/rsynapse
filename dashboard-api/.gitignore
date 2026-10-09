@@ -1,0 +1,5 @@
+/target/
+/grafana-plugin/node_modules/
+/grafana-plugin/dist/
+/grafana-plugin/dist-workday/
+/grafana-plugin/test-build/

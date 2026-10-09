@@ -14,3 +14,5 @@ tracing.workspace = true
 wayland-client = "0.31"
 wayland-protocols = { version = "0.32", features = ["client", "staging"] }
 zbus = { version = "4.4.0", default-features = false, features = ["tokio"] }
+proj-model = { package = "rsynapse-projd-model", path = "../../../projd/model" }
+serde = "1"

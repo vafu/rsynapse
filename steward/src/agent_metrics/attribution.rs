@@ -10,6 +10,7 @@ pub(super) fn attribute(
 ) -> Vec<Session> {
     for session in &mut sessions {
         let workspace = session.window.and_then(|id| windows.get(&id)).copied();
+        session.workspace_id = workspace;
         let linked = workspace.and_then(|id| {
             projects
                 .iter()

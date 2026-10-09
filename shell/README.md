@@ -28,9 +28,32 @@ GTK4/Relm4 framework crates plus concrete Rsynapse UI surfaces.
   The current combined `rsynapse-shell` package. It owns the bar, OSD,
   notifications bridge, request socket, styles, and Rsynapse-specific UI
   policy.
-  Click the bar's workspace title to save a preferred name in locus.
+   The workspace icon and title use Adwaita ButtonContent to open a Workspace
+   popup. An Adwaita InlineViewSwitcher switches between **Workspace** name
+   editing and **Project** selection, defaulting to the current association.
+   The Project view separates the current association from the project catalog.
+   The current-project row has direct remove and inline name-editing icons. **Choose project**
+   opens a searchable catalog grouped by project, with checkout rows and a
+   remove and selection checkmark buttons on project entries. A checkmark assigns
+   the checkout; the directory picker is inside this selector popup.
+   The current row's edit icon opens a text field with apply/cancel controls.
+   Remove permanently deletes project metadata from projd. Workspace-only
+   unassignment lives in the Workspace view.
+   Remove applies to the project and its registered checkouts/contexts; the same
+   action is available on the current project and catalog entries.
+   Project files and directories are untouched. Unassigning restores the saved workspace name and disables
+   automatic reassociation until an explicit project assignment.
+   The editor's "Keep after restart" checkbox reads and sets explicit relation
+   persistence; new names start session-only. Icon overrides explicitly opt
+   into persistence. `locus persist ... true|false` can toggle an
+   existing relation without replacing its contents (see `../locus/README.md`).
   Automatic titles use the project's cwd label, or `empty` without a
   project; preferred names are preserved by steward.
+  Unassigned workspace buttons have a leading folder-plus icon. **Assign project**
+  selects a directory to register with projd and associate through steward.
+  The popup and picker target the workspace clicked, even if focus changes.
+  `rsynapse-shell request project-init` opens the same picker for the focused
+  workspace and can be used as a compositor shortcut command.
 
 - `launcher`
   The launcher workspace. It owns the D-Bus launcher daemon, CLI, GTK launcher

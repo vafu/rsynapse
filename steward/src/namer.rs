@@ -42,7 +42,13 @@ impl Namer {
                             RelationEndpoint::stable_key(relations::WORKSPACE_NAME_KIND, name);
                         let metadata = HashMap::from([("source".to_owned(), source.to_owned())]);
                         self.locus
-                            .set_one(subject, relations::WORKSPACE_NAME, target, metadata)
+                            .set_one_with_persistence(
+                                subject,
+                                relations::WORKSPACE_NAME,
+                                target,
+                                metadata,
+                                false,
+                            )
                             .await?;
                     }
                 }

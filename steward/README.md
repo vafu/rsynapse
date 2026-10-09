@@ -28,9 +28,12 @@ leaving the process (only app-ids and project names become metric paths).
   manual names are never overwritten. Click the bar's workspace title
   to edit and save a preferred name in locus.
 - `git_status`
-  Polls every mapped project path and publishes changed snapshots as
-  `org.rsynapse.project.git-status` relations, so UI processes never
-  shell out to git.
+  Requests projd refreshes when project bindings change. Projd owns branch/git
+  status and emits reactive properties; UI processes never shell out to git.
+ - `associations`
+   Combines projd and session sources, managing workspace/window/project/agent
+   references and day/goal links in locus. `bind-current PATH` is the desktop
+   operation formerly in the old proj Bash helper.
 - `locus.rs`
   The only zbus-aware file: a thin write client plus `records()`
   observables over locus relations. Components compose observables and
@@ -55,6 +58,15 @@ leaving the process (only app-ids and project names become metric paths).
 
 ## Registry note
 
+Relation persistence is explicit: the namer and git-status publishers use
+`SetOneWithPersistence(..., false)` for computed state, and workday summaries
+use `SetOneWithPersistence(..., true)`. The thin client also exposes this method
+for durable callers. Legacy `SetOne` defaults new records to session-only and
+preserves the flag on updates; productivity classifications/summaries must
+explicitly opt into durability. See `../locus/README.md` for the contract and
+the `locus` CLI for `locusd`. Deploy the updated relation service before
+these callers.
+
 This crate resolves dependencies from the **public crates.io** registry,
 not the internal mirror from the user-wide cargo config. Two mechanisms
 enforce that:
@@ -70,13 +82,13 @@ enforce that:
 
 ```sh
 # 1. storage + viz
-docker compose -f steward/docker-compose.yml up -d
+docker compose -f observability/docker-compose.yml up -d
 
 # 2. emitter (first run fetches crates.io deps; subsequent builds reuse steward/target)
 ./steward/build.sh
 
 # 3. install + start the user service (unit is installed by install/local.sh)
-install -m755 steward/target/release/rsynapse-steward ~/.local/bin/rsynapse-steward
+install -m755 steward/target/release/steward ~/.local/bin/steward
 systemctl --user enable --now rsynapse-steward.service
 ```
 
@@ -190,8 +202,8 @@ Colors are independent of the selected time range and preserved as new names
 are added. Refresh the provisioned mappings after new contexts/apps appear:
 
 ```sh
-python3 steward/grafana/refresh-focus-colors.py
-python3 steward/grafana/refresh-focus-colors.py --check
+python3 observability/grafana/refresh-focus-colors.py
+python3 observability/grafana/refresh-focus-colors.py --check
 ```
 
 This is a manual configuration refresh, not a collector timer or a background
@@ -290,6 +302,80 @@ budget-only thinking settings remain `unknown`. Replace the installed plugin and
 restart OpenCode to enable these hooks in existing installations. `ContextPct`
 remains occupancy, not consumption; no token-derived cost is fabricated.
 
+## Productivity calibration and daily goals
+
+The `rsynapse-productivity` dashboard is linked from the overview and workday
+dashboards. It exposes inputs for a future formula; there is no composite score
+and no automatic personal-time penalty weight yet.
+
+### Explicit context classification
+
+```sh
+steward classify workspace personal personal
+steward classify workspace rsynapse work
+steward classify project /absolute/project/path work
+steward classify list
+```
+
+Classes are `work`, `personal`, or `unclassified`. Workspace classification uses
+the displayed workspace context (the same label as the overview pie), not a
+short-lived numeric niri id. A rename creates a different context; classify the
+new label explicitly. Project classification uses canonical stable paths and
+the most-specific containing project wins. Personal workspace or project
+classification always vetoes agent work credit. No name-based heuristic is
+used; unclassified active time is displayed as a coverage indicator.
+Preferences are stored in locus under `org.rsynapse.context.classification`.
+
+### Daily outcomes
+
+Manage goals in Grafana's **Daily goals — plan, edit and review** panel. It reads
+full records and writes changes through the local `rsynapse-dashboard-api`
+adapter to projd. See [`../dashboard-api/README.md`](../dashboard-api/README.md)
+for setup. Select the day, create/edit outcomes or habits, update status, and
+manage session associations in the panel. Projd owns saved records; the adapter
+calls its D-Bus API. Agents use `proj goal ...` as normal project clients.
+
+Steward does not create, edit, delete, score or export goal-progress records.
+Its former `goal` commands have been removed. It observes projd goals and locus
+associations for background-work attribution: open outcomes may qualify matching
+project paths or explicitly linked stable sessions; habits never grant credit.
+Personal classification always vetoes credit. Completion is an explicit UI
+decision, not inferred from agent state. Priorities and criteria are planning
+data, not collector policy, and are not exported through Graphite.
+
+### Joint activity components
+
+The collector joins human focus/idle/lock, the AgentDBus roster and active
+session links, and reactive locus policy snapshots. It closes intervals on
+events or shutdown, splits at local midnight, and persists daily union durations
+under `org.rsynapse.productivity.summary`. There is no polling, heartbeat,
+debounce, or retroactive overlap inferred from independent duration counters.
+
+| Component | Meaning |
+|---|---|
+| Productive background overlap | Human idle and unlocked on another window/session while any eligible root agent thinks or uses tools |
+| Goal-related subset | Same overlap, with an open goal on the current local day |
+| Personal active / idle | Human presence in explicitly personal contexts, split by input activity; lock excluded |
+| Personal + background work | Personal-time subsets exposing the reward/penalty overlap for later calibration |
+| Work agent while locked | Eligible agent activity during lock, kept outside productive idle overlap |
+| Unclassified active | Input-active time lacking explicit work/personal context classification |
+| Idle agents + idle human | Off-focus work-context agents idle while the human is idle and no eligible background agent is busy; diagnostic, never work credit |
+
+Eligible agents are root sessions with known windows, in an explicitly work
+context or associated with an open daily goal. Subagents, compaction, personal
+contexts and unclassified agents without goals do not earn credit. Active locus
+session links disambiguate multiple sessions sharing a terminal. Unknown human
+window attribution cannot establish off-focus overlap. All global components
+count wall-time unions: concurrent agents do not multiply credit. Subsets must
+not be summed into their parent totals.
+
+Metrics are latest-value daily gauges:
+`rsynapse.productivity.<YYYY-MM-DD,today>.<component>_seconds.state`, plus live
+availability flags/checkpoint on `today`. Grafana includes the current interval
+without collector timers; historical log rows update at the next event. Daily
+records survive restart, but unobserved downtime is not backfilled. Changing a
+classification or goal affects subsequent intervals, not historical attribution.
+
 ## Daily workday log
 
 Open **Today and daily workday log** from the overview, or the
@@ -297,9 +383,17 @@ Open **Today and daily workday log** from the overview, or the
 
 - **8 hours elapsed span:** first active presence to latest active presence,
   including breaks between them. The fixed span finish is start plus 8 hours.
-- **8 hours unlocked:** active plus idle time after the day's first active,
+- **6 hours unlocked:** active plus idle time after the day's first active,
   excluding lock. Pre-start idle time does not count.
 - **4 hours active:** input-active and unlocked time after the first active.
+
+Edit these defaults in the productivity dashboard's goal editor using **Edit
+workday targets**. The API persists preferences in
+`org.rsynapse.workday.targets`; steward observes them reactively. Changes apply
+to today and future days. Historical rows retain the targets they used, including
+legacy 8-hour unlocked targets. Live comparisons and finish estimates read target
+gauges rather than fixed numbers. Missing target gauges show No data, not totals
+mistaken for over/under values.
 
 The Today panels show start, span finish, earliest finish satisfying all three
 targets, live unlocked/active totals, and signed target differences. Negative

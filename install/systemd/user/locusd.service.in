@@ -1,0 +1,11 @@
+[Unit]
+Description=Locus session D-Bus relation daemon
+
+[Service]
+Type=dbus
+BusName=org.rsynapse.Locus
+ExecStart=@LOCAL_BIN@/locusd
+Restart=on-failure
+
+[Install]
+WantedBy=default.target

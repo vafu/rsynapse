@@ -205,13 +205,14 @@ async fn set_workspace_icon_override_async(
         metadata.insert(PICKER_INPUT_METADATA.to_owned(), input);
     }
     proxy
-        .call::<_, _, RelationRecord>(
-            "SetOne",
+        .call::<_, _, locus::RelationState>(
+            "SetOneWithPersistence",
             &(
                 identity.primary().clone(),
                 WORKSPACE_ICON_OVERRIDE_RELATION,
                 target,
                 metadata,
+                true,
             ),
         )
         .await

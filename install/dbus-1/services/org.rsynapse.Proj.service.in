@@ -1,0 +1,4 @@
+[D-BUS Service]
+Name=org.rsynapse.Proj
+Exec=@LOCAL_BIN@/projd
+SystemdService=projd.service

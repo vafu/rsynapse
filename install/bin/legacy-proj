@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Migration reference only. The installed proj is now the Rust D-Bus client.
 set -euo pipefail
 
 default_branch_regex='^(?:[^/]+/)?(?P<subproj>[^/]+)/(?P<task>.+)$'
