@@ -30,41 +30,6 @@ pub(super) fn remove_button(project: &ProjectChoice, actions: &Rc<Actions>) -> g
     });
     remove
 }
-fn select_button(
-    project: &ProjectChoice,
-    checkout: &CheckoutChoice,
-    state: &Rc<PickerState>,
-) -> gtk::Button {
-    let select = icon_button(
-        "object-select-symbolic",
-        &format!("Select project {} — {}", project.name, checkout.path),
-    );
-    let selected = state
-        .target
-        .borrow()
-        .project
-        .as_ref()
-        .and_then(|p| p.path.as_ref())
-        == Some(&checkout.path);
-    if selected {
-        select.add_css_class("accent");
-        select.set_sensitive(false);
-        select.set_tooltip_text(Some("Current project checkout"));
-    }
-    let workspace = state.target.borrow().workspace_id;
-    let weak = Rc::downgrade(state);
-    let path = checkout.path.clone();
-    select.connect_clicked(move |_| {
-        if let (Some(state), Some(workspace)) = (weak.upgrade(), workspace) {
-            state.chooser_popover.popdown();
-            state.actions.run(Action::Assign {
-                workspace,
-                path: path.clone(),
-            });
-        }
-    });
-    select
-}
 fn checkout_row(
     project: &ProjectChoice,
     checkout: &CheckoutChoice,
@@ -81,7 +46,40 @@ fn checkout_row(
     row.set_subtitle(&format!("{} · {}", checkout.branch, checkout.path));
     row.set_title_lines(1);
     row.set_subtitle_lines(1);
-    row.add_suffix(&select_button(project, checkout, state));
+    row.set_activatable(true);
+    let selected = state
+        .target
+        .borrow()
+        .project
+        .as_ref()
+        .and_then(|p| p.path.as_ref())
+        == Some(&checkout.path);
+    if selected {
+        let badge = gtk::Label::new(Some("Current"));
+        badge.add_css_class("dim-label");
+        row.add_suffix(&badge);
+    }
+    let workspace = state.target.borrow().workspace_id;
+    let weak = Rc::downgrade(state);
+    let path = checkout.path.clone();
+    row.connect_activated(move |_| {
+        if let (Some(state), Some(workspace)) = (weak.upgrade(), workspace) {
+            state.chooser_popover.popdown();
+            let current = state
+                .target
+                .borrow()
+                .project
+                .as_ref()
+                .and_then(|p| p.path.as_ref())
+                == Some(&path);
+            if !current {
+                state.actions.run(Action::Assign {
+                    workspace,
+                    path: path.clone(),
+                });
+            }
+        }
+    });
     row
 }
 pub(super) fn catalog_row(project: &ProjectChoice, state: &Rc<PickerState>, query: &str) {
@@ -101,13 +99,6 @@ pub(super) fn catalog_row(project: &ProjectChoice, state: &Rc<PickerState>, quer
         ));
         row.set_subtitle_lines(1);
         let matching = project.matching(query);
-        if let Some(checkout) = matching
-            .iter()
-            .find(|c| c.path == project.path)
-            .or_else(|| matching.first())
-        {
-            row.add_suffix(&select_button(project, checkout, state));
-        }
         row.add_suffix(&remove_button(project, &state.actions));
         for checkout in matching {
             row.add_row(&checkout_row(project, &checkout, state));

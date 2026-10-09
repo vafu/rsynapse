@@ -95,7 +95,7 @@ impl ProjectPicker {
             search,
             results,
             empty,
-            actions: Actions::new(&choose_row, overlay),
+            actions: Actions::new(overlay),
         });
         let weak = Rc::downgrade(&state);
         state.search.connect_changed(move |_| {
@@ -162,6 +162,9 @@ impl ProjectPicker {
     }
     pub(super) fn prepare(&self) {
         self.state.rebuild_current();
+    }
+    pub(super) fn selector_is_open(&self) -> bool {
+        self.state.chooser_popover.is_visible()
     }
     pub(super) fn open_selector(&self) {
         let popup = self.state.chooser_popover.clone();

@@ -23,14 +23,12 @@ pub(super) enum Action {
 }
 pub(super) struct Actions {
     busy: Cell<bool>,
-    content: gtk::glib::WeakRef<gtk::Box>,
     overlay: gtk::glib::WeakRef<adw::ToastOverlay>,
 }
 impl Actions {
-    pub fn new(content: &gtk::Box, overlay: &adw::ToastOverlay) -> Rc<Self> {
+    pub fn new(overlay: &adw::ToastOverlay) -> Rc<Self> {
         Rc::new(Self {
             busy: Cell::new(false),
-            content: content.downgrade(),
             overlay: overlay.downgrade(),
         })
     }
@@ -46,9 +44,8 @@ impl Actions {
             complete(false);
             return;
         }
-        if let Some(content) = self.content.upgrade() {
-            content.set_sensitive(false);
-        }
+        // Keep the chooser anchor sensitive: disabling it closes its popover.
+        // The in-flight guard above serializes actions without collapsing it.
         let (sender, receiver) = async_channel::bounded(1);
         let command = action.clone();
         relm4::spawn(async move {
@@ -83,9 +80,6 @@ impl Actions {
         gtk::glib::MainContext::default().spawn_local(async move {
             let result = receiver.recv().await;
             current.busy.set(false);
-            if let Some(content) = current.content.upgrade() {
-                content.set_sensitive(true);
-            }
             complete(matches!(&result, Ok(Ok(()))));
             let Some(overlay) = current.overlay.upgrade() else {
                 return;

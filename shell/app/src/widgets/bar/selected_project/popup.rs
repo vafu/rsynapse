@@ -135,7 +135,9 @@ impl WorkspacePopup {
         self.unassign.set_visible(assigned);
         self.rename.set_target(view);
         self.picker.set_target(view);
-        if previous.workspace_id != view.workspace_id || previous.project.is_some() != assigned {
+        if previous.workspace_id != view.workspace_id
+            || (previous.project.is_some() != assigned && !self.picker.selector_is_open())
+        {
             self.stack
                 .set_visible_child_name(if assigned { "project" } else { "workspace" });
         }

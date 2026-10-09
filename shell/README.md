@@ -34,11 +34,13 @@ GTK4/Relm4 framework crates plus concrete Rsynapse UI surfaces.
    The Project view separates the current association from the project catalog.
    The current-project row has direct remove and inline name-editing icons. **Choose project**
    opens a searchable catalog grouped by project, with checkout rows and a
-   remove and selection checkmark buttons on project entries. A checkmark assigns
-   the checkout; the directory picker is inside this selector popup.
+   direct remove icons on project entries. Clicking a checkout tile assigns it;
+   the directory picker is inside this selector popup.
    The current row's edit icon opens a text field with apply/cancel controls.
    Remove permanently deletes project metadata from projd. Workspace-only
    unassignment lives in the Workspace view.
+   The selector stays open while removing entries, including the currently
+   assigned project, so multiple registrations can be cleaned up in one pass.
    Remove applies to the project and its registered checkouts/contexts; the same
    action is available on the current project and catalog entries.
    Project files and directories are untouched. Unassigning restores the saved workspace name and disables
