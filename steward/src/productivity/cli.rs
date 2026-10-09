@@ -57,7 +57,7 @@ pub async fn run() -> anyhow::Result<bool> {
                 "org.rsynapse.Steward.Associations1",
             )
             .await?;
-            let _: goal_model::ContextInfo = proxy
+            let _: goal_model::ProjectInfo = proxy
                 .call(
                     "BindCurrentProject",
                     &(path.to_string_lossy().into_owned(),),

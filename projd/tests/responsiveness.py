@@ -41,12 +41,12 @@ try:
     wait(lambda:(base/'blocked-pid').exists())
     child=repo/'nested';child.mkdir()
     registered=json.loads(cli('metadata',str(child),'--json'))
-    assert registered['relative-cwd']=='nested'
+    assert registered['name']=='repo' and registered['cwd']==str(repo)
     cli('goal','add','during-refresh','--title','Responsive CRUD','--project',str(repo),'--success','Git scan does not hold domain mutations','--date','2026-10-08')
     assert json.loads(cli('goal','list','--all','--json'))[0]['id']=='during-refresh'
     (base/'block').unlink();os.kill(int((base/'blocked-pid').read_text()),signal.SIGUSR1)
     assert refresh.wait(timeout=10)==0
-    print('PASS: context registration and goal CRUD complete while a checkout Git scan is blocked')
+    print('PASS: project registration and goal CRUD complete while a checkout Git scan is blocked')
 finally:
     if (base/'block').exists(): (base/'block').unlink()
     if (base/'blocked-pid').exists():

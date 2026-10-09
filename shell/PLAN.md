@@ -81,6 +81,9 @@ Framework crates under `core/` own:
   notification popups plus the notification center.
 - Keep the bar and OSD in the main `rsynapse-shell` binary; do not split OSD
   back into a separate binary unless that consumer policy changes again.
+- Completed: checkout/worktree-per-project catalog, stored project names, and
+  project-owned icon property subscriptions. Associated icons switch their D-Bus
+  source with the project; conditional automatic selection preserves manual picks.
 - `app/` owns its Unix-socket request CLI for consumer runtime
   commands such as theme switching, Super-key hints, and notification-center
   control. Notification-center commands route to the `rsynapse-notifications`

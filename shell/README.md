@@ -33,23 +33,28 @@ GTK4/Relm4 framework crates plus concrete Rsynapse UI surfaces.
    editing and **Project** selection, defaulting to the current association.
    The Project view separates the current association from the project catalog.
    The current-project row has direct remove and inline name-editing icons. **Choose project**
-   opens a searchable catalog grouped by project, with checkout rows and a
-   direct remove icons on project entries. Clicking a checkout tile assigns it;
+    opens a searchable catalog with a tile and direct remove icon for each
+    project. Each checkout/worktree is a separate project. Clicking a tile assigns it;
    the directory picker is inside this selector popup.
    The current row's edit icon opens a text field with apply/cancel controls.
    Remove permanently deletes project metadata from projd. Workspace-only
    unassignment lives in the Workspace view.
    The selector stays open while removing entries, including the currently
    assigned project, so multiple registrations can be cleaned up in one pass.
-   Remove applies to the project and its registered checkouts/contexts; the same
+    Remove applies to the project and its optional checkout; the same
    action is available on the current project and catalog entries.
    Project files and directories are untouched. Unassigning restores the saved workspace name and disables
    automatic reassociation until an explicit project assignment.
    The editor's "Keep after restart" checkbox reads and sets explicit relation
    persistence; new names start session-only. Icon overrides explicitly opt
    into persistence. `locus persist ... true|false` can toggle an
-   existing relation without replacing its contents (see `../locus/README.md`).
-  Automatic titles use the project's cwd label, or `empty` without a
+    existing relation without replacing its contents (see `../locus/README.md`).
+    Associated icons subscribe to the project's initial/live `Icon` property;
+    changing the association switches subscriptions. Only unset icons use shell
+    heuristics, persisted conditionally so manual selections always win. Project
+    names/icons persist in projd independently for each worktree. Unassociated
+    workspace icon overrides remain persistent locus relations.
+   Automatic titles use the stored `Project.Name`, or `empty` without a
   project; preferred names are preserved by steward.
   Unassigned workspace buttons have a leading folder-plus icon. **Assign project**
   selects a directory to register with projd and associate through steward.

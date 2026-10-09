@@ -22,7 +22,7 @@ leaving the process (only app-ids and project names become metric paths).
   durations, session counts, busy cycles, and response-to-read proxy latency.
 - `namer`
   Assigns workspace display names into the `org.rsynapse.workspace.name`
-  relation: preferred manual names win, then the project's cwd label,
+   relation: preferred manual names win, then the stored `Project.Name`,
   then `empty` for project-less workspaces. Old random defaults are
   replaced on selection. Automatic names are compared before writing;
   manual names are never overwritten. Click the bar's workspace title
@@ -33,7 +33,10 @@ leaving the process (only app-ids and project names become metric paths).
  - `associations`
    Combines projd and session sources, managing workspace/window/project/agent
    references and day/goal links in locus. `bind-current PATH` is the desktop
-   operation formerly in the old proj Bash helper.
+    operation formerly in the old proj Bash helper.
+    At startup it remaps old grouped-project bindings by checkout identity,
+    preserves relation persistence, adopts workspace icon overrides into projects,
+    and updates compact project object-path references without changing goals.
 - `locus.rs`
   The only zbus-aware file: a thin write client plus `records()`
   observables over locus relations. Components compose observables and

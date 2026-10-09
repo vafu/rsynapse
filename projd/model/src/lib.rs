@@ -8,7 +8,6 @@ pub const ROOT_PATH: &str = "/org/rsynapse/Proj";
 pub const MANAGER_INTERFACE: &str = "org.rsynapse.Proj.Manager1";
 pub const PROJECT_INTERFACE: &str = "org.rsynapse.Proj.Project1";
 pub const CHECKOUT_INTERFACE: &str = "org.rsynapse.Proj.Checkout1";
-pub const CONTEXT_INTERFACE: &str = "org.rsynapse.Proj.Context1";
 pub const GOAL_INTERFACE: &str = "org.rsynapse.Proj.Goal1";
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, Type)]
@@ -26,23 +25,20 @@ pub struct GitStatus {
 pub struct ProjectInfo {
     pub id: String,
     pub name: String,
-    pub root_path: String,
+    pub cwd: String,
+    #[serde(default)]
+    pub checkout_id: String,
+    #[serde(default)]
+    pub icon: String,
+    #[serde(default)]
+    pub icon_origin: String,
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Type)]
 pub struct CheckoutInfo {
     pub id: String,
-    pub project_id: String,
     pub root_path: String,
     pub branch: String,
     pub git_status: GitStatus,
-}
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Type)]
-pub struct ContextInfo {
-    pub id: String,
-    pub project_id: String,
-    pub checkout_id: String,
-    pub cwd: String,
-    pub relative_cwd: String,
 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Type)]
 pub struct RemovedProjectInfo {
@@ -99,6 +95,14 @@ impl TryFrom<GoalInfo> for Goal {
     }
 }
 pub fn object_path(kind: &str, id: &str) -> String {
+    if matches!(kind, "Projects" | "Checkouts")
+        && id.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_')
+    {
+        return format!(
+            "{ROOT_PATH}/{kind}/{}{id}",
+            if kind == "Projects" { "p" } else { "c" }
+        );
+    }
     let safe: String = id.as_bytes().iter().map(|b| format!("{b:02x}")).collect();
     format!("{ROOT_PATH}/{kind}/n{safe}")
 }

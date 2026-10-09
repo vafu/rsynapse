@@ -2,7 +2,7 @@
 use crate::{Observable, rx::Observable as _};
 use futures_util::StreamExt;
 use proj_model::{BUS_NAME, MANAGER_INTERFACE, ROOT_PATH, object_path};
-pub use proj_model::{CheckoutInfo, ContextInfo, GoalInfo, ProjectInfo, RemovedProjectInfo};
+pub use proj_model::{CheckoutInfo, GoalInfo, ProjectInfo, RemovedProjectInfo};
 use zbus::Proxy;
 
 fn snapshots<T>(method: &'static str, goal_list: bool) -> Observable<Vec<T>>
@@ -85,11 +85,6 @@ pub fn checkouts() -> Observable<Vec<CheckoutInfo>> {
         .distinct_until_changed()
         .box_it()
 }
-pub fn contexts() -> Observable<Vec<ContextInfo>> {
-    snapshots("ListContexts", false)
-        .distinct_until_changed()
-        .box_it()
-}
 pub fn goals() -> Observable<Vec<GoalInfo>> {
     snapshots("ListGoals", true)
         .distinct_until_changed()
@@ -108,6 +103,24 @@ pub fn project_name(id: impl Into<String>) -> Observable<String> {
         crate::dbus::PropertyDescriptor::new(descriptor, "Name"),
         String::new(),
     )
+}
+pub fn project_icon(id: impl Into<String>) -> Observable<String> {
+    project_property(id.into(), "Icon")
+}
+pub fn project_icon_origin(id: impl Into<String>) -> Observable<String> {
+    project_property(id.into(), "IconOrigin")
+}
+fn project_property(id: String, name: &'static str) -> Observable<String> {
+    let descriptor = crate::dbus::ObjectDescriptor::parse(
+        crate::dbus::Bus::Session,
+        BUS_NAME,
+        &object_path("Projects", &id),
+        proj_model::PROJECT_INTERFACE,
+    )
+    .expect("project descriptor");
+    crate::dbus::property::<String>(crate::dbus::PropertyDescriptor::new(descriptor, name))
+        .filter_map(|value| value)
+        .box_it()
 }
 pub fn checkout_branch(id: impl Into<String>) -> Observable<String> {
     let descriptor = crate::dbus::ObjectDescriptor::parse(

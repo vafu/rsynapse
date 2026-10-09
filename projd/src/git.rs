@@ -19,20 +19,11 @@ fn text(path: &Path, args: &[&str]) -> Option<String> {
         .ok()
         .map(|s| s.trim().to_owned())
 }
-pub fn discover(path: &Path) -> anyhow::Result<(PathBuf, PathBuf, PathBuf)> {
+pub fn discover(path: &Path) -> anyhow::Result<(Option<PathBuf>, PathBuf)> {
     let cwd = path.canonicalize()?;
     anyhow::ensure!(cwd.is_dir(), "Path must be a directory");
-    let root = text(&cwd, &["rev-parse", "--show-toplevel"])
-        .map(PathBuf::from)
-        .unwrap_or_else(|| cwd.clone());
-    let primary = text(
-        &root,
-        &["rev-parse", "--path-format=absolute", "--git-common-dir"],
-    )
-    .map(PathBuf::from)
-    .and_then(|p| p.parent().map(Path::to_path_buf))
-    .unwrap_or_else(|| root.clone());
-    Ok((primary, root, cwd))
+    let root = text(&cwd, &["rev-parse", "--show-toplevel"]).map(PathBuf::from);
+    Ok((root, cwd))
 }
 pub fn git_dir(root: &Path) -> Option<PathBuf> {
     text(root, &["rev-parse", "--path-format=absolute", "--git-dir"]).map(PathBuf::from)

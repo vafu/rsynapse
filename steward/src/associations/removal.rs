@@ -27,7 +27,7 @@ pub(super) async fn removed(
     for relation in [relations::WORKSPACE_PROJECT, WINDOW_PROJECT] {
         for record in locus.list(relation).await? {
             if record.metadata.get("project-id") == Some(&project.project.id)
-                || matches!(&record.target,RelationEndpoint::StableKey{kind,id} if kind==locus::keys::PROJECT_PATH && (id==&project.project.root_path||project.checkouts.iter().any(|c|&c.root_path==id)))
+                || matches!(&record.target,RelationEndpoint::StableKey{kind,id} if kind==locus::keys::PROJECT_PATH && (id==&project.project.cwd||project.checkouts.iter().any(|c|&c.root_path==id)))
             {
                 clear(locus, record).await?;
             }
@@ -46,13 +46,81 @@ pub(super) async fn reconcile(
 ) -> anyhow::Result<()> {
     let ids: HashSet<_> = projects.iter().map(|p| p.id.clone()).collect();
     for relation in [relations::WORKSPACE_PROJECT, WINDOW_PROJECT] {
-        for record in locus.list(relation).await? {
+        for state in locus.list_with_persistence(relation).await? {
+            let mut record = state.record;
+            let linked = record
+                .metadata
+                .get("checkout-id")
+                .filter(|id| !id.is_empty())
+                .and_then(|id| projects.iter().find(|p| &p.checkout_id == id))
+                .or_else(|| match &record.target {
+                    RelationEndpoint::StableKey { kind, id }
+                        if kind == locus::keys::PROJECT_PATH =>
+                    {
+                        projects.iter().find(|p| &p.cwd == id)
+                    }
+                    _ => None,
+                });
+            if let Some(project) = linked {
+                let changed = record.metadata.get("project-id") != Some(&project.id)
+                    || record.metadata.contains_key("context-id");
+                if changed {
+                    record
+                        .metadata
+                        .insert("project-id".into(), project.id.clone());
+                    record
+                        .metadata
+                        .insert("checkout-id".into(), project.checkout_id.clone());
+                    record.metadata.remove("context-id");
+                    locus
+                        .set_one_with_persistence(
+                            record.subject.clone(),
+                            relation,
+                            record.target.clone(),
+                            record.metadata.clone(),
+                            state.persist,
+                        )
+                        .await?;
+                }
+            }
             if record
                 .metadata
                 .get("project-id")
                 .is_some_and(|id| !ids.contains(id))
             {
                 clear(locus, record).await?;
+            }
+        }
+    }
+    super::icons::migrate(locus).await?;
+    for state in locus.list_with_persistence(PROJECT_AGENT).await? {
+        let mut record = state.record.clone();
+        if let RelationEndpoint::DBusObject {
+            service,
+            path,
+            interface,
+            ..
+        } = &mut record.subject
+        {
+            if service == goal_model::BUS_NAME && interface == goal_model::PROJECT_INTERFACE {
+                if let Some(project) = projects.iter().find(|p| {
+                    let encoded: String = p.id.bytes().map(|b| format!("{b:02x}")).collect();
+                    *path == format!("{}/Projects/n{encoded}", goal_model::ROOT_PATH)
+                }) {
+                    *path = goal_model::object_path("Projects", &project.id);
+                    locus
+                        .set_with_persistence(
+                            record.subject.clone(),
+                            PROJECT_AGENT,
+                            record.target.clone(),
+                            record.metadata.clone(),
+                            state.persist,
+                        )
+                        .await?;
+                    locus
+                        .unset(state.record.subject, PROJECT_AGENT, state.record.target)
+                        .await?;
+                }
             }
         }
     }

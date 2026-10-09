@@ -30,7 +30,7 @@ fd=os.open(state,os.O_RDONLY|os.O_DIRECTORY)
 try:os.fsync(fd)
 finally:os.close(fd)
 paths=set()
-for row in projects:
+for row,persist in workspace_states:
     target=row[2]
     if target.get("kind")=="org.rsynapse.project.path" and pathlib.Path(target["id"]).is_dir():paths.add(target["id"])
 for path in sorted(paths):subprocess.run([PROJ,"add",path],check=True)
@@ -51,7 +51,7 @@ for row,persist in workspace_states:
     cwd=row[3].get("cwd-path",root)
     if not pathlib.Path(cwd).is_dir():cwd=root
     snapshot=json.loads(subprocess.check_output([PROJ,"metadata",cwd,"--json"],text=True))
-    bind_record(row,"org.rsynapse.workspace.project",{"managed-by":"rsynapse-steward","project-id":snapshot["id"],"checkout-id":snapshot["checkout-id"],"context-id":snapshot["context-id"]},persist)
+    bind_record(row,"org.rsynapse.workspace.project",{"managed-by":"rsynapse-steward","project-id":snapshot["id"],"checkout-id":snapshot["checkout-id"]},persist)
 # Legacy self-mirrored project metadata is now backed up and owned by projd.
 for row in projects:
     if row[1]=="org.rsynapse.project.metadata" and row[2].get("id") in paths:

@@ -1,4 +1,4 @@
-use crate::{CheckoutObject, ContextObject, Manager, ProjectObject, error, path};
+use crate::{CheckoutObject, Manager, ProjectObject, error, path};
 use proj_model::RemovedProjectInfo;
 use zbus::Connection;
 impl Manager {
@@ -11,12 +11,6 @@ impl Manager {
         let Some(removed) = self.store.remove_project(id).map_err(error)? else {
             return Ok(None);
         };
-        for c in &removed.contexts {
-            conn.object_server()
-                .remove::<ContextObject, _>(path("Contexts", &c.id))
-                .await
-                .map_err(error)?;
-        }
         for c in &removed.checkouts {
             conn.object_server()
                 .remove::<CheckoutObject, _>(path("Checkouts", &c.id))

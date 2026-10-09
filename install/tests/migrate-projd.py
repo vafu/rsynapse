@@ -24,15 +24,20 @@ try:
     for id,persist in [("1",True),("2",False)]:
         bind("org.rsynapse.niri.workspace.id",id,relation,"org.rsynapse.project.path",path,{"cwd-path":path},persist)
     bind("org.rsynapse.niri.workspace.id","3",relation,"org.rsynapse.project.path",path+"/missing",{},True)
+    cached=pathlib.Path(path)/"cached-plugin";cached.mkdir()
+    bind("org.rsynapse.project.path",str(cached),"org.rsynapse.project.metadata","org.rsynapse.project.path",str(cached),{"name":"Cached plugin"},True)
     goals=[dict(id=id,date="2026-10-07",kind="habit",title="Saved "+id,project=None,success="Keep criterion "+id,priority="high",status="planned") for id in ["first","second"]]
     for goal in goals:
         bind("org.rsynapse.calendar-day",goal["date"],"org.rsynapse.day.goal","org.rsynapse.goal",goal["date"]+"/"+goal["id"],{"goal":json.dumps(goal)},True)
     def migrate(**kw):return subprocess.run([sys.executable,str(ROOT/"install/migrate-projd.py")],**kw)
     migrate(check=True)
+    projects=json.loads(subprocess.check_output([PROJ,"project","list","--json"],text=True))
+    assert len(projects)==1 and projects[0]["cwd"]==path
+    assert len(call("List","s","org.rsynapse.project.metadata"))==1
     assert json.loads(subprocess.check_output([PROJ,"goal","list","--all","--json"],text=True))==goals
     states=call("ListWithPersistence","s",relation)
     assert {r[0]["id"]:p for r,p in states}=={"1":True,"2":False,"3":True}
-    assert all("context-id" in r[3] for r,p in states if r[0]["id"]!="3")
+    assert all("project-id" in r[3] and "context-id" not in r[3] for r,p in states if r[0]["id"]!="3")
     assert len(call("List","s","org.rsynapse.day.goal"))==2
     migrate(check=True)
     subprocess.run([PROJ,"goal","status","first","completed","--date","2026-10-07"],check=True)

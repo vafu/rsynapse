@@ -1,4 +1,4 @@
-use std::{collections::HashMap, path::Path};
+use std::collections::HashMap;
 
 use futures_util::StreamExt;
 use locus::{RelationEndpoint, RelationRecord, keys};
@@ -17,9 +17,9 @@ pub(in crate::widgets::bar) struct ProjectDetails {
     pub(in crate::widgets::bar) display_main: Option<String>,
     pub(in crate::widgets::bar) display_secondary: Option<String>,
     pub(in crate::widgets::bar) branch: Option<String>,
-    pub(in crate::widgets::bar) cwd_label: Option<String>,
+    pub(in crate::widgets::bar) cwd: Option<String>,
     pub(in crate::widgets::bar) path: Option<String>,
-    pub(in crate::widgets::bar) context_id: Option<String>,
+    pub(in crate::widgets::bar) project_id: Option<String>,
 }
 
 pub(in crate::widgets::bar) fn project_details(
@@ -64,8 +64,6 @@ async fn run_locus_workspace_project(
         .await
         .map_err(|error| format!("connect locus proxy: {error}"))?;
 
-    send_project(&sender, &proxy, &subject).await?;
-
     let mut added = Box::pin(
         proxy
             .receive_signal("RelationAdded")
@@ -90,6 +88,8 @@ async fn run_locus_workspace_project(
             .await
             .map_err(to_string)?,
     );
+
+    send_project(&sender, &proxy, &subject).await?;
 
     loop {
         tokio::select! {
@@ -178,26 +178,11 @@ impl From<RelationRecord> for ProjectDetails {
     fn from(record: RelationRecord) -> Self {
         let path = project_path_from_endpoint(&record.target)
             .or_else(|| metadata_value(&record.metadata, &["path"]));
-        let name =
-            metadata_value(&record.metadata, &["name"]).or_else(|| path_basename(path.as_deref()));
-        let cwd_path = metadata_value(&record.metadata, &["cwd-path"]);
-        let relative_cwd = metadata_value(&record.metadata, &["relative-cwd", "cwd"])
-            .or_else(|| relative_cwd_from_paths(path.as_deref(), cwd_path.as_deref()));
-        let cwd_label = cwd_label(
-            relative_cwd.as_deref(),
-            cwd_path.as_deref(),
-            path.as_deref(),
-        );
-
         Self {
             has_project: true,
-            name,
-            display_main: metadata_value(&record.metadata, &["display-main"]),
-            display_secondary: metadata_value(&record.metadata, &["display-secondary"]),
-            branch: metadata_value(&record.metadata, &["branch"]),
-            cwd_label,
             path,
-            context_id: metadata_value(&record.metadata, &["context-id"]),
+            project_id: metadata_value(&record.metadata, &["project-id"]),
+            ..Self::default()
         }
     }
 }
@@ -209,34 +194,6 @@ fn project_path_from_endpoint(endpoint: &RelationEndpoint) -> Option<String> {
         }
         _ => None,
     }
-}
-
-fn relative_cwd_from_paths(root: Option<&str>, cwd: Option<&str>) -> Option<String> {
-    let root = Path::new(non_empty_str(root?)?);
-    let cwd = Path::new(non_empty_str(cwd?)?);
-    let relative = cwd.strip_prefix(root).ok()?.to_string_lossy().into_owned();
-    non_root_relative(relative)
-}
-
-fn cwd_label(
-    relative_cwd: Option<&str>,
-    cwd_path: Option<&str>,
-    project_path: Option<&str>,
-) -> Option<String> {
-    relative_cwd
-        .and_then(non_empty_str)
-        .filter(|value| *value != ".")
-        .map(str::to_owned)
-        .or_else(|| path_basename(cwd_path))
-        .or_else(|| path_basename(project_path))
-}
-
-fn path_basename(path: Option<&str>) -> Option<String> {
-    let path = Path::new(non_empty_str(path?)?);
-    path.file_name()
-        .and_then(|name| name.to_str())
-        .and_then(non_empty_str)
-        .map(str::to_owned)
 }
 
 fn metadata_value(metadata: &HashMap<String, String>, keys: &[&str]) -> Option<String> {
@@ -253,15 +210,6 @@ fn non_empty(value: Option<String>) -> Option<String> {
         let value = value.trim().to_owned();
         (!value.is_empty()).then_some(value)
     })
-}
-
-fn non_empty_str(value: &str) -> Option<&str> {
-    let value = value.trim();
-    (!value.is_empty()).then_some(value)
-}
-
-fn non_root_relative(value: String) -> Option<String> {
-    non_empty(Some(value)).filter(|value| value != ".")
 }
 
 fn to_string(error: zbus::Error) -> String {

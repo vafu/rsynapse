@@ -39,6 +39,17 @@ pub(super) struct WorkspaceIconContext {
 }
 
 pub(super) fn workspace_icon_source(workspace: NiriWorkspace) -> Observable<WorkspaceIcon> {
+    source::switch_map(project_details(workspace.clone()), move |project| {
+        if let Some(id) = project.project_id.clone() {
+            super::project_icon::icon(project, id)
+        } else {
+            unassociated_icon_source(workspace.clone())
+        }
+    })
+    .distinct_until_changed()
+    .box_it()
+}
+fn unassociated_icon_source(workspace: NiriWorkspace) -> Observable<WorkspaceIcon> {
     let workspace_id = workspace.id().map(Some);
     let project = project_details(workspace.clone());
     let override_icon = workspace_icon_override_source(workspace.clone());
@@ -147,11 +158,7 @@ fn project_icon_evidence(project: ProjectDetails) -> Vec<IconEvidence> {
         IconEvidenceKind::ProjectDisplaySecondary,
         project.display_secondary,
     );
-    push_optional(
-        &mut evidence,
-        IconEvidenceKind::ProjectCwd,
-        project.cwd_label,
-    );
+    push_optional(&mut evidence, IconEvidenceKind::ProjectCwd, project.cwd);
     push_optional(
         &mut evidence,
         IconEvidenceKind::ProjectBranch,

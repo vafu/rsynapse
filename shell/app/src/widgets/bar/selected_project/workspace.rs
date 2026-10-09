@@ -7,7 +7,7 @@ const WORKSPACE_NAME_RELATION: &str = "org.rsynapse.workspace.name";
 const WORKSPACE_NAME_KIND: &str = "org.rsynapse.workspace.name";
 
 /// Preferred manual name for one workspace id from locus. Automatic names
-/// fall back to the current project cwd label or `empty` in the view.
+/// fall back to the stored project name or `empty` in the view.
 pub(super) fn workspace_display_name(workspace_id: Option<u64>) -> Observable<Option<String>> {
     let Some(id) = workspace_id else {
         return source::once(None);

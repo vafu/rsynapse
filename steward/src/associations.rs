@@ -10,6 +10,7 @@ use std::{
 use zbus::{Connection, Proxy, interface};
 
 const ROOT: &str = "/org/rsynapse/Steward";
+mod icons;
 mod removal;
 const BUS: &str = "org.rsynapse.Steward";
 const PROJECT_GOAL: &str = "org.rsynapse.goal.project";
@@ -37,7 +38,7 @@ async fn bind(
     mut workspace: Option<u64>,
     window: Option<u64>,
     automatic: bool,
-) -> anyhow::Result<goal_model::ContextInfo> {
+) -> anyhow::Result<goal_model::ProjectInfo> {
     let _lock = BIND_LOCK.lock().await;
     if automatic {
         if let Some(id) = workspace {
@@ -56,10 +57,10 @@ async fn bind(
         }
     }
     let proxy = proj().await?;
-    let context: goal_model::ContextInfo = proxy
+    let context: goal_model::ProjectInfo = proxy
         .call(
             if automatic {
-                "ResolveContext"
+                "ResolveProject"
             } else {
                 "RegisterProject"
             },
@@ -70,22 +71,23 @@ async fn bind(
 }
 async fn bind_context(
     locus: &LocusClient,
-    context: goal_model::ContextInfo,
+    context: goal_model::ProjectInfo,
     workspace: Option<u64>,
     window: Option<u64>,
     explicit: bool,
-) -> anyhow::Result<goal_model::ContextInfo> {
+) -> anyhow::Result<goal_model::ProjectInfo> {
     let proxy = proj().await?;
     let checkouts: Vec<goal_model::CheckoutInfo> = proxy.call("ListCheckouts", &()).await?;
-    let checkout = checkouts
-        .iter()
-        .find(|c| c.id == context.checkout_id)
-        .unwrap();
-    let target = RelationEndpoint::stable_key(locus::keys::PROJECT_PATH, &checkout.root_path);
+    let checkout = checkouts.iter().find(|c| c.id == context.checkout_id);
+    let target = RelationEndpoint::stable_key(
+        locus::keys::PROJECT_PATH,
+        checkout
+            .map(|c| c.root_path.as_str())
+            .unwrap_or(&context.cwd),
+    );
     let mut metadata = owned();
-    metadata.insert("project-id".into(), context.project_id.clone());
+    metadata.insert("project-id".into(), context.id.clone());
     metadata.insert("checkout-id".into(), context.checkout_id.clone());
-    metadata.insert("context-id".into(), context.id.clone());
     if let Some(workspace) = workspace {
         locus
             .set_one_with_persistence(
@@ -124,7 +126,7 @@ async fn bind_context(
 pub async fn bind_current(
     locus: &LocusClient,
     path: &str,
-) -> anyhow::Result<goal_model::ContextInfo> {
+) -> anyhow::Result<goal_model::ProjectInfo> {
     bind(locus, path, Some(focused_workspace().await?), None, false).await
 }
 async fn focused_workspace() -> anyhow::Result<u64> {
@@ -181,7 +183,7 @@ impl Bindings {
         &self,
         workspace: u64,
         path: String,
-    ) -> zbus::fdo::Result<goal_model::ContextInfo> {
+    ) -> zbus::fdo::Result<goal_model::ProjectInfo> {
         bind(&self.locus, &path, Some(workspace), None, false)
             .await
             .map_err(|e| zbus::fdo::Error::Failed(e.to_string()))
@@ -210,7 +212,7 @@ impl Bindings {
         &self,
         workspace: u64,
         path: String,
-    ) -> zbus::fdo::Result<goal_model::ContextInfo> {
+    ) -> zbus::fdo::Result<goal_model::ProjectInfo> {
         let _lock = BIND_LOCK.lock().await;
         let subject =
             RelationEndpoint::stable_key(locus::keys::NIRI_WORKSPACE_ID, workspace.to_string());
@@ -229,7 +231,7 @@ impl Bindings {
         let proxy = proj()
             .await
             .map_err(|e| zbus::fdo::Error::Failed(e.to_string()))?;
-        let context: goal_model::ContextInfo =
+        let context: goal_model::ProjectInfo =
             proxy.call("RegisterProject", &(path.clone(),)).await?;
         let existing = self
             .locus
@@ -265,7 +267,7 @@ impl Bindings {
     async fn bind_current_project(
         &self,
         path: String,
-    ) -> zbus::fdo::Result<goal_model::ContextInfo> {
+    ) -> zbus::fdo::Result<goal_model::ProjectInfo> {
         bind_current(&self.locus, &path)
             .await
             .map_err(|e| zbus::fdo::Error::Failed(e.to_string()))
@@ -402,20 +404,21 @@ pub async fn run(locus: LocusClient) -> anyhow::Result<()> {
     let mut projects = shell_source::proj::projects().into_stream();
     let mut removed = shell_source::proj::removed_projects().into_stream();
     let mut known = Vec::<goal_model::CheckoutInfo>::new();
+    let mut known_projects = Vec::<goal_model::ProjectInfo>::new();
     let mut seen = HashSet::new();
     let mut agent_active = true;
     loop {
         tokio::select! {
             item=goals.next()=>match item{Some(Ok(goals))=>goal_links(&locus,goals).await?,Some(Err(e))=>return Err(anyhow::anyhow!(e)),None=>return Err(anyhow::anyhow!("Goal source ended"))},
             item=checkouts.next()=>match item{Some(Ok(rows))=>known=rows,Some(Err(e))=>return Err(anyhow::anyhow!(e)),None=>return Err(anyhow::anyhow!("Checkout source ended"))},
-            item=projects.next()=>match item{Some(Ok(rows))=>removal::reconcile(&locus,rows).await?,Some(Err(e))=>return Err(anyhow::anyhow!(e)),None=>return Err(anyhow::anyhow!("Project source ended"))},
+            item=projects.next()=>match item{Some(Ok(rows))=>{known_projects=rows.clone();removal::reconcile(&locus,rows).await?;},Some(Err(e))=>return Err(anyhow::anyhow!(e)),None=>return Err(anyhow::anyhow!("Project source ended"))},
             item=removed.next()=>match item{Some(Ok(info))=>removal::removed(&locus,info).await?,Some(Err(e))=>return Err(anyhow::anyhow!(e)),None=>return Err(anyhow::anyhow!("Project removal source ended"))},
             item=agents.next(),if agent_active=>if let Some(Ok(snapshot))=item {
                 for session in &snapshot.sessions {
                     if session.subagent||session.cwd.is_empty()||session.window.is_none(){continue;}
                     let identity=(session.key.clone(),session.cwd.clone(),session.window,session.workspace_id);
                     if seen.contains(&identity){continue;}
-                    if !known.iter().any(|c|Path::new(&session.cwd).starts_with(&c.root_path)){continue;}
+                    if !known.iter().any(|c|Path::new(&session.cwd).starts_with(&c.root_path)) && !known_projects.iter().any(|p|p.checkout_id.is_empty() && Path::new(&session.cwd).starts_with(&p.cwd)){continue;}
                     let mut workspace=session.workspace_id;
                     if let Some(id)=workspace {
                         let existing=locus.list(relations::WORKSPACE_PROJECT).await?;
@@ -424,7 +427,7 @@ pub async fn run(locus: LocusClient) -> anyhow::Result<()> {
                     }
                     let context=match bind(&locus,&session.cwd,workspace,session.window,true).await { Ok(context)=>context,Err(error)=>{eprintln!("[steward/associations] {}: {error}",session.cwd);continue;} };
                     let agent=RelationEndpoint::stable_key(locus::keys::AGENT_SESSION_ID,format!("{}/{}",session.agent,session.session_id));
-                    let project=RelationEndpoint::dbus_object("session",goal_model::BUS_NAME,goal_model::object_path("Projects",&context.project_id),goal_model::PROJECT_INTERFACE);
+                    let project=RelationEndpoint::dbus_object("session",goal_model::BUS_NAME,goal_model::object_path("Projects",&context.id),goal_model::PROJECT_INTERFACE);
                     locus.set_with_persistence(project,PROJECT_AGENT,agent.clone(),owned(),false).await?;
                     if let Some(window)=session.window {
                         if snapshot.active_links.get(&window).is_none_or(|key|key==&session.key){let mut metadata=owned();metadata.insert("session_path".into(),session.key.clone());locus.set_one_with_persistence(RelationEndpoint::stable_key(locus::keys::NIRI_WINDOW_ID,window.to_string()),relations::WINDOW_AGENT_SESSION,agent,metadata,false).await?;}

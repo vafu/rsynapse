@@ -59,7 +59,7 @@ fn workspace_icon_uses_project_metadata_before_app_context() {
         ProjectDetails {
             has_project: true,
             name: Some("rsynapse".to_owned()),
-            cwd_label: Some(".config/rsynapse".to_owned()),
+            cwd: Some("/home/user/.config/rsynapse".to_owned()),
             ..ProjectDetails::default()
         },
         vec!["slack".to_owned(), "com.mitchellh.ghostty".to_owned()],
@@ -71,7 +71,7 @@ fn workspace_icon_uses_project_metadata_before_app_context() {
     );
     assert_eq!(
         picker_strings_for_context(&context),
-        ["rsynapse", ".config/rsynapse"]
+        ["rsynapse", "/home/user/.config/rsynapse"]
     );
 }
 
@@ -82,7 +82,7 @@ fn workspace_icon_feeds_raw_context_to_picker() {
             has_project: true,
             name: Some("rsynapse".to_owned()),
             display_main: Some("rsynapse".to_owned()),
-            cwd_label: Some(".config/rsynapse".to_owned()),
+            cwd: Some("/home/user/.config/rsynapse".to_owned()),
             branch: Some("main".to_owned()),
             ..ProjectDetails::default()
         },
@@ -95,11 +95,11 @@ fn workspace_icon_feeds_raw_context_to_picker() {
     );
     assert_eq!(
         picker_strings_for_context(&context),
-        ["rsynapse", ".config/rsynapse", "main"]
+        ["rsynapse", "/home/user/.config/rsynapse", "main"]
     );
     assert_eq!(
         picker_input_for_context(&context),
-        "rsynapse\n.config/rsynapse\nmain"
+        "rsynapse\n/home/user/.config/rsynapse\nmain"
     );
 }
 

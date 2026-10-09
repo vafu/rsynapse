@@ -21,18 +21,27 @@ pub(in crate::widgets::bar) fn project_catalog() -> Observable<ProjectCatalog> {
         .combine_latest(source::proj::checkouts(), |projects, checkouts| {
             let mut projects: Vec<_> = projects
                 .into_iter()
-                .map(|p| ProjectChoice {
-                    checkouts: checkouts
+                .map(|p| {
+                    let mut entries: Vec<_> = checkouts
                         .iter()
-                        .filter(|c| c.project_id == p.id)
+                        .filter(|c| c.id == p.checkout_id)
                         .map(|c| CheckoutChoice {
-                            path: c.root_path.clone(),
+                            path: p.cwd.clone(),
                             branch: c.branch.clone(),
                         })
-                        .collect(),
-                    id: p.id,
-                    name: p.name,
-                    path: p.root_path,
+                        .collect();
+                    if entries.is_empty() {
+                        entries.push(CheckoutChoice {
+                            path: p.cwd.clone(),
+                            branch: String::new(),
+                        });
+                    }
+                    ProjectChoice {
+                        checkouts: entries,
+                        id: p.id,
+                        name: p.name,
+                        path: p.cwd,
+                    }
                 })
                 .collect();
             projects.sort_by(|a, b| a.name.cmp(&b.name).then_with(|| a.path.cmp(&b.path)));

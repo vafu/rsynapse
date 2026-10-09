@@ -34,6 +34,7 @@ pub(super) struct SelectedWorkspaceView {
 /// Project-level view: title, branch, and git metadata for a linked project.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(super) struct ProjectView {
+    pub(super) project_id: Option<String>,
     pub(super) path: Option<String>,
     pub(super) visible: bool,
     pub(super) title: String,
@@ -97,7 +98,7 @@ fn project_view(project: ProjectDetails, git: Option<GitStatus>) -> ProjectView 
     }
 
     let title = project
-        .cwd_label
+        .name
         .as_deref()
         .and_then(non_empty)
         .map(str::to_owned)
@@ -111,6 +112,7 @@ fn project_view(project: ProjectDetails, git: Option<GitStatus>) -> ProjectView 
     let visible = true;
 
     ProjectView {
+        project_id: project.project_id,
         path: project.path,
         visible,
         title,

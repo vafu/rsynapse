@@ -50,7 +50,7 @@ try:
     context=json.loads(init_workspace(77,os.environ["RSYNAPSE_TEST_DIR"]).stdout)["data"]
     bindings=json.loads(subprocess.check_output(["busctl","--user","--json=short","call","org.rsynapse.Locus","/org/rsynapse/Locus","org.rsynapse.Locus.Relations1","ListWithPersistence","s","org.rsynapse.workspace.project"],text=True))["data"][0]
     assert len(bindings)==1 and bindings[0][0][0]["id"]=="77" and bindings[0][1] is False
-    assert bindings[0][0][3]["context-id"]==context[0] and bindings[0][0][3]["project-id"]==context[1]
+    assert bindings[0][0][3]["project-id"]==context[0] and "context-id" not in bindings[0][0][3]
     other=pathlib.Path(os.environ["RSYNAPSE_TEST_DIR"])/"other";other.mkdir()
     before_projects=subprocess.check_output([str(ROOT/"steward/target/release/proj"),"project","list","--json"])
     blocked=init_workspace(77,str(other),check=False)
@@ -62,7 +62,7 @@ try:
     new_context=json.loads(rebound)["data"]
     changed=json.loads(subprocess.check_output(["busctl","--user","--json=short","call","org.rsynapse.Locus","/org/rsynapse/Locus","org.rsynapse.Locus.Relations1","ListWithPersistence","s","org.rsynapse.workspace.project"],text=True))["data"][0]
     assert len(changed)==1 and changed[0][0][0]["id"]=="77" and changed[0][0][2]["id"]==str(other)
-    assert changed[0][0][3]["context-id"]==new_context[0] and changed[0][1] is False
+    assert changed[0][0][3]["project-id"]==new_context[0] and changed[0][1] is False
     subprocess.run(["busctl","--user","call","org.rsynapse.Locus","/org/rsynapse/Locus","org.rsynapse.Locus.Relations1","SetOneWithPersistence","a{ss}sa{ss}a{ss}b","3","type","stable-key","kind","org.rsynapse.niri.workspace.id","id","77","org.rsynapse.workspace.name","3","type","stable-key","kind","org.rsynapse.workspace.name","id","office","1","source","manual","true"],check=True,stdout=subprocess.DEVNULL)
     def relation_rows(relation):
         return json.loads(subprocess.check_output(["busctl","--user","--json=short","call","org.rsynapse.Locus","/org/rsynapse/Locus","org.rsynapse.Locus.Relations1","ListWithPersistence","s",relation],text=True))["data"][0]
@@ -79,7 +79,7 @@ try:
     init_workspace(77,os.environ["RSYNAPSE_TEST_DIR"])
     assert relation_rows("org.rsynapse.workspace.project-policy")==[]
     assert relation_rows("org.rsynapse.workspace.name")==names
-    project_id=context[1]
+    project_id=context[0]
     proj_bin=str(ROOT/"steward/target/release/proj")
     subprocess.run([proj_bin,"remove",project_id],check=True)
     wait(lambda: relation_rows("org.rsynapse.workspace.project")==[])

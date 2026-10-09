@@ -8,7 +8,10 @@ description: Use when an agent is working on a registered project or needs to re
 Use `proj` as a client of the reusable `projd` service. Do not write its SQLite
 database or locus metadata directly. Desktop/window bindings belong to steward.
 
-1. Resolve the working context with `proj root` or `proj metadata --json`.
+1. Resolve the registered project with `proj root` or `proj metadata --json`.
+   Each Git checkout/worktree is a separate project; non-Git projects have no
+   checkout. Read/refresh commands preserve the stored name/CWD/icon and do not
+   register directories. Use `proj add PATH --name NAME` for explicit registration.
 2. Read the day's goals with `proj goal list --json` before creating duplicates.
 3. Associate your implementation plan with an existing outcome when appropriate.
 4. Explicitly mark it `in-progress` when work begins.

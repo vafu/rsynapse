@@ -1,4 +1,6 @@
 mod git;
+mod icon;
+mod migrate;
 mod projects;
 mod store;
 mod watch;
@@ -37,11 +39,27 @@ impl ProjectObject {
         &self.0.name
     }
     #[zbus(property)]
-    fn root_path(&self) -> &str {
-        &self.0.root_path
+    fn cwd(&self) -> &str {
+        &self.0.cwd
+    }
+    #[zbus(property)]
+    fn checkout(&self) -> OwnedObjectPath {
+        if self.0.checkout_id.is_empty() {
+            OwnedObjectPath::try_from("/").unwrap()
+        } else {
+            path("Checkouts", &self.0.checkout_id)
+        }
+    }
+    #[zbus(property)]
+    fn icon(&self) -> &str {
+        &self.0.icon
+    }
+    #[zbus(property)]
+    fn icon_origin(&self) -> &str {
+        &self.0.icon_origin
     }
 }
-struct CheckoutObject(CheckoutInfo);
+struct CheckoutObject(CheckoutInfo, Arc<Store>);
 #[interface(name = "org.rsynapse.Proj.Checkout1")]
 impl CheckoutObject {
     #[zbus(property)]
@@ -49,8 +67,15 @@ impl CheckoutObject {
         &self.0.id
     }
     #[zbus(property)]
-    fn project_id(&self) -> &str {
-        &self.0.project_id
+    fn project(&self) -> zbus::fdo::Result<OwnedObjectPath> {
+        Ok(self
+            .1
+            .projects()
+            .map_err(error)?
+            .into_iter()
+            .find(|p| p.checkout_id == self.0.id)
+            .map(|p| path("Projects", &p.id))
+            .unwrap_or_else(|| OwnedObjectPath::try_from("/").unwrap()))
     }
     #[zbus(property)]
     fn root_path(&self) -> &str {
@@ -73,30 +98,6 @@ impl CheckoutObject {
             s.rebasing,
             s.stashes,
         )
-    }
-}
-struct ContextObject(ContextInfo);
-#[interface(name = "org.rsynapse.Proj.Context1")]
-impl ContextObject {
-    #[zbus(property)]
-    fn id(&self) -> &str {
-        &self.0.id
-    }
-    #[zbus(property)]
-    fn project_id(&self) -> &str {
-        &self.0.project_id
-    }
-    #[zbus(property)]
-    fn checkout_id(&self) -> &str {
-        &self.0.checkout_id
-    }
-    #[zbus(property)]
-    fn cwd(&self) -> &str {
-        &self.0.cwd
-    }
-    #[zbus(property)]
-    fn relative_cwd(&self) -> &str {
-        &self.0.relative_cwd
     }
 }
 struct GoalObject(GoalInfo);
@@ -149,15 +150,28 @@ async fn publish_project(conn: &Connection, info: ProjectInfo) -> zbus::Result<(
         if before.name != info.name {
             object.name_changed(handle.signal_context()).await?;
         }
-        if before.root_path != info.root_path {
-            object.root_path_changed(handle.signal_context()).await?;
+        if before.cwd != info.cwd {
+            object.cwd_changed(handle.signal_context()).await?;
+        }
+        if before.checkout_id != info.checkout_id {
+            object.checkout_changed(handle.signal_context()).await?;
+        }
+        if before.icon != info.icon {
+            object.icon_changed(handle.signal_context()).await?;
+        }
+        if before.icon_origin != info.icon_origin {
+            object.icon_origin_changed(handle.signal_context()).await?;
         }
     } else {
         conn.object_server().at(p, ProjectObject(info)).await?;
     }
     Ok(())
 }
-async fn publish_checkout(conn: &Connection, info: CheckoutInfo) -> zbus::Result<()> {
+async fn publish_checkout(
+    conn: &Connection,
+    info: CheckoutInfo,
+    store: Arc<Store>,
+) -> zbus::Result<()> {
     let p = path("Checkouts", &info.id);
     if let Ok(handle) = conn
         .object_server()
@@ -178,7 +192,9 @@ async fn publish_checkout(conn: &Connection, info: CheckoutInfo) -> zbus::Result
             object.git_status_changed(handle.signal_context()).await?;
         }
     } else {
-        conn.object_server().at(p, CheckoutObject(info)).await?;
+        conn.object_server()
+            .at(p, CheckoutObject(info, store))
+            .await?;
     }
     Ok(())
 }
@@ -218,7 +234,7 @@ async fn publish_goal(conn: &Connection, info: GoalInfo) -> zbus::Result<()> {
 }
 
 impl Manager {
-    async fn register(&self, cwd: String, conn: &Connection) -> zbus::fdo::Result<ContextInfo> {
+    async fn register(&self, cwd: String, conn: &Connection) -> zbus::fdo::Result<ProjectInfo> {
         self.register_inner(cwd, conn, true, false).await
     }
     async fn register_inner(
@@ -227,104 +243,88 @@ impl Manager {
         conn: &Connection,
         subscribe: bool,
         existing_only: bool,
-    ) -> zbus::fdo::Result<ContextInfo> {
-        let (primary, root, cwd) =
-            tokio::task::spawn_blocking(move || git::discover(Path::new(&cwd)))
-                .await
-                .map_err(error)?
-                .map_err(error)?;
-        let primary = primary.to_string_lossy().into_owned();
-        let root = root.to_string_lossy().into_owned();
-        if existing_only
-            && !self
-                .store
-                .checkouts()
-                .map_err(error)?
+    ) -> zbus::fdo::Result<ProjectInfo> {
+        let (root, cwd) = tokio::task::spawn_blocking(move || git::discover(Path::new(&cwd)))
+            .await
+            .map_err(error)?
+            .map_err(error)?;
+        let cwd = cwd.to_string_lossy().into_owned();
+        let root = root.map(|p| p.to_string_lossy().into_owned());
+        let checkouts = self.store.checkouts().map_err(error)?;
+        let existing_checkout = root
+            .as_ref()
+            .and_then(|root| checkouts.into_iter().find(|c| &c.root_path == root));
+        let projects = self.store.projects().map_err(error)?;
+        let existing = if let Some(checkout) = &existing_checkout {
+            projects
                 .iter()
-                .any(|c| c.root_path == root)
-        {
+                .find(|p| p.checkout_id == checkout.id)
+                .cloned()
+        } else if root.is_none() {
+            projects
+                .iter()
+                .filter(|p| {
+                    p.checkout_id.is_empty()
+                        && (p.cwd == cwd || (existing_only && Path::new(&cwd).starts_with(&p.cwd)))
+                })
+                .max_by_key(|p| p.cwd.len())
+                .cloned()
+        } else {
+            None
+        };
+        if existing_only && existing.is_none() {
             return Err(zbus::fdo::Error::FileNotFound(
                 "Project is not registered; use proj add first".into(),
             ));
         }
-        let project = self
-            .store
-            .projects()
-            .map_err(error)?
-            .into_iter()
-            .find(|p| p.root_path == primary)
-            .unwrap_or_else(|| ProjectInfo {
+        let mut project = existing.unwrap_or_else(|| ProjectInfo {
+            id: id(),
+            name: Path::new(root.as_deref().unwrap_or(&cwd))
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned(),
+            cwd: cwd.clone(),
+            checkout_id: String::new(),
+            icon: String::new(),
+            icon_origin: String::new(),
+        });
+        if !existing_only {
+            project.cwd = cwd;
+        }
+        let mut checkout = None;
+        if let Some(root) = root {
+            let fresh = existing_checkout.is_none();
+            let mut info = existing_checkout.unwrap_or_else(|| CheckoutInfo {
                 id: id(),
-                name: Path::new(&primary)
-                    .file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-                    .into_owned(),
-                root_path: primary,
+                root_path: root.clone(),
+                branch: String::new(),
+                git_status: GitStatus::default(),
             });
+            let owned = root.clone();
+            info.branch = tokio::task::spawn_blocking(move || git::branch(Path::new(&owned)))
+                .await
+                .map_err(error)?;
+            project.checkout_id = info.id.clone();
+            checkout = Some((info, root, fresh));
+        }
         self.store
-            .put("project", &project.id, &project)
+            .put_project(&project, checkout.as_ref().map(|(info, _, _)| info))
             .map_err(error)?;
         publish_project(conn, project.clone())
             .await
             .map_err(error)?;
-        let existing = self
-            .store
-            .checkouts()
-            .map_err(error)?
-            .into_iter()
-            .find(|c| c.root_path == root);
-        let fresh = existing.is_none();
-        let mut checkout = existing.unwrap_or_else(|| CheckoutInfo {
-            id: id(),
-            project_id: project.id.clone(),
-            root_path: root.clone(),
-            branch: String::new(),
-            git_status: GitStatus::default(),
-        });
-        let owned = root.clone();
-        let branch = tokio::task::spawn_blocking(move || git::branch(Path::new(&owned)))
-            .await
-            .map_err(error)?;
-        checkout.branch = branch;
-        self.store
-            .put("checkout", &checkout.id, &checkout)
-            .map_err(error)?;
-        publish_checkout(conn, checkout.clone())
-            .await
-            .map_err(error)?;
-        let cwd = cwd.to_string_lossy().into_owned();
-        let context = self
-            .store
-            .contexts()
-            .map_err(error)?
-            .into_iter()
-            .find(|c| c.cwd == cwd)
-            .unwrap_or_else(|| ContextInfo {
-                id: id(),
-                project_id: project.id,
-                checkout_id: checkout.id,
-                cwd: cwd.clone(),
-                relative_cwd: Path::new(&cwd)
-                    .strip_prefix(&root)
-                    .unwrap_or(Path::new(""))
-                    .to_string_lossy()
-                    .into_owned(),
-            });
-        self.store
-            .put("context", &context.id, &context)
-            .map_err(error)?;
-        let p = path("Contexts", &context.id);
-        conn.object_server()
-            .at(p, ContextObject(context.clone()))
-            .await
-            .map_err(error)?;
-        if let Some(dir) = git::git_dir(Path::new(&root)) {
-            let (done, ready) = tokio::sync::oneshot::channel();
-            let _ = self.watch.send((root, dir, fresh && subscribe, done));
-            let _ = ready.await;
+        if let Some((info, root, fresh)) = checkout {
+            publish_checkout(conn, info, self.store.clone())
+                .await
+                .map_err(error)?;
+            if let Some(dir) = git::git_dir(Path::new(&root)) {
+                let (done, ready) = tokio::sync::oneshot::channel();
+                let _ = self.watch.send((root, dir, fresh && subscribe, done));
+                let _ = ready.await;
+            }
         }
-        Ok(context)
+        Ok(project)
     }
 
     async fn refresh_checkout(&self, root: String, conn: &Connection) -> zbus::fdo::Result<()> {
@@ -364,7 +364,7 @@ impl Manager {
             self.store
                 .put("checkout", &checkout.id, &checkout)
                 .map_err(error)?;
-            publish_checkout(conn, checkout.clone())
+            publish_checkout(conn, checkout.clone(), self.store.clone())
                 .await
                 .map_err(error)?;
             let e = SignalContext::new(conn, ROOT_PATH).map_err(error)?;
@@ -392,18 +392,87 @@ impl Manager {
             .map_err(error)?;
         Ok(true)
     }
-    async fn resolve_context(
+    async fn set_project_icon(
+        &self,
+        id: String,
+        glyph: String,
+        #[zbus(connection)] conn: &Connection,
+        #[zbus(signal_context)] e: SignalContext<'_>,
+    ) -> zbus::fdo::Result<ProjectInfo> {
+        let p = self.update_icon(&id, glyph, false, false, conn).await?;
+        Self::changed(&e, "project-icon", &id)
+            .await
+            .map_err(error)?;
+        Ok(p)
+    }
+    async fn set_project_icon_if_unset(
+        &self,
+        id: String,
+        glyph: String,
+        #[zbus(connection)] conn: &Connection,
+        #[zbus(signal_context)] e: SignalContext<'_>,
+    ) -> zbus::fdo::Result<ProjectInfo> {
+        let p = self.update_icon(&id, glyph, true, false, conn).await?;
+        Self::changed(&e, "project-icon", &id)
+            .await
+            .map_err(error)?;
+        Ok(p)
+    }
+    async fn clear_project_icon(
+        &self,
+        id: String,
+        #[zbus(connection)] conn: &Connection,
+        #[zbus(signal_context)] e: SignalContext<'_>,
+    ) -> zbus::fdo::Result<ProjectInfo> {
+        let p = self
+            .update_icon(&id, String::new(), false, true, conn)
+            .await?;
+        Self::changed(&e, "project-icon", &id)
+            .await
+            .map_err(error)?;
+        Ok(p)
+    }
+    async fn adopt_project_icon(
+        &self,
+        id: String,
+        glyph: String,
+        #[zbus(connection)] conn: &Connection,
+        #[zbus(signal_context)] e: SignalContext<'_>,
+    ) -> zbus::fdo::Result<ProjectInfo> {
+        if glyph.trim().is_empty() || glyph.len() > 64 {
+            return Err(zbus::fdo::Error::InvalidArgs("Invalid icon glyph".into()));
+        }
+        let _lock = self.mutation.lock().await;
+        let mut p = self
+            .store
+            .projects()
+            .map_err(error)?
+            .into_iter()
+            .find(|p| p.id == id)
+            .ok_or_else(|| error("Project not found"))?;
+        if p.icon_origin != "manual" {
+            p.icon = glyph;
+            p.icon_origin = "manual".into();
+            self.store.put("project", &id, &p).map_err(error)?;
+            publish_project(conn, p.clone()).await.map_err(error)?;
+            Self::changed(&e, "project-icon", &id)
+                .await
+                .map_err(error)?;
+        }
+        Ok(p)
+    }
+    async fn resolve_project(
         &self,
         cwd: String,
         #[zbus(connection)] conn: &Connection,
         #[zbus(signal_context)] e: SignalContext<'_>,
-    ) -> zbus::fdo::Result<ContextInfo> {
+    ) -> zbus::fdo::Result<ProjectInfo> {
         let _lock = self.mutation.lock().await;
-        let context = self.register_inner(cwd, conn, true, true).await?;
-        Self::changed(&e, "context", &context.id)
+        let project = self.register_inner(cwd, conn, true, true).await?;
+        Self::changed(&e, "project", &project.id)
             .await
             .map_err(error)?;
-        Ok(context)
+        Ok(project)
     }
     async fn list_projects(&self) -> zbus::fdo::Result<Vec<ProjectInfo>> {
         self.store.projects().map_err(error)
@@ -411,29 +480,26 @@ impl Manager {
     async fn list_checkouts(&self) -> zbus::fdo::Result<Vec<CheckoutInfo>> {
         self.store.checkouts().map_err(error)
     }
-    async fn list_contexts(&self) -> zbus::fdo::Result<Vec<ContextInfo>> {
-        self.store.contexts().map_err(error)
-    }
     async fn register_project(
         &self,
         cwd: String,
         #[zbus(connection)] conn: &Connection,
         #[zbus(signal_context)] e: SignalContext<'_>,
-    ) -> zbus::fdo::Result<ContextInfo> {
+    ) -> zbus::fdo::Result<ProjectInfo> {
         let _lock = self.mutation.lock().await;
-        let context = self.register(cwd, conn).await?;
-        Self::changed(&e, "project", &context.project_id)
+        let project = self.register(cwd, conn).await?;
+        Self::changed(&e, "project", &project.id)
             .await
             .map_err(error)?;
-        Ok(context)
+        Ok(project)
     }
     async fn refresh(
         &self,
         cwd: String,
         #[zbus(connection)] conn: &Connection,
         #[zbus(signal_context)] e: SignalContext<'_>,
-    ) -> zbus::fdo::Result<ContextInfo> {
-        let context = {
+    ) -> zbus::fdo::Result<ProjectInfo> {
+        let project = {
             let _lock = self.mutation.lock().await;
             self.register_inner(cwd, conn, false, true).await?
         };
@@ -442,13 +508,14 @@ impl Manager {
             .checkouts()
             .map_err(error)?
             .into_iter()
-            .find(|c| c.id == context.checkout_id)
-            .ok_or_else(|| error("Missing checkout"))?;
-        self.refresh_checkout(checkout.root_path, conn).await?;
-        Self::changed(&e, "project", &context.project_id)
+            .find(|c| c.id == project.checkout_id);
+        if let Some(checkout) = checkout {
+            self.refresh_checkout(checkout.root_path, conn).await?;
+        }
+        Self::changed(&e, "project", &project.id)
             .await
             .map_err(error)?;
-        Ok(context)
+        Ok(project)
     }
     async fn rename_project(
         &self,
@@ -496,10 +563,6 @@ impl Manager {
             .try_into()
             .map_err(zbus::fdo::Error::InvalidArgs)?;
         let _lock = self.mutation.lock().await;
-        if let Some(project) = &goal.project {
-            self.register(project.to_string_lossy().into_owned(), conn)
-                .await?;
-        }
         if !self
             .store
             .create("goal", &goal.key(), &info)
@@ -532,10 +595,6 @@ impl Manager {
             .any(|g| g.date == goal.date && g.id == goal.id)
         {
             return Err(zbus::fdo::Error::FileNotFound("Goal not found".into()));
-        }
-        if let Some(project) = &goal.project {
-            self.register(project.to_string_lossy().into_owned(), conn)
-                .await?;
         }
         self.store.put("goal", &goal.key(), &info).map_err(error)?;
         publish_goal(conn, info.clone()).await.map_err(error)?;
@@ -588,12 +647,7 @@ async fn main() -> anyhow::Result<()> {
         publish_project(&conn, p).await?;
     }
     for c in store.checkouts()? {
-        publish_checkout(&conn, c).await?;
-    }
-    for c in store.contexts()? {
-        conn.object_server()
-            .at(path("Contexts", &c.id), ContextObject(c))
-            .await?;
+        publish_checkout(&conn, c, store.clone()).await?;
     }
     for g in store.goals()? {
         publish_goal(&conn, g).await?;

@@ -54,7 +54,7 @@ components.
 
 - `projd/`
   Reusable persistent project-management D-Bus service `projd` and its `proj`
-  CLI. Own projects, checkouts, CWD contexts, metadata and goals here. It is
+  CLI. Own projects, optional Git checkouts, project CWD/name/icon and goals here. It is
   unaware of shells, niri, locus, steward, AgentDBus and Grafana. Agents are
   clients through proj. No project metadata mirrors in locus.
 

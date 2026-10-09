@@ -98,3 +98,11 @@ with steward and the dashboard API stopped. It backs up legacy records, verifies
 the complete imported goal content before removing metadata mirrors, and keeps
 existing workspace bindings and their persistence settings. Unavailable project
 paths retain their legacy records; new automatic desktop bindings are session-only.
+Only intentional workspace bindings are imported as projects. Standalone legacy
+metadata-cache entries are backed up, but do not populate the project catalog.
+
+The checkout-per-project model upgrade is handled automatically by projd when
+opening an old SQLite store. It creates a `before-model-v2-*.sqlite3` backup,
+splits grouped worktrees into projects, and preserves full goal history. Steward
+remaps bindings and adopts workspace icons into projects. Deploy projd, proj,
+steward, dashboard-api and shell together for the changed D-Bus record shapes.

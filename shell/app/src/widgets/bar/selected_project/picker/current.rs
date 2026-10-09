@@ -128,14 +128,11 @@ impl CurrentRow {
     }
     pub fn update(&self, project: &ProjectChoice, checkout: &CheckoutChoice) {
         self.display.set_title(&project.name);
-        let count = project.checkouts.len();
-        self.display.set_subtitle(&format!(
-            "{} · {} · {} checkout{}",
-            checkout.branch,
-            checkout.path,
-            count,
-            if count == 1 { "" } else { "s" }
-        ));
+        self.display.set_subtitle(&if checkout.branch.is_empty() {
+            project.path.clone()
+        } else {
+            format!("{} · {}", checkout.branch, project.path)
+        });
         if self.stack.visible_child_name().as_deref() != Some("edit") {
             self.entry.set_text(&project.name);
         }

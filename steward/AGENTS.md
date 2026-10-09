@@ -5,7 +5,7 @@ metrics, derived naming, association policy, and domain refresh triggers. Keep
 handlers as ordinary modules; do not build a dynamic plugin framework by default.
 
 Steward owns Rsynapse association decisions and writes them to locusd: workspace
-to project/context, window to project/context, agent to window/project. Services
+to project, window to project, agent to window/project. Services
 remain authoritative for their properties. Locusd resolves and streams links;
 it is not a project database. Explicit persistence is required for durable links.
 

@@ -51,6 +51,10 @@ pub(in crate::widgets::bar) fn resolve_icon(request: IconRequest) -> Observable<
         .box_it()
     })
 }
+pub(in crate::widgets::bar) async fn resolve_icon_once(request: IconRequest) -> IconResolution {
+    let candidates = pick_icon_candidates(&request).await;
+    resolution_for_request(&request, candidates)
+}
 
 fn resolution_for_request(
     request: &IconRequest,

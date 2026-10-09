@@ -1,42 +1,40 @@
-use super::{ProjectDetails, cwd_label, non_empty};
+use super::{ProjectDetails, non_empty};
 use shell_core::source::{self, Observable, rx::Observable as _};
 pub(super) fn resolve(details: Observable<ProjectDetails>) -> Observable<ProjectDetails> {
     details
-        .combine_latest(
-            source::proj::checkouts().start_with(vec![Vec::<source::proj::CheckoutInfo>::new()]),
-            |details, checkouts| (details, checkouts),
-        )
-        .combine_latest(
-            source::proj::projects().start_with(vec![Vec::<source::proj::ProjectInfo>::new()]),
-            |(details, checkouts), projects| (details, checkouts, projects),
-        )
-        .combine_latest(
-            source::proj::contexts().start_with(vec![Vec::<source::proj::ContextInfo>::new()]),
-            |(mut details, checkouts, projects), contexts| {
-                if let Some(checkout) = checkouts
-                    .iter()
-                    .find(|c| Some(c.root_path.as_str()) == details.path.as_deref())
-                {
-                    if let Some(project) = projects.iter().find(|p| p.id == checkout.project_id) {
-                        details.name = Some(project.name.clone());
-                        details.display_main = Some(project.name.clone());
-                    }
-                    details.branch = non_empty(Some(checkout.branch.clone()));
-                    details.display_secondary = details.branch.clone();
-                    if let Some(context) = contexts
+        .combine_latest(source::proj::checkouts(), |d, c| (d, c))
+        .combine_latest(source::proj::projects(), |(mut d, checkouts), projects| {
+            let checkout = checkouts
+                .iter()
+                .find(|c| Some(c.root_path.as_str()) == d.path.as_deref());
+            let project = checkout
+                .and_then(|c| projects.iter().find(|p| p.checkout_id == c.id))
+                .or_else(|| {
+                    projects
                         .iter()
-                        .find(|c| Some(c.id.as_str()) == details.context_id.as_deref())
-                    {
-                        details.cwd_label = cwd_label(
-                            Some(&context.relative_cwd),
-                            Some(&context.cwd),
-                            details.path.as_deref(),
-                        );
-                    }
-                }
-                details
-            },
-        )
+                        .find(|p| Some(p.id.as_str()) == d.project_id.as_deref())
+                })
+                .or_else(|| {
+                    projects
+                        .iter()
+                        .find(|p| Some(p.cwd.as_str()) == d.path.as_deref())
+                });
+            if let Some(p) = project {
+                d.project_id = Some(p.id.clone());
+                d.name = Some(p.name.clone());
+                d.display_main = Some(p.name.clone());
+                d.cwd = Some(p.cwd.clone());
+                let checkout = checkouts.iter().find(|c| c.id == p.checkout_id);
+                d.branch = checkout.and_then(|c| non_empty(Some(c.branch.clone())));
+                d.display_secondary = d.branch.clone();
+                d.path = Some(
+                    checkout
+                        .map(|c| c.root_path.clone())
+                        .unwrap_or_else(|| p.cwd.clone()),
+                );
+            }
+            d
+        })
         .distinct_until_changed()
         .box_it()
 }

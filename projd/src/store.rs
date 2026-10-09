@@ -1,4 +1,4 @@
-use proj_model::{CheckoutInfo, ContextInfo, GoalInfo, ProjectInfo, RemovedProjectInfo};
+use proj_model::{CheckoutInfo, GoalInfo, ProjectInfo, RemovedProjectInfo};
 use rusqlite::{Connection, params};
 use serde::{Serialize, de::DeserializeOwned};
 use std::{
@@ -11,7 +11,6 @@ pub struct Store {
 pub struct RemovedProject {
     pub project: ProjectInfo,
     pub checkouts: Vec<CheckoutInfo>,
-    pub contexts: Vec<ContextInfo>,
 }
 impl RemovedProject {
     pub fn info(&self) -> RemovedProjectInfo {
@@ -43,8 +42,17 @@ impl Store {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let db = Connection::open(path)?;
+        let mut db = Connection::open(path)?;
         db.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; CREATE TABLE IF NOT EXISTS records(kind TEXT NOT NULL,id TEXT NOT NULL,json TEXT NOT NULL,PRIMARY KEY(kind,id));")?;
+        let legacy:bool=db.query_row("SELECT EXISTS(SELECT 1 FROM records WHERE (kind='project' AND json_extract(json,'$.cwd') IS NULL) OR kind='context')",[],|r|r.get(0))?;
+        if legacy {
+            let backup = path.with_file_name(format!(
+                "before-model-v2-{}.sqlite3",
+                chrono::Utc::now().timestamp_micros()
+            ));
+            db.execute("VACUUM INTO ?", [backup.to_string_lossy().as_ref()])?;
+        }
+        crate::migrate::run(&mut db)?;
         Ok(Self { db: Mutex::new(db) })
     }
     pub fn list<T: DeserializeOwned>(&self, kind: &str) -> anyhow::Result<Vec<T>> {
@@ -69,11 +77,22 @@ impl Store {
     pub fn projects(&self) -> anyhow::Result<Vec<ProjectInfo>> {
         self.list("project")
     }
+    pub fn put_project(
+        &self,
+        project: &ProjectInfo,
+        checkout: Option<&CheckoutInfo>,
+    ) -> anyhow::Result<()> {
+        let mut db = self.db.lock().unwrap();
+        let tx = db.transaction()?;
+        if let Some(checkout) = checkout {
+            tx.execute("INSERT INTO records(kind,id,json) VALUES('checkout',?,?) ON CONFLICT(kind,id) DO UPDATE SET json=excluded.json", params![checkout.id, serde_json::to_string(checkout)?])?;
+        }
+        tx.execute("INSERT INTO records(kind,id,json) VALUES('project',?,?) ON CONFLICT(kind,id) DO UPDATE SET json=excluded.json", params![project.id, serde_json::to_string(project)?])?;
+        tx.commit()?;
+        Ok(())
+    }
     pub fn checkouts(&self) -> anyhow::Result<Vec<CheckoutInfo>> {
         self.list("checkout")
-    }
-    pub fn contexts(&self) -> anyhow::Result<Vec<ContextInfo>> {
-        self.list("context")
     }
     pub fn goals(&self) -> anyhow::Result<Vec<GoalInfo>> {
         self.list("goal")
@@ -87,20 +106,13 @@ impl Store {
             return Ok(None);
         };
         let removed = RemovedProject {
-            project,
+            project: project.clone(),
             checkouts: read::<CheckoutInfo>(&db, "checkout")?
                 .into_iter()
-                .filter(|c| c.project_id == id)
-                .collect(),
-            contexts: read::<ContextInfo>(&db, "context")?
-                .into_iter()
-                .filter(|c| c.project_id == id)
+                .filter(|c| c.id == project.checkout_id)
                 .collect(),
         };
         let tx = db.transaction()?;
-        for c in &removed.contexts {
-            tx.execute("DELETE FROM records WHERE kind='context' AND id=?", [&c.id])?;
-        }
         for c in &removed.checkouts {
             tx.execute(
                 "DELETE FROM records WHERE kind='checkout' AND id=?",
@@ -123,26 +135,22 @@ mod tests {
         let p = ProjectInfo {
             id: "p".into(),
             name: "Project".into(),
-            root_path: "/project".into(),
+            cwd: "/project".into(),
+            checkout_id: "c".into(),
+            icon: String::new(),
+            icon_origin: String::new(),
         };
         let other = ProjectInfo {
             id: "other".into(),
-            root_path: "/other".into(),
+            cwd: "/other".into(),
+            checkout_id: String::new(),
             ..p.clone()
         };
         let c = CheckoutInfo {
             id: "c".into(),
-            project_id: "p".into(),
             root_path: "/checkout".into(),
             branch: "main".into(),
             git_status: Default::default(),
-        };
-        let ctx = ContextInfo {
-            id: "ctx".into(),
-            project_id: "p".into(),
-            checkout_id: "c".into(),
-            cwd: "/checkout/subdir".into(),
-            relative_cwd: "subdir".into(),
         };
         let goal = GoalInfo {
             id: "g".into(),
@@ -157,7 +165,6 @@ mod tests {
         store.put("project", "p", &p).unwrap();
         store.put("project", "other", &other).unwrap();
         store.put("checkout", "c", &c).unwrap();
-        store.put("context", "ctx", &ctx).unwrap();
         store.put("goal", "g", &goal).unwrap();
         assert_eq!(
             store.remove_project("p").unwrap().unwrap().checkouts,
@@ -168,7 +175,6 @@ mod tests {
         let store = Store::open(&path).unwrap();
         assert_eq!(store.projects().unwrap(), vec![other]);
         assert!(store.checkouts().unwrap().is_empty());
-        assert!(store.contexts().unwrap().is_empty());
         assert_eq!(store.goals().unwrap(), vec![goal]);
     }
     #[test]
@@ -178,7 +184,10 @@ mod tests {
         let p = ProjectInfo {
             id: "stable".into(),
             name: "Project".into(),
-            root_path: "/project".into(),
+            cwd: "/project".into(),
+            checkout_id: String::new(),
+            icon: String::new(),
+            icon_origin: String::new(),
         };
         let store = Store::open(&path).unwrap();
         assert!(store.create("project", "stable", &p).unwrap());

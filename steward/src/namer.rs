@@ -25,18 +25,24 @@ impl Namer {
         let mut states = combine_latest!(
             focused_workspace_id(),
             relations::records(self.locus.clone(), relations::WORKSPACE_PROJECT),
-            relations::records(self.locus.clone(), relations::WORKSPACE_NAME)
-            => |(focused, projects, names)| (focused, projects, names),
+            relations::records(self.locus.clone(), relations::WORKSPACE_NAME),
+            shell_source::proj::projects()
+            => |(focused, projects, names, metadata)| (focused, projects, names, metadata),
         )
         .distinct_until_changed()
         .box_it()
         .into_stream();
         while let Some(item) = states.next().await {
             match item {
-                Ok((Some(id), projects, names)) => {
+                Ok((Some(id), projects, names, metadata)) => {
                     let subject = workspace_subject(id);
                     let current = names.iter().find(|record| record.subject == subject);
-                    let project = project_name_for(id, &projects);
+                    let project = projects
+                        .iter()
+                        .find(|r| r.subject == subject)
+                        .and_then(|r| r.metadata.get("project-id"))
+                        .and_then(|id| metadata.iter().find(|p| &p.id == id))
+                        .map(|p| p.name.clone());
                     if let Some((name, source)) = name_update(current, project) {
                         let target =
                             RelationEndpoint::stable_key(relations::WORKSPACE_NAME_KIND, name);
@@ -60,7 +66,7 @@ impl Namer {
     }
 }
 
-/// Compare before writing: manual names survive, automatic names follow cwd,
+/// Compare before writing: manual names survive, automatic names follow Project.Name,
 /// and old random defaults migrate once. Our own signals become cheap noops.
 fn name_update(
     current: Option<&RelationRecord>,
@@ -87,47 +93,6 @@ fn name_update(
         }
     }
     Some((name, source))
-}
-
-fn project_name_for(id: u64, projects: &[RelationRecord]) -> Option<String> {
-    let subject = workspace_subject(id);
-    let record = projects.iter().find(|record| record.subject == subject)?;
-    // Same cwd label policy as the shell's ProjectDetails: relative cwd,
-    // then cwd basename, then project path basename. Not display-main.
-    for key in ["relative-cwd", "cwd"] {
-        if let Some(value) = record.metadata.get(key).map(|s| s.trim()) {
-            if !value.is_empty() && value != "." {
-                return Some(value.to_owned());
-            }
-        }
-    }
-    if let (Some(root), Some(cwd)) = (record.metadata.get("path"), record.metadata.get("cwd-path"))
-    {
-        if let Ok(relative) = std::path::Path::new(cwd).strip_prefix(root) {
-            if !relative.as_os_str().is_empty() {
-                return Some(relative.to_string_lossy().into_owned());
-            }
-        }
-    }
-    for key in ["cwd-path", "path"] {
-        if let Some(name) = record
-            .metadata
-            .get(key)
-            .and_then(|p| std::path::Path::new(p).file_name())
-            .and_then(|s| s.to_str())
-        {
-            return Some(name.to_owned());
-        }
-    }
-    if let RelationEndpoint::StableKey { kind, id } = &record.target {
-        if kind == locus::keys::PROJECT_PATH {
-            return std::path::Path::new(id)
-                .file_name()
-                .and_then(|s| s.to_str())
-                .map(str::to_owned);
-        }
-    }
-    None
 }
 
 fn workspace_subject(id: u64) -> RelationEndpoint {
@@ -194,17 +159,10 @@ mod tests {
         );
     }
     #[test]
-    fn auto_names_follow_project_cwd() {
+    fn auto_names_follow_stored_project_name() {
         assert_eq!(
             name_update(Some(&record("empty", "default")), Some("cwd".to_owned())),
             Some(("cwd".to_owned(), "project"))
         );
-        let mut project = record("ignored", "project");
-        project.metadata = HashMap::from([
-            ("path".to_owned(), "/repo".to_owned()),
-            ("cwd-path".to_owned(), "/repo/subdir".to_owned()),
-            ("display-main".to_owned(), "wrong".to_owned()),
-        ]);
-        assert_eq!(project_name_for(7, &[project]), Some("subdir".to_owned()));
     }
 }

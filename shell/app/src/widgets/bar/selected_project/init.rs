@@ -12,13 +12,13 @@ trait Associations {
         &self,
         workspace: u64,
         path: &str,
-    ) -> zbus::Result<shell_core::source::proj::ContextInfo>;
+    ) -> zbus::Result<shell_core::source::proj::ProjectInfo>;
     fn get_init_workspace(&self) -> zbus::Result<u64>;
     fn init_workspace_project(
         &self,
         workspace: u64,
         path: &str,
-    ) -> zbus::Result<shell_core::source::proj::ContextInfo>;
+    ) -> zbus::Result<shell_core::source::proj::ProjectInfo>;
 }
 
 pub(super) async fn unassign_workspace(workspace: u64) -> zbus::Result<()> {
@@ -33,7 +33,7 @@ pub(super) async fn bind_workspace(
     workspace: u64,
     path: &str,
     initialize: bool,
-) -> zbus::Result<shell_core::source::proj::ContextInfo> {
+) -> zbus::Result<shell_core::source::proj::ProjectInfo> {
     let connection = zbus::Connection::session().await?;
     let proxy = AssociationsProxy::new(&connection).await?;
     if initialize {

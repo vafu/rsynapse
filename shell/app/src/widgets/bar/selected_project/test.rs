@@ -26,7 +26,7 @@ fn selected_project_displays_project_metadata() {
     let view = project_view(split_project(), None);
 
     assert!(view.visible);
-    assert_eq!(view.title, "platform/taskexecution");
+    assert_eq!(view.title, "Task execution");
     assert_eq!(view.branch.as_deref(), Some("codex/android-core-isol"));
 }
 
@@ -40,11 +40,12 @@ fn selected_project_hides_without_project_metadata() {
 }
 
 #[test]
-fn selected_project_uses_root_cwd_name_without_relative_cwd() {
+fn selected_project_uses_stored_name_without_cwd_label() {
     let view = project_view(
         ProjectDetails {
             has_project: true,
-            cwd_label: Some("uiq-worktree".to_owned()),
+            name: Some("uiq-worktree".to_owned()),
+            cwd: Some("/repo/android/snapchat".to_owned()),
             branch: Some("vafu/coroutines/rescue-scheduler".to_owned()),
             ..ProjectDetails::default()
         },
@@ -64,7 +65,7 @@ fn workspace_preserves_name_but_displays_project_title_while_assigned() {
     let view = named(project_view(split_project(), None), "coro-uiq");
 
     assert!(super::visible(&view));
-    assert_eq!(super::title_label(&view), "platform/taskexecution");
+    assert_eq!(super::title_label(&view), "Task execution");
     assert_eq!(view.name.as_deref(), Some("coro-uiq"));
     let unassigned = SelectedWorkspaceView {
         project: None,
@@ -77,7 +78,7 @@ fn workspace_preserves_name_but_displays_project_title_while_assigned() {
 fn workspace_falls_back_to_project_title_without_name() {
     let view = wrap(project_view(split_project(), None));
 
-    assert_eq!(super::title_label(&view), "platform/taskexecution");
+    assert_eq!(super::title_label(&view), "Task execution");
 }
 
 #[test]
@@ -165,7 +166,7 @@ fn selected_project_shows_only_feature_for_vafu_worktree_branch() {
     let view = project_view(
         ProjectDetails {
             has_project: true,
-            cwd_label: Some("rsynapse".to_owned()),
+            name: Some("rsynapse".to_owned()),
             branch: Some("vafu/rsynapse/disk-widget".to_owned()),
             ..ProjectDetails::default()
         },
@@ -180,7 +181,7 @@ fn selected_project_keeps_vafu_branch_when_worktree_does_not_match_cwd() {
     let view = project_view(
         ProjectDetails {
             has_project: true,
-            cwd_label: Some("rsynapse".to_owned()),
+            name: Some("rsynapse".to_owned()),
             branch: Some("vafu/other/disk-widget".to_owned()),
             ..ProjectDetails::default()
         },
@@ -195,7 +196,7 @@ fn selected_project_keeps_non_vafu_branch_name() {
     let view = project_view(
         ProjectDetails {
             has_project: true,
-            cwd_label: Some("rsynapse".to_owned()),
+            name: Some("rsynapse".to_owned()),
             branch: Some("main".to_owned()),
             ..ProjectDetails::default()
         },
@@ -207,10 +208,11 @@ fn selected_project_keeps_non_vafu_branch_name() {
 fn split_project() -> ProjectDetails {
     ProjectDetails {
         has_project: true,
+        name: Some("Task execution".to_owned()),
         display_main: Some("android".to_owned()),
         display_secondary: Some("core-isol".to_owned()),
         branch: Some("codex/android-core-isol".to_owned()),
-        cwd_label: Some("platform/taskexecution".to_owned()),
+        cwd: Some("/repo/platform/taskexecution".to_owned()),
         ..ProjectDetails::default()
     }
 }

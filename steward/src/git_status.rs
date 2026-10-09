@@ -37,7 +37,7 @@ impl GitStatus {
             paths.dedup();
             for path in paths {
                 if let Err(e) = proxy
-                    .call::<_, _, goal_model::ContextInfo>("Refresh", &(path,))
+                    .call::<_, _, goal_model::ProjectInfo>("Refresh", &(path,))
                     .await
                 {
                     eprintln!("[steward/project-refresh] {e}");

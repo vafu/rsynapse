@@ -179,20 +179,20 @@ impl ProjectPicker {
 }
 impl PickerState {
     fn rebuild_current(self: &Rc<Self>) {
-        let path = self
+        let project_id = self
             .target
             .borrow()
             .project
             .as_ref()
-            .and_then(|p| p.path.clone());
+            .and_then(|p| p.project_id.clone());
         let workspace = self.target.borrow().workspace_id;
         let current = workspace.and_then(|id| {
-            self.catalog.borrow().active.iter().find_map(|p| {
-                p.checkouts
-                    .iter()
-                    .find(|c| Some(&c.path) == path.as_ref())
-                    .map(|c| (id, p.clone(), c.clone()))
-            })
+            self.catalog
+                .borrow()
+                .active
+                .iter()
+                .find(|p| Some(&p.id) == project_id.as_ref())
+                .and_then(|p| p.checkouts.first().map(|c| (id, p.clone(), c.clone())))
         });
         self.summary.set_visible(current.is_some());
         self.no_project.set_visible(current.is_none());

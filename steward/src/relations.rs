@@ -66,6 +66,12 @@ impl LocusClient {
     pub async fn list(&self, relation: &str) -> anyhow::Result<Vec<RelationRecord>> {
         Ok(self.proxy.call("List", &(relation,)).await?)
     }
+    pub async fn list_with_persistence(
+        &self,
+        relation: &str,
+    ) -> anyhow::Result<Vec<locus::RelationState>> {
+        Ok(self.proxy.call("ListWithPersistence", &(relation,)).await?)
+    }
 
     pub async fn set_one_with_persistence(
         &self,

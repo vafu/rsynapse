@@ -87,10 +87,17 @@ model value from this source expression."
 
 ## D-Bus Sources
 
-`shell_source::proj` exposes typed projects, checkouts, CWD contexts and goals
-from projd. Projects can have multiple checkouts; observe a checkout's branch,
-not a global last-focused project branch. Locus references compose with these
-objects on the consumer side. Both UI and steward use the same UI-free sources.
+`shell_source::proj` exposes typed projects, optional Git checkouts and goals
+from projd. Each checkout/worktree has its own project; projects own their stored
+name, absolute CWD and icon. There are no Context objects. Observe a checkout's
+branch and compose locus associations with project properties on the consumer
+side. Both UI and steward use the same UI-free sources.
+`project_icon(id)` and `project_icon_origin(id)` read the initial Project1
+properties and follow `PropertiesChanged`, sharing/replaying by descriptor.
+Missing properties do not masquerade as empty icons. Sidebar composition uses
+`switch_map` to subscribe to the newly associated project and drop the old source.
+Shell auto-selection calls `SetProjectIconIfUnset` only for a loaded empty icon;
+manual edits use the project captured when the picker opened.
 `shell_source::proj::removed_projects()` delivers typed metadata-removal events
 for integration cleanup. Collection snapshots exclude deleted registrations;
 read/refresh operations do not recreate them.

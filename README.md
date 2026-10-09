@@ -38,7 +38,8 @@ than one top-level Cargo workspace.
 
 - `projd/`
   Pure project-management D-Bus service and persistent SQLite store, with the
-  `proj` CLI. Projects, checkouts, CWD contexts and goals are reactive objects.
+  `proj` CLI. Projects, optional Git checkouts and goals are reactive objects.
+  Each checkout/worktree is its own project, with a stored name, CWD and icon.
 
 - `steward/`
   Single-binary shell-source listener/side-effect host for metrics, naming,

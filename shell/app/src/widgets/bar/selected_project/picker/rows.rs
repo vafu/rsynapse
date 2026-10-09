@@ -13,9 +13,8 @@ pub(super) fn remove_button(project: &ProjectChoice, actions: &Rc<Actions>) -> g
         &format!("Remove project {}", project.name),
     );
     remove.set_tooltip_text(Some(&format!(
-        "Remove metadata for “{}” and its {} registered checkouts",
-        project.name,
-        project.checkouts.len()
+        "Remove project metadata for “{}”",
+        project.name
     )));
     let weak = Rc::downgrade(actions);
     let id = project.id.clone();
@@ -43,7 +42,11 @@ fn checkout_row(
             .and_then(|s| s.to_str())
             .unwrap_or(&project.name),
     );
-    row.set_subtitle(&format!("{} · {}", checkout.branch, checkout.path));
+    row.set_subtitle(&if checkout.branch.is_empty() {
+        checkout.path.clone()
+    } else {
+        format!("{} · {}", checkout.branch, checkout.path)
+    });
     row.set_title_lines(1);
     row.set_subtitle_lines(1);
     row.set_activatable(true);
@@ -52,8 +55,8 @@ fn checkout_row(
         .borrow()
         .project
         .as_ref()
-        .and_then(|p| p.path.as_ref())
-        == Some(&checkout.path);
+        .and_then(|p| p.project_id.as_ref())
+        == Some(&project.id);
     if selected {
         let badge = gtk::Label::new(Some("Current"));
         badge.add_css_class("dim-label");
@@ -62,6 +65,7 @@ fn checkout_row(
     let workspace = state.target.borrow().workspace_id;
     let weak = Rc::downgrade(state);
     let path = checkout.path.clone();
+    let project_id = project.id.clone();
     row.connect_activated(move |_| {
         if let (Some(state), Some(workspace)) = (weak.upgrade(), workspace) {
             state.chooser_popover.popdown();
@@ -70,8 +74,8 @@ fn checkout_row(
                 .borrow()
                 .project
                 .as_ref()
-                .and_then(|p| p.path.as_ref())
-                == Some(&path);
+                .and_then(|p| p.project_id.as_ref())
+                == Some(&project_id);
             if !current {
                 state.actions.run(Action::Assign {
                     workspace,

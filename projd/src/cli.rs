@@ -133,45 +133,26 @@ fn day(date: Option<String>) -> anyhow::Result<String> {
     anyhow::ensure!(valid_date(&day), "Date must be YYYY-MM-DD");
     Ok(day)
 }
-async fn register(proxy: &Proxy<'_>, path: PathBuf) -> anyhow::Result<ContextInfo> {
+async fn register(proxy: &Proxy<'_>, path: PathBuf) -> anyhow::Result<ProjectInfo> {
     Ok(proxy.call("RegisterProject", &(absolute(path)?,)).await?)
 }
-async fn resolve(proxy: &Proxy<'_>, path: PathBuf) -> anyhow::Result<ContextInfo> {
-    Ok(proxy.call("ResolveContext", &(absolute(path)?,)).await?)
+async fn resolve(proxy: &Proxy<'_>, path: PathBuf) -> anyhow::Result<ProjectInfo> {
+    Ok(proxy.call("ResolveProject", &(absolute(path)?,)).await?)
 }
 async fn add(proxy: &Proxy<'_>, path: PathBuf, name: Option<String>) -> anyhow::Result<()> {
-    let context = register(proxy, path).await?;
+    let project = register(proxy, path).await?;
     if let Some(name) = name {
-        let _: ProjectInfo = proxy
-            .call("RenameProject", &(&context.project_id, name))
-            .await?;
+        let _: ProjectInfo = proxy.call("RenameProject", &(&project.id, name)).await?;
     }
-    println!("{}", context.project_id);
+    println!("{}", project.id);
     Ok(())
 }
 async fn metadata(proxy: &Proxy<'_>, path: PathBuf) -> anyhow::Result<serde_json::Value> {
-    let context = resolve(proxy, path).await?;
-    let projects: Vec<ProjectInfo> = proxy.call("ListProjects", &()).await?;
+    let p = resolve(proxy, path).await?;
     let checkouts: Vec<CheckoutInfo> = proxy.call("ListCheckouts", &()).await?;
-    let p = projects
-        .into_iter()
-        .find(|p| p.id == context.project_id)
-        .unwrap();
-    let c = checkouts
-        .into_iter()
-        .find(|c| c.id == context.checkout_id)
-        .unwrap();
-    let branch_parts: Vec<_> = c.branch.split('/').collect();
-    let (main, secondary) = if branch_parts.len() >= 2 {
-        (
-            branch_parts[branch_parts.len() - 2].to_owned(),
-            branch_parts.last().unwrap().to_string(),
-        )
-    } else {
-        (p.name.clone(), c.branch.clone())
-    };
+    let c = checkouts.into_iter().find(|c| c.id == p.checkout_id);
     Ok(
-        serde_json::json!({"id":p.id,"name":p.name,"path":c.root_path,"project-path":p.root_path,"context-id":context.id,"checkout-id":c.id,"cwd-path":context.cwd,"relative-cwd":context.relative_cwd,"branch":c.branch,"display-main":main,"display-secondary":secondary,"git-status":c.git_status}),
+        serde_json::json!({"id":p.id,"name":p.name,"cwd":p.cwd,"icon":p.icon,"icon-origin":p.icon_origin,"path":c.as_ref().map(|c|c.root_path.as_str()).unwrap_or(&p.cwd),"checkout-id":p.checkout_id,"branch":c.as_ref().map(|c|c.branch.as_str()).unwrap_or(""),"checkout":c}),
     )
 }
 #[tokio::main]
@@ -186,20 +167,20 @@ async fn main() -> anyhow::Result<()> {
         }
         Command::Add { path, name } => add(&proxy, path, name).await?,
         Command::Root { path } => {
-            let context = resolve(&proxy, path).await?;
+            let project = resolve(&proxy, path).await?;
             let checkouts: Vec<CheckoutInfo> = proxy.call("ListCheckouts", &()).await?;
             println!(
                 "{}",
                 checkouts
                     .into_iter()
-                    .find(|c| c.id == context.checkout_id)
-                    .unwrap()
-                    .root_path
+                    .find(|c| c.id == project.checkout_id)
+                    .map(|c| c.root_path)
+                    .unwrap_or(project.cwd)
             );
         }
         Command::Update { path } | Command::Refresh { path } => {
-            let context: ContextInfo = proxy.call("Refresh", &(absolute(path)?,)).await?;
-            println!("{}", serde_json::to_string(&context)?);
+            let project: ProjectInfo = proxy.call("Refresh", &(absolute(path)?,)).await?;
+            println!("{}", serde_json::to_string(&project)?);
         }
         Command::Metadata { path, json, key } => {
             let value = metadata(&proxy, path).await?;
@@ -226,7 +207,7 @@ async fn main() -> anyhow::Result<()> {
                     println!("{}", serde_json::to_string(&rows)?);
                 } else {
                     for p in rows {
-                        println!("{}\t{}\t{}", p.id, p.name, p.root_path);
+                        println!("{}\t{}\t{}", p.id, p.name, p.cwd);
                     }
                 }
             }
@@ -243,7 +224,7 @@ async fn main() -> anyhow::Result<()> {
                 println!("{}", serde_json::to_string(&rows)?);
             } else {
                 for c in rows {
-                    println!("{}\t{}\t{}\t{}", c.id, c.project_id, c.branch, c.root_path);
+                    println!("{}\t{}\t{}", c.id, c.branch, c.root_path);
                 }
             }
         }

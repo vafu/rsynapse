@@ -324,7 +324,7 @@ async fn unlink(
 }
 async fn projects(State(app): State<App>) -> Result<Json<BTreeSet<String>>> {
     let rows: Vec<goal_model::ProjectInfo> = app.proj.call("ListProjects", &()).await?;
-    Ok(Json(rows.into_iter().map(|p| p.root_path).collect()))
+    Ok(Json(rows.into_iter().map(|p| p.cwd).collect()))
 }
 async fn sessions(State(app): State<App>) -> Result<Json<Vec<serde_json::Value>>> {
     use zbus::zvariant::{OwnedObjectPath, OwnedValue};

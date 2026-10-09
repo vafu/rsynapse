@@ -1,5 +1,6 @@
 mod agent;
 mod build;
+mod project_icon;
 mod workspace_icon;
 
 #[cfg(test)]
@@ -29,6 +30,8 @@ pub(in crate::widgets::bar) struct ProjectLabelVm {
     pub(super) urgent: bool,
     pub(super) active: bool,
     pub(super) project_name: Option<String>,
+    pub(super) project_id: Option<String>,
+    pub(super) has_project: bool,
     pub(super) project_branch: Option<String>,
     pub(super) project_icon_glyph: String,
     pub(super) project_icon_input: String,
@@ -63,6 +66,8 @@ pub(super) fn project_label_vm(workspace: NiriWorkspace) -> Observable<ProjectLa
                     urgent,
                     active,
                     project_name: project.display_main,
+                    project_id: project.project_id,
+                    has_project: project.has_project,
                     project_branch: project.branch,
                     project_icon_glyph: workspace_icon.glyph,
                     project_icon_input: workspace_icon.picker_input,

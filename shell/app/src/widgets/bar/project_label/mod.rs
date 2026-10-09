@@ -1,3 +1,4 @@
+mod icon_edit;
 mod input;
 mod source;
 mod view;
@@ -5,19 +6,18 @@ mod view;
 #[cfg(test)]
 mod test;
 
+use icon_edit::IconTarget;
 use nerd_icon_picker::NerdIconPicker;
 use relm4::prelude::*;
 use shell_core::{
     gtk::{self, prelude::*},
     gtk4_layer_shell::{KeyboardMode, LayerShell},
 };
+use std::{cell::RefCell, rc::Rc};
 
 use self::{
     input::ProjectLabelInput,
-    source::{
-        ProjectLabelVm, WorkspaceIconChoice, clear_project_icon_override, project_label_vm,
-        set_project_icon_override,
-    },
+    source::{ProjectLabelVm, WorkspaceIconChoice, project_label_vm},
     view::*,
 };
 
@@ -32,6 +32,8 @@ use crate::{hints::hints_active, widgets::nerd_icon::NerdIconLabelExt};
 pub(super) struct ProjectLabel {
     pub workspace: WorkspaceNode,
     icon_picker: NerdIconPicker,
+    icon_target: Rc<RefCell<Option<IconTarget>>>,
+    editing_icon: Rc<RefCell<Option<IconTarget>>>,
 
     #[source(project_label_vm(workspace.workspace.clone()))]
     pub vm: ProjectLabelVm,
@@ -67,6 +69,8 @@ impl SimpleComponent for ProjectLabel {
                 set_valign: gtk::Align::Center,
 
                 gtk::MenuButton {
+                    #[watch]
+                    set_sensitive: !model.vm.has_project || model.vm.project_id.is_some(),
                     set_css_classes: &["flat", "workspace-icon-menu-button"],
                     set_always_show_arrow: false,
                     set_has_frame: false,
@@ -175,7 +179,12 @@ impl SimpleComponent for ProjectLabel {
     ) -> ComponentParts<Self> {
         let icon_picker = NerdIconPicker::new();
         let icon_picker_root = icon_picker.widget().clone();
-        let model = ProjectLabel::new(init, icon_picker);
+        let model = ProjectLabel::new(
+            init,
+            icon_picker,
+            Rc::new(RefCell::new(None)),
+            Rc::new(RefCell::new(None)),
+        );
         let widgets = view_output!();
 
         let input_sender = sender.input_sender().clone();
@@ -191,6 +200,8 @@ impl SimpleComponent for ProjectLabel {
             input_sender.emit(ProjectLabelInput::ClearIconOverride);
         });
         let icon_picker = model.icon_picker.clone();
+        let target = model.icon_target.clone();
+        let editing = model.editing_icon.clone();
         widgets.icon_popover.connect_visible_notify(move |popover| {
             let visible = popover.is_visible();
             if let Some(window) = popover.root().and_downcast::<gtk::Window>() {
@@ -202,6 +213,7 @@ impl SimpleComponent for ProjectLabel {
             }
 
             if visible {
+                *editing.borrow_mut() = target.borrow().clone();
                 let icon_picker = icon_picker.clone();
                 gtk::glib::idle_add_local_once(move || icon_picker.focus_search());
             }
@@ -215,21 +227,21 @@ impl SimpleComponent for ProjectLabel {
         match msg {
             ProjectLabelInput::Source(msg) => {
                 ProjectLabel::update(self, msg);
+                *self.icon_target.borrow_mut() = IconTarget::from_vm(&self.vm);
                 sync_icon_picker(self);
             }
             ProjectLabelInput::SetIconOverride(glyph) => {
                 let Some(icon) = WorkspaceIconChoice::new(glyph) else {
                     return;
                 };
-                set_project_icon_override(
-                    self.vm.workspace_id,
-                    self.vm.workspace_name.clone(),
-                    icon,
-                    self.vm.project_icon_input.clone(),
-                );
+                if let Some(target) = self.editing_icon.borrow().clone() {
+                    target.set(icon, self.vm.project_icon_input.clone());
+                }
             }
             ProjectLabelInput::ClearIconOverride => {
-                clear_project_icon_override(self.vm.workspace_id, self.vm.workspace_name.clone())
+                if let Some(target) = self.editing_icon.borrow().clone() {
+                    target.clear();
+                }
             }
         }
     }
