@@ -161,6 +161,14 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
   }
 }
 
+.goal-checklist {
+  min-width: 420px;
+}
+
+.goal-tracking-button {
+  margin-left: 8px;
+}
+
 .bar-indicator {
   padding: 0px;
   background-color: transparent;
@@ -759,5 +767,3 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
     background-color: #{$sys_danger};
   }
 }
-
-

@@ -40,6 +40,8 @@ than one top-level Cargo workspace.
   Pure project-management D-Bus service and persistent SQLite store, with the
   `proj` CLI. Projects, optional Git checkouts and goals are reactive objects.
   Each checkout/worktree is its own project, with a stored name, CWD and icon.
+  Goals are persistent nested checklists with per-project active selection and
+  Markdown context notes, managed by the agent-facing `proj goal` CLI.
 
 - `steward/`
   Single-binary shell-source listener/side-effect host for metrics, naming,

@@ -12,9 +12,10 @@ database or locus metadata directly. Desktop/window bindings belong to steward.
    Each Git checkout/worktree is a separate project; non-Git projects have no
    checkout. Read/refresh commands preserve the stored name/CWD/icon and do not
    register directories. Use `proj add PATH --name NAME` for explicit registration.
-2. Read the day's goals with `proj goal list --json` before creating duplicates.
+2. Read the project's checklist with `proj goal list --json` before creating duplicates.
 3. Associate your implementation plan with an existing outcome when appropriate.
-4. Explicitly mark it `in-progress` when work begins.
+4. For multi-step work, mark the parent in progress and use `proj goal start SUBGOAL_ID`
+   to track the concrete subgoal currently being worked on. Read parent context too.
 5. Refresh project metadata after git actions with `proj update`.
 6. Verify the success criterion and record supporting evidence in your response
    before explicitly marking an outcome completed. An idle agent is not proof.
@@ -24,13 +25,31 @@ database or locus metadata directly. Desktop/window bindings belong to steward.
 ```sh
 proj metadata --json
 proj goal list --json
-proj goal add outcome1 --title 'Observable outcome' --project "$PWD" \
+proj goal add --title 'Implement the feature' --description 'Requirements and constraints'
+proj goal status GOAL_ID in-progress
+proj goal add --parent GOAL_ID --title 'Verify the implementation'
+proj goal start SUBGOAL_ID
+proj goal update GOAL_ID --description 'Refined requirements'
+proj goal note GOAL_ID
+# Read/append the returned Markdown path for research, progress notes and evidence.
+proj goal complete SUBGOAL_ID
+proj goal add outcome1 --kind outcome --title 'Observable outcome' --project "$PWD" \
   --success 'Concrete completion criterion' --priority high
 proj goal status outcome1 in-progress
 proj update
 proj goal status outcome1 completed
 ```
 
-Use `--date YYYY-MM-DD` for another day. Projd has no knowledge of the shell,
+Use `--date YYYY-MM-DD` when a goal belongs to a particular day. Projd has no knowledge of the shell,
 niri, AgentDBus, Graphite or Grafana. This skill uses its public management API;
 session association and measurement are separate integrations.
+
+New tasks persist without a required date. Parent IDs are returned by creation;
+subtasks inherit the project. Each task has a service-created Markdown note,
+which metadata updates preserve. Keep checklist/status changes in `proj`, and
+free-form context/logs in the note. Completion of a subtask does not implicitly
+complete its parent. `proj goal set NAMED_ID --title TITLE` is idempotent;
+`goal show ID` and `goal list --json` are the agent-readable record surfaces.
+An in-progress multi-step goal should normally have an in-progress subgoal
+associated with the current work. Work directly on a parent only for atomic tasks;
+keep its overall scope open until all completion criteria are verified.

@@ -96,10 +96,11 @@ try:
     goal={"id":"goal1","date":"2026-10-07","title":"Original title","kind":"outcome","project":os.environ["RSYNAPSE_TEST_DIR"],"success":"Original criterion","priority":"high","status":"planned"}
     stream=urllib.request.urlopen(base+"/api/events",timeout=5)
     assert b"connected" in stream.readline();stream.readline();stream.readline()
-    call("/api/goals","POST",goal,201)
+    saved_goal=call("/api/goals","POST",goal,201)
+    assert pathlib.Path(saved_goal["note_path"]).is_file()
     assert b"goals-changed" in stream.readline();stream.close()
     call("/api/goals","POST",goal,409)
-    rows=call("/api/goals?date=2026-10-07");assert rows==[goal]
+    rows=call("/api/goals?date=2026-10-07");assert rows==[saved_goal]
     path="/api/goals/2026-10-07/goal1"
     call(path+"/status","PATCH",{"status":"completed"})
     edited=call(path,"PATCH",{"title":"Edited title","success":"Edited criterion"})

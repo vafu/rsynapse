@@ -3,6 +3,9 @@ use clap::{Parser, Subcommand};
 use proj_model::*;
 use std::path::PathBuf;
 use zbus::Proxy;
+#[path = "cli/goals.rs"]
+mod goal_cli;
+use goal_cli::GoalCommand;
 
 #[derive(Parser)]
 #[command(name = "proj", about = "Project-management client for projd", version)]
@@ -50,6 +53,7 @@ enum Command {
         #[command(subcommand)]
         command: CheckoutCommand,
     },
+    #[command(alias = "task")]
     Goal {
         #[command(subcommand)]
         command: GoalCommand,
@@ -78,47 +82,6 @@ enum CheckoutCommand {
         json: bool,
     },
 }
-#[derive(Subcommand)]
-enum GoalCommand {
-    Import {
-        file: PathBuf,
-    },
-    List {
-        #[arg(long)]
-        date: Option<String>,
-        #[arg(long)]
-        all: bool,
-        #[arg(long)]
-        json: bool,
-    },
-    Add {
-        id: String,
-        #[arg(long)]
-        title: String,
-        #[arg(long,default_value="outcome",value_parser=["outcome","habit"])]
-        kind: String,
-        #[arg(long)]
-        project: Option<PathBuf>,
-        #[arg(long)]
-        success: String,
-        #[arg(long,default_value="medium",value_parser=["low","medium","high"])]
-        priority: String,
-        #[arg(long)]
-        date: Option<String>,
-    },
-    Status {
-        id: String,
-        #[arg(value_parser=["planned","in-progress","completed","deferred"])]
-        status: String,
-        #[arg(long)]
-        date: Option<String>,
-    },
-    Remove {
-        id: String,
-        #[arg(long)]
-        date: Option<String>,
-    },
-}
 fn absolute(path: PathBuf) -> anyhow::Result<String> {
     Ok(if path.is_absolute() {
         path
@@ -127,11 +90,6 @@ fn absolute(path: PathBuf) -> anyhow::Result<String> {
     }
     .to_string_lossy()
     .into_owned())
-}
-fn day(date: Option<String>) -> anyhow::Result<String> {
-    let day = date.unwrap_or_else(|| chrono::Local::now().format("%Y-%m-%d").to_string());
-    anyhow::ensure!(valid_date(&day), "Date must be YYYY-MM-DD");
-    Ok(day)
 }
 async fn register(proxy: &Proxy<'_>, path: PathBuf) -> anyhow::Result<ProjectInfo> {
     Ok(proxy.call("RegisterProject", &(absolute(path)?,)).await?)
@@ -228,79 +186,7 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
         }
-        Command::Goal { command } => match command {
-            GoalCommand::Import { file } => {
-                let goals: Vec<Goal> = serde_json::from_slice(&std::fs::read(file)?)?;
-                for goal in goals {
-                    goal.validate().map_err(anyhow::Error::msg)?;
-                    let info: GoalInfo = goal.into();
-                    let existing: Vec<GoalInfo> = proxy.call("ListGoals", &(&info.date,)).await?;
-                    if existing.iter().any(|g| g.id == info.id) {
-                        continue;
-                    }
-                    let _: GoalInfo = proxy.call("CreateGoal", &(info,)).await?;
-                }
-            }
-            GoalCommand::List { date, all, json } => {
-                let rows: Vec<GoalInfo> = proxy
-                    .call(
-                        "ListGoals",
-                        &(if all { String::new() } else { day(date)? },),
-                    )
-                    .await?;
-                let goals: Vec<Goal> = rows
-                    .into_iter()
-                    .map(Goal::try_from)
-                    .collect::<Result<_, _>>()
-                    .map_err(anyhow::Error::msg)?;
-                if json {
-                    println!("{}", serde_json::to_string(&goals)?);
-                } else {
-                    for g in goals {
-                        println!(
-                            "{} {} {:?} {:?}\n  {}\n  Success: {}",
-                            g.date, g.id, g.kind, g.status, g.title, g.success
-                        );
-                    }
-                }
-            }
-            GoalCommand::Add {
-                id,
-                title,
-                kind,
-                project,
-                success,
-                priority,
-                date,
-            } => {
-                let info = GoalInfo {
-                    id,
-                    date: day(date)?,
-                    title,
-                    kind,
-                    project: project.map(absolute).transpose()?.unwrap_or_default(),
-                    success,
-                    priority,
-                    status: "planned".into(),
-                };
-                let info: GoalInfo = proxy.call("CreateGoal", &(info,)).await?;
-                println!("{}/{}", info.date, info.id);
-            }
-            GoalCommand::Status { id, status, date } => {
-                let date = day(date)?;
-                let rows: Vec<GoalInfo> = proxy.call("ListGoals", &(&date,)).await?;
-                let mut goal = rows
-                    .into_iter()
-                    .find(|g| g.id == id)
-                    .ok_or_else(|| anyhow::anyhow!("Goal not found"))?;
-                goal.status = status;
-                let _: GoalInfo = proxy.call("UpdateGoal", &(goal,)).await?;
-            }
-            GoalCommand::Remove { id, date } => {
-                let removed: bool = proxy.call("RemoveGoal", &(day(date)?, id)).await?;
-                anyhow::ensure!(removed, "Goal not found");
-            }
-        },
+        Command::Goal { command } => goal_cli::run(&proxy, command).await?,
     }
     Ok(())
 }

@@ -12,6 +12,12 @@ window's state. There are no Context objects or relative-CWD descriptors.
 Checkout.Project is a derived reverse object-path reference, not stored ownership.
 Expose ObjectManager and reactive object properties. Keep stable IDs in storage.
 
+Goals are persistent checklist tasks with optional dates, nested subtasks,
+descriptions and service-created Markdown context notes. Own hierarchy and
+per-project active-task selection here; these are intrinsic domain state, not
+locus relations. SQLite owns checklist/status metadata. Notes are free-form
+context/logs; metadata changes must not rewrite user/agent note contents.
+
 Steward owns desktop integration and association policy; locusd stores/queries
 the resulting cross-service associations. UIs and integration clients compose
 services through shell-source. Do not add workspace/window APIs to this service.

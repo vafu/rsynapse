@@ -282,10 +282,7 @@ impl Bindings {
             .await
             .map_err(|e| zbus::fdo::Error::Failed(e.to_string()))?;
         let goals: Vec<goal_model::GoalInfo> = proxy.call("ListGoals", &(String::new(),)).await?;
-        if !goals
-            .iter()
-            .any(|g| format!("{}/{}", g.date, g.id) == key && g.kind == "outcome")
-        {
+        if !goals.iter().any(|g| g.key() == key && g.kind == "outcome") {
             return Err(zbus::fdo::Error::InvalidArgs(
                 "An outcome goal is required".into(),
             ));
@@ -326,22 +323,20 @@ impl Bindings {
     }
 }
 async fn goal_links(locus: &LocusClient, goals: Vec<goal_model::GoalInfo>) -> anyhow::Result<()> {
-    let keys: HashSet<_> = goals
-        .iter()
-        .map(|g| format!("{}/{}", g.date, g.id))
-        .collect();
+    let keys: HashSet<_> = goals.iter().map(|g| g.key()).collect();
     for g in goals {
-        let target =
-            RelationEndpoint::stable_key(goal_model::GOAL_KIND, format!("{}/{}", g.date, g.id));
-        locus
-            .set_with_persistence(
-                RelationEndpoint::stable_key(goal_model::DAY_KIND, &g.date),
-                goal_model::DAY_GOAL,
-                target.clone(),
-                owned(),
-                true,
-            )
-            .await?;
+        let target = RelationEndpoint::stable_key(goal_model::GOAL_KIND, g.key());
+        if !g.date.is_empty() {
+            locus
+                .set_with_persistence(
+                    RelationEndpoint::stable_key(goal_model::DAY_KIND, &g.date),
+                    goal_model::DAY_GOAL,
+                    target.clone(),
+                    owned(),
+                    true,
+                )
+                .await?;
+        }
         let existing = locus.list(PROJECT_GOAL).await?;
         for r in existing.into_iter().filter(|r| {
             r.subject == target

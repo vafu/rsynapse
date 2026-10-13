@@ -45,7 +45,7 @@ pub struct RemovedProjectInfo {
     pub project: ProjectInfo,
     pub checkouts: Vec<CheckoutInfo>,
 }
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Type)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, Type)]
 pub struct GoalInfo {
     pub id: String,
     pub date: String,
@@ -55,6 +55,29 @@ pub struct GoalInfo {
     pub success: String,
     pub priority: String,
     pub status: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub parent_id: String,
+    #[serde(default)]
+    pub note_path: String,
+    #[serde(default)]
+    pub project_id: String,
+}
+impl GoalInfo {
+    pub fn key(&self) -> String {
+        goal_key(&self.date, &self.id)
+    }
+    pub fn object_path(&self) -> String {
+        goal_path(&self.date, &self.id)
+    }
+}
+pub fn goal_key(date: &str, id: &str) -> String {
+    if date.is_empty() {
+        id.to_owned()
+    } else {
+        format!("{date}/{id}")
+    }
 }
 impl From<Goal> for GoalInfo {
     fn from(g: Goal) -> Self {
@@ -71,6 +94,10 @@ impl From<Goal> for GoalInfo {
             success: g.success,
             priority: label(serde_json::to_value(g.priority).unwrap()),
             status: label(serde_json::to_value(g.status).unwrap()),
+            description: g.description,
+            parent_id: g.parent_id,
+            note_path: g.note_path,
+            project_id: g.project_id,
         }
     }
 }
@@ -89,6 +116,10 @@ impl TryFrom<GoalInfo> for Goal {
                 .map_err(|e| e.to_string())?,
             status: serde_json::from_value(serde_json::Value::String(g.status))
                 .map_err(|e| e.to_string())?,
+            description: g.description,
+            parent_id: g.parent_id,
+            note_path: g.note_path,
+            project_id: g.project_id,
         };
         goal.validate()?;
         Ok(goal)
@@ -107,6 +138,10 @@ pub fn object_path(kind: &str, id: &str) -> String {
     format!("{ROOT_PATH}/{kind}/n{safe}")
 }
 pub fn goal_path(date: &str, id: &str) -> String {
+    if date.is_empty() {
+        let safe: String = id.as_bytes().iter().map(|b| format!("{b:02x}")).collect();
+        return format!("{ROOT_PATH}/Goals/g{safe}");
+    }
     object_path("Goals", &format!("{date}_{id}"))
 }
 
@@ -162,10 +197,11 @@ impl Status {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Priority {
     Low,
+    #[default]
     Medium,
     High,
 }
@@ -173,12 +209,13 @@ pub enum Priority {
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum GoalType {
+    Task,
     #[default]
     Outcome,
     Habit,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct Goal {
     pub id: String,
     pub date: String,
@@ -190,23 +227,36 @@ pub struct Goal {
     pub priority: Priority,
     #[serde(default)]
     pub status: Status,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub description: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub parent_id: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub note_path: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub project_id: String,
 }
 impl Goal {
     pub fn key(&self) -> String {
-        format!("{}/{}", self.date, self.id)
+        goal_key(&self.date, &self.id)
     }
     pub fn validate(&self) -> Result<(), String> {
         if !valid_id(&self.id) {
             return Err("ID must be 1–64 ASCII letters, numbers, underscores or hyphens".into());
         }
-        if !valid_date(&self.date) {
+        if !self.date.is_empty() && !valid_date(&self.date) {
             return Err("Date must be YYYY-MM-DD".into());
         }
         if self.title.trim().is_empty() || self.title.len() > 1024 {
             return Err("Title must be nonempty and at most 1024 bytes".into());
         }
-        if self.success.trim().is_empty() || self.success.len() > 16384 {
+        if (self.kind != GoalType::Task && self.success.trim().is_empty())
+            || self.success.len() > 16384
+        {
             return Err("Success criterion must be nonempty and at most 16384 bytes".into());
+        }
+        if self.description.len() > 65536 {
+            return Err("Description must be at most 65536 bytes".into());
         }
         if self.kind == GoalType::Outcome && self.project.is_none() {
             return Err("Outcome goals require a project".into());
@@ -243,6 +293,7 @@ mod tests {
             success: "Criterion".into(),
             priority: Priority::High,
             status: Status::Planned,
+            ..Default::default()
         };
         assert!(goal.validate().is_ok());
         goal.kind = GoalType::Outcome;

@@ -24,6 +24,7 @@ regex = "1.12.4"
 relm4 = { version = "0.11.0", features = ["libadwaita"] }
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.150"
+shell-words = "1"
 shell-core.workspace = true
 shell-macros.workspace = true
 shell-rx-macros.workspace = true

@@ -60,7 +60,25 @@ GTK4/Relm4 framework crates plus concrete Rsynapse UI surfaces.
   selects a directory to register with projd and associate through steward.
   The popup and picker target the workspace clicked, even if focus changes.
   `rsynapse-shell request project-init` opens the same picker for the focused
-  workspace and can be used as a compositor shortcut command.
+   workspace and can be used as a compositor shortcut command.
+   The bar also shows the project's active goal as a button (or **Choose goal**).
+   Active subgoals include their parent context as a breadcrumb, such as
+   **Finish goal management › Track the current subgoal**. A selected parent
+   also shows its unique in-progress child; multiple in-progress siblings require
+   an explicit selection instead of guessing the current step.
+   The button is hidden when the current project has no goals.
+   The main bar uses a CenterBox: windows on the left, a context block in the
+   middle, and status widgets on the right. The context block is itself a
+   CenterBox, with project/workspace title plus Git information in its center
+   slot. Its start slot expands to fill the left section, with the goal
+   right-aligned inside that section, next to the centered project/Git row.
+   The goal is an unmeasured overlay within the left section, so long
+   breadcrumbs shrink to available space instead of displacing the center row.
+   It opens a nested checklist popover: checkboxes complete/reopen tasks, the
+   track button selects the goal displayed on the bar, and clicking a task title
+   opens its Markdown note in `$EDITOR` through a terminal. Titles/descriptions
+   and active selection follow projd properties. Task lists come from its reactive
+   snapshots; the shell does not watch or parse Markdown for checklist state.
 
 - `launcher`
   The launcher workspace. It owns the D-Bus launcher daemon, CLI, GTK launcher

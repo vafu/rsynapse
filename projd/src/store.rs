@@ -53,6 +53,14 @@ impl Store {
             db.execute("VACUUM INTO ?", [backup.to_string_lossy().as_ref()])?;
         }
         crate::migrate::run(&mut db)?;
+        let legacy_goals: bool = db.query_row("SELECT EXISTS(SELECT 1 FROM records WHERE kind='goal' AND json_extract(json,'$.note_path') IS NULL)", [], |r| r.get(0))?;
+        if legacy_goals {
+            let backup = path.with_file_name(format!(
+                "before-goal-checklists-{}.sqlite3",
+                chrono::Utc::now().timestamp_micros()
+            ));
+            db.execute("VACUUM INTO ?", [backup.to_string_lossy().as_ref()])?;
+        }
         Ok(Self { db: Mutex::new(db) })
     }
     pub fn list<T: DeserializeOwned>(&self, kind: &str) -> anyhow::Result<Vec<T>> {
@@ -97,6 +105,16 @@ impl Store {
     pub fn goals(&self) -> anyhow::Result<Vec<GoalInfo>> {
         self.list("goal")
     }
+    pub fn active_goal(&self, project: &str) -> anyhow::Result<String> {
+        let db = self.db.lock().unwrap();
+        let mut statement =
+            db.prepare("SELECT json FROM records WHERE kind='active-goal' AND id=?")?;
+        let mut rows = statement.query([project])?;
+        Ok(match rows.next()? {
+            Some(row) => serde_json::from_str(&row.get::<_, String>(0)?)?,
+            None => String::new(),
+        })
+    }
     pub fn remove_project(&self, id: &str) -> anyhow::Result<Option<RemovedProject>> {
         let mut db = self.db.lock().unwrap();
         let Some(project) = read::<ProjectInfo>(&db, "project")?
@@ -120,6 +138,10 @@ impl Store {
             )?;
         }
         tx.execute("DELETE FROM records WHERE kind='project' AND id=?", [id])?;
+        tx.execute(
+            "DELETE FROM records WHERE kind='active-goal' AND id=?",
+            [id],
+        )?;
         tx.commit()?;
         Ok(Some(removed))
     }
@@ -161,6 +183,7 @@ mod tests {
             success: "Preserved".into(),
             priority: "high".into(),
             status: "planned".into(),
+            ..Default::default()
         };
         store.put("project", "p", &p).unwrap();
         store.put("project", "other", &other).unwrap();

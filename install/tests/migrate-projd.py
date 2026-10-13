@@ -34,7 +34,9 @@ try:
     projects=json.loads(subprocess.check_output([PROJ,"project","list","--json"],text=True))
     assert len(projects)==1 and projects[0]["cwd"]==path
     assert len(call("List","s","org.rsynapse.project.metadata"))==1
-    assert json.loads(subprocess.check_output([PROJ,"goal","list","--all","--json"],text=True))==goals
+    imported=json.loads(subprocess.check_output([PROJ,"goal","list","--all","--json"],text=True))
+    assert [{key:row[key] for key in expected} for row,expected in zip(imported,goals)]==goals
+    assert len(imported)==len(goals) and all(pathlib.Path(g["note_path"]).is_file() for g in imported)
     states=call("ListWithPersistence","s",relation)
     assert {r[0]["id"]:p for r,p in states}=={"1":True,"2":False,"3":True}
     assert all("project-id" in r[3] and "context-id" not in r[3] for r,p in states if r[0]["id"]!="3")

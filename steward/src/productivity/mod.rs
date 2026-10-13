@@ -243,6 +243,7 @@ mod tests {
             project: Some("/other".into()),
             priority: Priority::High,
             status: Status::Planned,
+            ..Default::default()
         };
         let mut policy = Policy {
             links: HashMap::from([("codex/session".into(), vec![goal.key()])]),

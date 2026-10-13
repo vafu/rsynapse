@@ -19,7 +19,8 @@ niri, locus, steward, AgentDBus, Graphite or Grafana.
   in the checkout record. Project/checkout paths use compact `p<ID>`/`c<ID>` segments.
 - Explicit registration sets project CWD. Resolution and refresh leave stored
   CWD/name unchanged. There are no Context objects or relative-CWD descriptors.
-- Goals own full titles, criteria, status, priority, kind and optional project.
+- Goals/tasks own titles, descriptions, parent links, notes, status and optional
+  project/date. Legacy daily outcomes and habits retain their criteria and priority.
 - Changed properties emit PropertiesChanged; root `Changed(kind,id)` supports
   typed collection clients. A non-Git directory can also be a project.
 
@@ -48,17 +49,77 @@ proj root
 proj metadata --json
 proj update
 proj goal list --json
-proj goal add outcome1 --title 'Observable result' --project "$PWD" \
+proj goal add --title 'Ship the release' --description 'Publish a tested artifact' --active
+proj goal add --parent GOAL_ID --title 'Build the artifact'
+proj goal update GOAL_ID --title 'Ship v2' --description 'Updated context'
+proj goal set release --title 'Ship the release'
+proj goal start GOAL_ID
+proj goal complete GOAL_ID
+proj goal note GOAL_ID
+proj goal note GOAL_ID --open
+proj goal add outcome1 --kind outcome --title 'Observable result' --project "$PWD" \
   --success 'Concrete criterion' --priority high
 proj goal status outcome1 in-progress
 proj goal status outcome1 completed
 proj goal add habit1 --kind habit --title 'Personal budget' --success 'At most 30 minutes'
 ```
 
-Use `--date YYYY-MM-DD` for another day or `goal list --all` for history.
+Use `--date YYYY-MM-DD` for dated goals or `goal list --all` for the full catalog/history.
 `goal import FILE.json` is idempotent and preserves existing projd records.
 Agents follow `skills/project-management/SKILL.md`; completion is explicit and
 requires evidence, never an inference from an idle agent.
+
+## Persistent checklists and notes
+
+`proj goal` (also `proj task`) defaults to persistent tasks. Creation generates a
+stable UUID when no ID is given; named IDs support idempotent `goal set`. Tasks do
+not expire at midnight. `goal list` shows the current registered project's tasks;
+use `--project PATH` for another project or `--all` for the complete catalog.
+`--date YYYY-MM-DD` is optional and keeps existing daily workflows available.
+Use the full `date/ID` key when a historical ID occurs on several days.
+
+`--parent ID` creates a subtask inheriting its parent's project. Subtasks can
+nest. Status changes are explicit: `planned` (`todo` in the CLI), `in-progress`,
+`completed`, or `deferred`. Completing a child does not complete its parent;
+completing a parent does not change its children. Remove children before removing
+their parent. `goal update` edits title/description without overwriting a concurrent
+status change. `goal show ID` returns the full record as JSON.
+
+Each project independently selects an active task. `goal active ID` selects an
+open task; `goal active --clear` stops tracking it. `goal start ID` both marks it
+in progress and selects it. Several tasks can be in progress while only one is
+shown on that project's bar. Completing, deferring or removing the selected task
+clears active selection. Selection persists across restart.
+For multi-step work, keep the parent goal in progress and start the concrete
+subgoal being worked on. The shell derives its parent context from the hierarchy
+and shows a goal/subgoal breadcrumb; no duplicate parent-selection record is
+needed. If a parent remains selected, its sole in-progress child is shown too.
+
+Creation also creates a Markdown note at `$XDG_STATE_HOME/proj/goals/<ID>.md`,
+normally `~/.local/state/proj/goals/<ID>.md`. Dated goals use
+`goals/dated/<date>/<ID>.md`. `PROJD_GOALS_DIR` overrides the notes directory;
+when `PROJD_STORE_PATH` is overridden, notes default to `goals/` alongside that
+test/custom store. Notes initially contain the title, description, Notes and Log
+headings. Metadata/status edits never rewrite the file. Removing a task retains
+its note. Projd's SQLite records are authoritative for checklist state; Markdown
+is free-form agent/user context, not a second checklist database.
+
+`goal note ID` prints its path for agents; `--open` runs `$EDITOR` (then `$VISUAL`,
+then `vi`), preserving quoted command arguments. The shell launches this in
+`xdg-terminal-exec`, `$TERMINAL`, or an available terminal such as Ghostty.
+
+Every task/subtask is a `Goal1` object. It exposes `Key`, `Id`, `Title`,
+`Description`, `Status`, `NotePath`, `ProjectPath`, and object-path references
+`Project`, `Parent`, and `Children`. `Project1.ActiveGoal` references the tracked
+task, with `/` meaning none. ObjectManager and PropertiesChanged provide live
+state; `CreateGoal`, `UpdateGoal`, `EditGoal`, `SetGoalStatus`, `SetActiveGoal` and
+`RemoveGoal` handle mutation. Hierarchy/active selection belong to projd, while
+external workspace and agent links remain in locus.
+
+Existing goal records retain IDs, dates, titles, criteria and statuses, gain
+notes, and are backed up to `before-goal-checklists-*.sqlite3` before migration.
+This extends the internal GoalInfo D-Bus signature; deploy the service and all
+clients together.
 
 Project removal permanently deletes the project's registration and optional
 checkout in one SQLite transaction. Goals/history remain stored. Project
@@ -112,12 +173,16 @@ internal protocol change.
 ```sh
 bash projd/build.sh --locked
 python3 projd/tests/integration.py
+python3 projd/tests/checklist.py
 python3 projd/tests/model_migration.py
 python3 projd/tests/responsiveness.py
 python3 steward/tests/model_migration.py
 PROJD_BIN="$PWD/steward/target/release/projd" \
   cargo test --manifest-path shell/Cargo.toml -p shell-source \
   --test project_icons -- --ignored
+PROJD_BIN="$PWD/steward/target/release/projd" \
+  cargo test --manifest-path shell/Cargo.toml -p shell-source \
+  --test goals -- --ignored
 PROJD_BIN="$PWD/steward/target/release/projd" \
   cargo test --manifest-path shell/Cargo.toml -p rsynapse-shell --lib \
   shell_autopicks_only_unset_project_icons -- --ignored

@@ -41,7 +41,8 @@ bykey={(g["date"],g["id"]):g for g in goals}
 for goal in legacy:
     expected={"kind":"outcome","status":"planned"}
     expected.update(goal)
-    if bykey.get((goal["date"],goal["id"]))!=expected:
+    actual=bykey.get((goal["date"],goal["id"]))
+    if actual is None or any(actual.get(key)!=value for key,value in expected.items()):
         raise RuntimeError(f"Imported goal content differs: {goal['date']}/{goal['id']}; legacy relations retained")
 for row in rows:
     if "goal" in row[3]:bind_record(row,"org.rsynapse.day.goal",{"managed-by":"rsynapse-steward"},True)

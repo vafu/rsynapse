@@ -98,6 +98,14 @@ Missing properties do not masquerade as empty icons. Sidebar composition uses
 `switch_map` to subscribe to the newly associated project and drop the old source.
 Shell auto-selection calls `SetProjectIconIfUnset` only for a loaded empty icon;
 manual edits use the project captured when the picker opened.
+`active_goal(project_id)` observes `Project1.ActiveGoal`. `goal_title(key)`,
+`goal_description(key)` and `goal_status(key)` observe individual Goal1 properties.
+The bar switches the active task's property subscriptions with project/goal
+selection. Persistent task keys are IDs; historical dated keys are `date/ID`.
+The typed goal snapshot includes parent IDs and note paths for checklist rows.
+Goal breadcrumbs compose each ancestor's `goal_title(key)` property with the
+current subgoal title. A unique in-progress child is also included when its
+parent is selected; multiple in-progress siblings are not chosen implicitly.
 `shell_source::proj::removed_projects()` delivers typed metadata-removal events
 for integration cleanup. Collection snapshots exclude deleted registrations;
 read/refresh operations do not recreate them.

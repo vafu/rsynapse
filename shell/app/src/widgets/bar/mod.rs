@@ -5,6 +5,7 @@ mod battery;
 mod bluetooth;
 mod brightness;
 mod context_zone;
+mod goals;
 mod icon_resolver;
 // Build status icon rendering is paused while the status is moved to a new surface.
 // mod build_indicator;
@@ -204,6 +205,10 @@ pub struct MainBar {
 
     _workspace_popup: Option<selected_project::WorkspacePopup>,
     _project_initializer: Option<selected_project::ProjectInitializer>,
+    _goal_popup: Option<goals::GoalPopup>,
+
+    #[source(goals::goal_bar(output_name.clone()))]
+    goals: goals::GoalBarVm,
 
     #[source(selected_project::project_catalog())]
     project_catalog: selected_project::ProjectCatalog,
@@ -225,6 +230,7 @@ impl SimpleAsyncComponent for MainBar {
                 set_widget_name: "rsynapse-bar",
                 add_css_class: "bar",
                 set_orientation: gtk::Orientation::Horizontal,
+                set_shrink_center_last: true,
 
                 #[wrap(Some)]
                 set_start_widget = &gtk::Box {
@@ -267,15 +273,56 @@ impl SimpleAsyncComponent for MainBar {
                 },
 
                 #[wrap(Some)]
-                set_center_widget = &gtk::Box {
+                set_center_widget = &gtk::CenterBox {
+                    set_widget_name: "bar-center-block",
                     add_css_class: "bar-zone",
                     add_css_class: "bar-zone-title",
-                    set_halign: gtk::Align::Center,
+                    set_halign: gtk::Align::Fill,
                     set_orientation: gtk::Orientation::Horizontal,
-                    set_valign: gtk::Align::Center,
+                    set_valign: gtk::Align::Fill,
+                    set_hexpand: true,
                     set_vexpand: false,
+                    set_shrink_center_last: true,
 
-                    gtk::Box {
+                    #[name = "goal_slot"]
+                    #[wrap(Some)]
+                    set_start_widget = &gtk::Overlay {
+                        set_widget_name: "goal-left-section",
+                        set_hexpand: true,
+                        set_halign: gtk::Align::Fill,
+                        #[wrap(Some)]
+                        set_child = &gtk::Box {
+                            set_hexpand: true,
+                        },
+
+                    #[name = "goal_button"]
+                    add_overlay = &gtk::MenuButton {
+                        add_css_class: "flat",
+                        add_css_class: "goal-tracking-button",
+                        set_halign: gtk::Align::End,
+                        set_valign: gtk::Align::Center,
+                        set_has_frame: false,
+                        set_always_show_arrow: false,
+                        #[watch]
+                        set_visible: model.goals.has_goals(),
+                        #[watch]
+                        set_tooltip_text: Some(model.goals.tooltip.as_str()),
+                        #[wrap(Some)]
+                        set_child = &adw::ButtonContent {
+                            set_halign: gtk::Align::End,
+                            set_valign: gtk::Align::Center,
+                            set_icon_name: "view-list-symbolic",
+                            set_can_shrink: true,
+                            #[watch]
+                            set_label: model.goals.title.as_str(),
+                        }
+                    }
+                    },
+
+                    #[wrap(Some)]
+                    set_center_widget = &gtk::Box {
+                        set_widget_name: "project-git-group",
+                        update_property: &[gtk::accessible::Property::Label("Project and Git")],
                         #[watch]
                         set_css_classes: &selected_project::classes(&model.selected_project),
                         #[watch]
@@ -1124,6 +1171,7 @@ impl SimpleAsyncComponent for MainBar {
             output_name,
             None,
             None,
+            None,
         );
         let system_stats_item = bar_item::container(&["system-stats-widget"]);
         let disk_stats_item = bar_item::container(&["disk-stats-widget"]);
@@ -1133,6 +1181,9 @@ impl SimpleAsyncComponent for MainBar {
         let battery_item = bar_item::container(&[bar_item::SQUARE_CLASS, "battery-item"]);
 
         let widgets = view_output!();
+        widgets
+            .goal_slot
+            .set_measure_overlay(&widgets.goal_button, false);
 
         let initializer =
             selected_project::ProjectInitializer::new(&widgets.workspace_title_button);
@@ -1144,6 +1195,9 @@ impl SimpleAsyncComponent for MainBar {
         popup.set_target(&model.selected_project);
         model._workspace_popup = Some(popup);
         model._project_initializer = Some(initializer);
+        let goal_popup = goals::GoalPopup::new(&widgets.goal_button);
+        goal_popup.update(&model.goals);
+        model._goal_popup = Some(goal_popup);
 
         let input_sender = sender.input_sender().clone();
         widgets.branch_copy_button.connect_clicked(move |_| {
@@ -1281,6 +1335,9 @@ impl SimpleAsyncComponent for MainBar {
                 let previous_audio = self.audio.clone();
                 let previous_brightness = self.brightness.clone();
                 MainBar::update(self, msg);
+                if let Some(popup) = &self._goal_popup {
+                    popup.update(&self.goals);
+                }
                 if let Some(popup) = &self._workspace_popup {
                     popup.set_catalog(&self.project_catalog);
                     popup.set_target(&self.selected_project);

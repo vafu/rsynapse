@@ -111,7 +111,13 @@ async fn goals(State(app): State<App>, Query(query): Query<DayQuery>) -> Result<
 }
 async fn days(State(app): State<App>) -> Result<Json<serde_json::Value>> {
     let today = today();
-    let mut days: BTreeSet<_> = app.goals("").await?.into_iter().map(|g| g.date).collect();
+    let mut days: BTreeSet<_> = app
+        .goals("")
+        .await?
+        .into_iter()
+        .map(|g| g.date)
+        .filter(|date| !date.is_empty())
+        .collect();
     days.insert(today.clone());
     Ok(Json(serde_json::json!({"today":today,"days":days})))
 }
@@ -153,7 +159,7 @@ async fn edit(
     for (key, value2) in patch {
         if !matches!(
             key.as_str(),
-            "title" | "kind" | "project" | "success" | "priority" | "status"
+            "title" | "description" | "kind" | "project" | "success" | "priority" | "status"
         ) {
             return Err(invalid(format!("Field {key} cannot be edited")));
         }

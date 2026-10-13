@@ -358,6 +358,7 @@ mod tests {
             project: Some("/work".into()),
             priority: Priority::High,
             status: Status::InProgress,
+            ..Default::default()
         });
         let mut s = session("a", 2);
         s.workspace = "unknown".into();

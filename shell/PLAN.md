@@ -84,6 +84,8 @@ Framework crates under `core/` own:
 - Completed: checkout/worktree-per-project catalog, stored project names, and
   project-owned icon property subscriptions. Associated icons switch their D-Bus
   source with the project; conditional automatic selection preserves manual picks.
+- Completed: per-project active-goal bar button, hierarchical checkbox popover,
+  and terminal `$EDITOR` note opening over projd's persistent task model.
 - `app/` owns its Unix-socket request CLI for consumer runtime
   commands such as theme switching, Super-key hints, and notification-center
   control. Notification-center commands route to the `rsynapse-notifications`

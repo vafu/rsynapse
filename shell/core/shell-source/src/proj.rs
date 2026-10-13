@@ -90,6 +90,28 @@ pub fn goals() -> Observable<Vec<GoalInfo>> {
         .distinct_until_changed()
         .box_it()
 }
+pub fn goal_title(key: impl Into<String>) -> Observable<String> {
+    goal_property(key.into(), "Title")
+}
+pub fn goal_status(key: impl Into<String>) -> Observable<String> {
+    goal_property(key.into(), "Status")
+}
+pub fn goal_description(key: impl Into<String>) -> Observable<String> {
+    goal_property(key.into(), "Description")
+}
+fn goal_property(key: String, property: &'static str) -> Observable<String> {
+    let (date, id) = key.split_once('/').unwrap_or(("", &key));
+    let descriptor = crate::dbus::ObjectDescriptor::parse(
+        crate::dbus::Bus::Session,
+        BUS_NAME,
+        &proj_model::goal_path(date, id),
+        proj_model::GOAL_INTERFACE,
+    )
+    .expect("goal descriptor");
+    crate::dbus::property::<String>(crate::dbus::PropertyDescriptor::new(descriptor, property))
+        .filter_map(|value| value)
+        .box_it()
+}
 
 pub fn project_name(id: impl Into<String>) -> Observable<String> {
     let descriptor = crate::dbus::ObjectDescriptor::parse(
@@ -106,6 +128,19 @@ pub fn project_name(id: impl Into<String>) -> Observable<String> {
 }
 pub fn project_icon(id: impl Into<String>) -> Observable<String> {
     project_property(id.into(), "Icon")
+}
+pub fn active_goal(id: impl Into<String>) -> Observable<zbus::zvariant::OwnedObjectPath> {
+    let descriptor = crate::dbus::ObjectDescriptor::parse(
+        crate::dbus::Bus::Session,
+        BUS_NAME,
+        &object_path("Projects", &id.into()),
+        proj_model::PROJECT_INTERFACE,
+    )
+    .expect("project descriptor");
+    crate::dbus::property_or(
+        crate::dbus::PropertyDescriptor::new(descriptor, "ActiveGoal"),
+        zbus::zvariant::OwnedObjectPath::try_from("/").unwrap(),
+    )
 }
 pub fn project_icon_origin(id: impl Into<String>) -> Observable<String> {
     project_property(id.into(), "IconOrigin")
