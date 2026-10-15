@@ -13,6 +13,14 @@ leaving the process (only app-ids and project names become metric paths).
 
 ## Components (`src/`)
 
+- `goal_work`
+  Attributes human focus to the focused workspace's stable project ID and its
+  selected/effective goal or subgoal. Active and idle spans are submitted through
+  projd's generic Metrics1 API; lock, unassignment, goal/project changes and
+  shutdown close spans. Goal-tracking snapshots recover on service-owner changes.
+  No polling, heartbeat, debounce or status-derived human effort. Projd owns
+  history/query persistence; existing Carbon/Grafana metrics remain independent.
+
 - `metrics`
   Folds niri focus streams and locus workspace→project relations into
   completed focus intervals and immediately pushes on focus changes, lock,
@@ -329,14 +337,14 @@ classification always vetoes agent work credit. No name-based heuristic is
 used; unclassified active time is displayed as a coverage indicator.
 Preferences are stored in locus under `org.rsynapse.context.classification`.
 
-### Daily outcomes
+### Goals and outcomes
 
-Manage goals in Grafana's **Daily goals — plan, edit and review** panel. It reads
-full records and writes changes through the local `rsynapse-dashboard-api`
-adapter to projd. See [`../dashboard-api/README.md`](../dashboard-api/README.md)
-for setup. Select the day, create/edit outcomes or habits, update status, and
-manage session associations in the panel. Projd owns saved records; the adapter
-calls its D-Bus API. Agents use `proj goal ...` as normal project clients.
+Manage persistent goals/subgoals with `proj goal ...` and the shell checklist.
+Projd owns records, active selection and Markdown context notes. Grafana's
+**Rsynapse goal work metrics** dashboard is a read-only client for recorded
+effort and lifecycle history. See [`../dashboard-api/README.md`](../dashboard-api/README.md)
+for setup. Historical dated outcomes and their associations remain available
+to steward; the dashboard no longer provides daily-goal CRUD or session editing.
 
 Steward does not create, edit, delete, score or export goal-progress records.
 Its former `goal` commands have been removed. It observes projd goals and locus
@@ -390,7 +398,7 @@ Open **Today and daily workday log** from the overview, or the
   excluding lock. Pre-start idle time does not count.
 - **4 hours active:** input-active and unlocked time after the first active.
 
-Edit these defaults in the productivity dashboard's goal editor using **Edit
+Edit these defaults in the productivity dashboard's **Workday target settings** panel using **Edit
 workday targets**. The API persists preferences in
 `org.rsynapse.workday.targets`; steward observes them reactively. Changes apply
 to today and future days. Historical rows retain the targets they used, including

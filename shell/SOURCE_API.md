@@ -103,9 +103,17 @@ manual edits use the project captured when the picker opened.
 The bar switches the active task's property subscriptions with project/goal
 selection. Persistent task keys are IDs; historical dated keys are `date/ID`.
 The typed goal snapshot includes parent IDs and note paths for checklist rows.
-Goal breadcrumbs compose each ancestor's `goal_title(key)` property with the
-current subgoal title. A unique in-progress child is also included when its
+`goal_identities()` observes Metrics1's task-instance catalog through Manager1
+changes. Checklist sorting uses its immutable instance IDs and creation times;
+legacy unknown timestamps remain unknown. Presentation of complete subgoal groups
+and sibling ordering belongs to the widget-local source.
+Goal tooltips compose each ancestor's `goal_title(key)` property with the
+current subgoal title; the bar label shows only the current task. A unique in-progress child is also included when its
 parent is selected; multiple in-progress siblings are not chosen implicitly.
+`goal_tracking()` exposes typed current task-instance identity, project IDs,
+selection and ancestry for headless attribution. It subscribes before its initial
+snapshot and emits an empty tracking set on service-owner loss, then refreshes
+on return so collectors stop/restart observation without attributing downtime.
 `shell_source::proj::removed_projects()` delivers typed metadata-removal events
 for integration cleanup. Collection snapshots exclude deleted registrations;
 read/refresh operations do not recreate them.

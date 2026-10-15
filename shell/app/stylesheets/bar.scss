@@ -169,6 +169,10 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
   margin-left: 8px;
 }
 
+.goal-disclosure {
+  padding: 0 4px;
+}
+
 .bar-indicator {
   padding: 0px;
   background-color: transparent;

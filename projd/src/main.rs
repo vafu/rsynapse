@@ -1,6 +1,7 @@
 mod git;
 mod goals;
 mod icon;
+mod metrics;
 mod migrate;
 mod notes;
 mod projects;
@@ -669,7 +670,7 @@ impl Manager {
             }
         }
         self.store
-            .put("active-goal", &project_id, &key)
+            .select_goal(&project_id, &key, metrics::now_ms())
             .map_err(error)?;
         self.active_changed(conn, &project).await?;
         Self::changed(&e, "active-goal", &project_id)
@@ -696,7 +697,9 @@ impl Manager {
             .clone()
             .try_into()
             .map_err(zbus::fdo::Error::InvalidArgs)?;
-        self.store.put("goal", &key, &goal).map_err(error)?;
+        self.store
+            .save_goal(&goal, false, metrics::now_ms())
+            .map_err(error)?;
         publish_goal(conn, goal.clone()).await.map_err(error)?;
         if matches!(goal.status.as_str(), "completed" | "deferred") {
             self.clear_active(&key, conn).await?;
@@ -734,7 +737,9 @@ impl Manager {
             .clone()
             .try_into()
             .map_err(zbus::fdo::Error::InvalidArgs)?;
-        self.store.put("goal", &key, &goal).map_err(error)?;
+        self.store
+            .save_goal(&goal, false, metrics::now_ms())
+            .map_err(error)?;
         publish_goal(conn, goal.clone()).await.map_err(error)?;
         Self::changed(&e, "goal", &key).await.map_err(error)?;
         Ok(goal)
@@ -787,6 +792,8 @@ impl Manager {
 async fn main() -> anyhow::Result<()> {
     let store = Arc::new(Store::open(&store::default_path())?);
     goals::initialize(&store)?;
+    store.initialize_history(metrics::now_ms())?;
+    store.interrupt_open_work(metrics::now_ms())?;
     let (watch, requests) = tokio::sync::mpsc::unbounded_channel();
     let manager = Manager {
         store: store.clone(),
@@ -794,9 +801,11 @@ async fn main() -> anyhow::Result<()> {
         watch,
         checkout_mutations: Arc::new(Mutex::new(std::collections::HashMap::new())),
     };
+    let metrics = metrics::Metrics::new(store.clone(), manager.mutation.clone());
     let conn = zbus::connection::Builder::session()?
         .serve_at(ROOT_PATH, zbus::fdo::ObjectManager)?
         .serve_at(ROOT_PATH, manager.clone())?
+        .serve_at(ROOT_PATH, metrics.clone())?
         .build()
         .await?;
     for p in store.projects()? {
@@ -815,11 +824,14 @@ async fn main() -> anyhow::Result<()> {
             let _ = manager.watch.send((checkout.root_path, dir, false, done));
         }
     }
+    metrics.monitor_owners(conn.clone()).await?;
     conn.request_name(BUS_NAME).await?;
     eprintln!(
         "projd owns {BUS_NAME}; store {}",
         store::default_path().display()
     );
-    tokio::signal::ctrl_c().await?;
+    let mut terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
+    tokio::select! { _=tokio::signal::ctrl_c()=>{}, _=terminate.recv()=>{} }
+    metrics.close_all("recorder-stopped").await?;
     Ok(())
 }

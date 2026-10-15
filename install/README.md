@@ -2,15 +2,18 @@
 
 This directory owns user-local install artifacts for Rsynapse.
 
-The optional Grafana goal editor has a separate local install:
+The optional Grafana metrics and workday settings panels have a separate local install:
 
 ```sh
 bash install/dashboard-api.sh
 ```
 
 It installs `rsynapse-dashboard-api`, enables its systemd user unit, builds the
-local Grafana panel, and recreates Grafana with that panel mounted. Goal records
-stay in projd. See `../dashboard-api/README.md` for the API and UI workflow.
+local Grafana panels, and recreates Grafana with those panels mounted. Goal records
+stay in projd and are managed with `proj goal` and the shell checklist. See
+`../dashboard-api/README.md` for the API and UI workflow.
+The same install builds and mounts the read-only goal metrics panel and provisions
+its timeline/effort/completion dashboard, preserving existing `metrics` volumes.
 
 Run from the repository root:
 

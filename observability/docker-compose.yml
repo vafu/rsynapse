@@ -23,15 +23,16 @@ services:
     image: grafana/grafana-oss:latest
     restart: unless-stopped
     environment:
-      GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS: rsynapse-goals-panel,rsynapse-workday-panel
+      GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS: rsynapse-workday-targets-panel,rsynapse-workday-panel,rsynapse-goal-metrics-panel
     ports:
       - "127.0.0.1:3000:3000"
     volumes:
       - grafana-storage:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
       - ./grafana/dashboards:/etc/grafana/dashboards:ro
-      - ../dashboard-api/grafana-plugin/dist:/var/lib/grafana/plugins/rsynapse-goals-panel:ro
+      - ../dashboard-api/grafana-plugin/dist-targets:/var/lib/grafana/plugins/rsynapse-workday-targets-panel:ro
       - ../dashboard-api/grafana-plugin/dist-workday:/var/lib/grafana/plugins/rsynapse-workday-panel:ro
+      - ../dashboard-api/grafana-plugin/dist-metrics:/var/lib/grafana/plugins/rsynapse-goal-metrics-panel:ro
 
 volumes:
   graphite-storage:

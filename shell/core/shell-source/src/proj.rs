@@ -2,48 +2,67 @@
 use crate::{Observable, rx::Observable as _};
 use futures_util::StreamExt;
 use proj_model::{BUS_NAME, MANAGER_INTERFACE, ROOT_PATH, object_path};
-pub use proj_model::{CheckoutInfo, GoalInfo, ProjectInfo, RemovedProjectInfo};
+pub use proj_model::{CheckoutInfo, GoalIdentityInfo, GoalInfo, ProjectInfo, RemovedProjectInfo};
+mod tracking;
+pub use tracking::goal_tracking;
 use zbus::Proxy;
 
 fn snapshots<T>(method: &'static str, goal_list: bool) -> Observable<Vec<T>>
 where
     T: serde::de::DeserializeOwned + zbus::zvariant::Type + Clone + Send + 'static,
 {
-    crate::shared_by_key("projd-snapshots", method.to_owned(), move || {
-        crate::from_task(move |sender| async move {
-            let run = async {
-                let conn = zbus::Connection::session()
-                    .await
-                    .map_err(|e| e.to_string())?;
-                let proxy = Proxy::new(&conn, BUS_NAME, ROOT_PATH, MANAGER_INTERFACE)
-                    .await
-                    .map_err(|e| e.to_string())?;
-                let mut changes = proxy
-                    .receive_signal("Changed")
-                    .await
-                    .map_err(|e| e.to_string())?;
-                loop {
-                    let rows: Vec<T> = if goal_list {
-                        proxy.call(method, &(String::new(),)).await
-                    } else {
-                        proxy.call(method, &()).await
-                    }
-                    .map_err(|e| e.to_string())?;
-                    if sender.send(Ok(rows)).await.is_err() {
-                        return Ok::<(), String>(());
-                    }
-                    if changes.next().await.is_none() {
-                        return Err("projd change stream ended".to_owned());
+    snapshots_at(method, MANAGER_INTERFACE, goal_list)
+}
+fn snapshots_at<T>(
+    method: &'static str,
+    interface: &'static str,
+    argument: bool,
+) -> Observable<Vec<T>>
+where
+    T: serde::de::DeserializeOwned + zbus::zvariant::Type + Clone + Send + 'static,
+{
+    crate::shared_by_key(
+        "projd-snapshots",
+        format!("{interface}:{method}"),
+        move || {
+            crate::from_task(move |sender| async move {
+                let run = async {
+                    let conn = zbus::Connection::session()
+                        .await
+                        .map_err(|e| e.to_string())?;
+                    let proxy = Proxy::new(&conn, BUS_NAME, ROOT_PATH, interface)
+                        .await
+                        .map_err(|e| e.to_string())?;
+                    let manager = Proxy::new(&conn, BUS_NAME, ROOT_PATH, MANAGER_INTERFACE)
+                        .await
+                        .map_err(|e| e.to_string())?;
+                    let mut changes = manager
+                        .receive_signal("Changed")
+                        .await
+                        .map_err(|e| e.to_string())?;
+                    loop {
+                        let rows: Vec<T> = if argument {
+                            proxy.call(method, &(String::new(),)).await
+                        } else {
+                            proxy.call(method, &()).await
+                        }
+                        .map_err(|e| e.to_string())?;
+                        if sender.send(Ok(rows)).await.is_err() {
+                            return Ok::<(), String>(());
+                        }
+                        if changes.next().await.is_none() {
+                            return Err("projd change stream ended".to_owned());
+                        }
                     }
                 }
-            }
-            .await;
-            if let Err(error) = run {
-                let _ = sender.send(Err(error)).await;
-            }
-        })
-        .box_it()
-    })
+                .await;
+                if let Err(error) = run {
+                    let _ = sender.send(Err(error)).await;
+                }
+            })
+            .box_it()
+        },
+    )
 }
 pub fn projects() -> Observable<Vec<ProjectInfo>> {
     snapshots("ListProjects", false)
@@ -87,6 +106,13 @@ pub fn checkouts() -> Observable<Vec<CheckoutInfo>> {
 }
 pub fn goals() -> Observable<Vec<GoalInfo>> {
     snapshots("ListGoals", true)
+        .distinct_until_changed()
+        .box_it()
+}
+/// Task-instance snapshots, including creation timestamps and retained deleted instances.
+/// Refreshed by Manager1 changes; consumers choose whether to include deleted tasks.
+pub fn goal_identities() -> Observable<Vec<GoalIdentityInfo>> {
+    snapshots_at("ListGoalIdentities", proj_model::METRICS_INTERFACE, true)
         .distinct_until_changed()
         .box_it()
 }

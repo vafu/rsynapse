@@ -89,6 +89,17 @@ fn active_goals_follow_properties_and_project_switches() {
                 goals.push(goal);
             }
             let selected = StateSignal::new(projects[0].id.clone());
+            let mut identities = proj::goal_identities().into_stream();
+            let initial = tokio::time::timeout(Duration::from_secs(5), identities.next())
+                .await
+                .unwrap()
+                .unwrap()
+                .unwrap();
+            assert_eq!(initial.len(), 2);
+            let original = initial.iter().find(|g| g.key == goals[0].key()).unwrap();
+            assert!(original.created_at_ms > 0);
+            let instance = original.instance_id.clone();
+            let created = original.created_at_ms;
             let active = switch_map(selected.observable(), |id| {
                 proj::active_goal(id)
                     .combine_latest(proj::goals(), |path, goals| {
@@ -128,6 +139,14 @@ fn active_goals_follow_properties_and_project_switches() {
                 .await
                 .unwrap();
             expect(&mut titles, "Renamed task").await;
+            let changed = tokio::time::timeout(Duration::from_secs(5), identities.next())
+                .await
+                .unwrap()
+                .unwrap()
+                .unwrap();
+            let renamed = changed.iter().find(|g| g.instance_id == instance).unwrap();
+            assert_eq!(renamed.goal.title, "Renamed task");
+            assert_eq!(renamed.created_at_ms, created);
             let mut description = proj::goal_description(goals[0].key()).into_stream();
             expect(&mut description, "More context").await;
             selected.set(projects[1].id.clone());

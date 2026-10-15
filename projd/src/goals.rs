@@ -120,11 +120,17 @@ impl Manager {
         .map_err(error)?
         .map_err(error)?;
         if create {
-            if !self.store.create("goal", &key, &info).map_err(error)? {
+            if !self
+                .store
+                .save_goal(&info, true, crate::metrics::now_ms())
+                .map_err(error)?
+            {
                 return Err(zbus::fdo::Error::FileExists("Goal already exists".into()));
             }
         } else {
-            self.store.put("goal", &key, &info).map_err(error)?;
+            self.store
+                .save_goal(&info, false, crate::metrics::now_ms())
+                .map_err(error)?;
         }
         publish_goal(conn, info.clone()).await.map_err(error)?;
         if create && !info.parent_id.is_empty() {
@@ -158,7 +164,7 @@ impl Manager {
         for project in self.store.projects().map_err(error)? {
             if self.store.active_goal(&project.id).map_err(error)? == key {
                 self.store
-                    .remove("active-goal", &project.id)
+                    .select_goal(&project.id, "", crate::metrics::now_ms())
                     .map_err(error)?;
                 self.active_changed(conn, &project).await?;
             }
@@ -205,8 +211,10 @@ impl Manager {
                 "Remove subtasks before removing their parent".into(),
             ));
         }
-        self.store.remove("goal", &key).map_err(error)?;
         self.clear_active(&key, conn).await?;
+        self.store
+            .delete_goal_record(goal, crate::metrics::now_ms())
+            .map_err(error)?;
         conn.object_server()
             .remove::<crate::GoalObject, _>(goal_path(date, id))
             .await

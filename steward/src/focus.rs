@@ -9,6 +9,7 @@ pub struct FocusState {
     pub window_id: Option<u64>,
     pub app_id: Option<String>,
     pub project: Option<String>,
+    pub project_id: Option<String>,
     pub output: Option<String>,
 }
 
@@ -368,6 +369,7 @@ mod tests {
             window_id: Some(window),
             app_id: Some(app.to_owned()),
             project: Some(format!("project-{ws}")),
+            project_id: Some(format!("p-{ws}")),
             output: Some("DP-2".to_owned()),
             locked: false,
             idle: false,

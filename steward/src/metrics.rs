@@ -60,6 +60,10 @@ impl Metrics {
         let mut agents = crate::agent_metrics::AgentTracker::new();
         let mut usage_events = crate::agent_metrics::usage_events().into_stream();
         let mut agent_events = crate::agent_metrics::snapshots(&self.locus).into_stream();
+        let mut goal_work = crate::goal_work::Recorder::connect().await?;
+        let mut goal_updates = shell_source::proj::goal_tracking().into_stream();
+        let mut current_focus = FocusState::default();
+        let mut current_goals = Vec::new();
         let mut states = activity_focus(
             effective_focus(focus_state(&self.locus), shell_source::session::locked()),
             shell_source::wayland::input_idle(input_idle_threshold()?),
@@ -73,6 +77,8 @@ impl Metrics {
                 _ = shutdown.changed() => break Ok(()),
                 item = states.next() => match item {
                     Some(Ok(state)) => {
+                        current_focus=state.clone();
+                        goal_work.observe(crate::goal_work::scope(&state,&current_goals)).await;
                         productivity.focus(state.clone(), crate::productivity::tracker_now());
                         publish_pending(productivity.publish(&self.locus).await?, &batch_sender);
                         publish_pending(workdays.observe(&state, &self.locus).await?, &batch_sender);
@@ -83,6 +89,14 @@ impl Metrics {
                     }
                     Some(Err(error)) => break Err(anyhow::anyhow!("focus/activity source failed: {error}")),
                     None => break Err(anyhow::anyhow!("focus/activity source ended")),
+                },
+                item=goal_updates.next()=>match item {
+                    Some(Ok(goals))=>{
+                        current_goals=goals;
+                        goal_work.reconcile(crate::goal_work::scope(&current_focus,&current_goals)).await;
+                    }
+                    Some(Err(error))=>break Err(anyhow::anyhow!("goal tracking source failed: {error}")),
+                    None=>break Err(anyhow::anyhow!("goal tracking source ended")),
                 },
                 item = usage_events.next() => match item {
                     Some(Ok(event)) => {
@@ -118,6 +132,7 @@ impl Metrics {
             }
         };
         tracker.finish(Instant::now());
+        goal_work.finish().await;
         agents.finish(Instant::now());
         productivity.finish(crate::productivity::tracker_now());
         publish_pending(productivity.publish(&self.locus).await?, &batch_sender);
@@ -287,8 +302,9 @@ fn focus_state(locus: &LocusClient) -> Observable<FocusState> {
             resolve_app(window.clone(), instances, agents),
             resolve_output_name(output.clone()),
             project_for(projects, workspace_id(&workspace)),
+            project_id_for(relations::records(locus.clone(),relations::WORKSPACE_PROJECT), workspace_id(&workspace)),
             explicit_name_for(names, workspace_id(&workspace))
-            => move |(app, output_name, project, explicit_name)| FocusState {
+            => move |(app, output_name, project, project_id, explicit_name)| FocusState {
                 locked: false,
                 idle: false,
                 workspace_id: workspace_id(&workspace),
@@ -298,6 +314,7 @@ fn focus_state(locus: &LocusClient) -> Observable<FocusState> {
                 window_id: window_id(&window),
                 app_id: app,
                 project,
+                project_id,
                 output: output_name,
             },
         )
@@ -306,6 +323,25 @@ fn focus_state(locus: &LocusClient) -> Observable<FocusState> {
     })
     .distinct_until_changed()
     .box_it()
+}
+
+fn project_id_for(
+    records: Observable<Vec<RelationRecord>>,
+    workspace_id: Option<u64>,
+) -> Observable<Option<String>> {
+    let Some(id) = workspace_id else {
+        return shell_source::once(None);
+    };
+    let subject =
+        locus::RelationEndpoint::stable_key(locus::keys::NIRI_WORKSPACE_ID, id.to_string());
+    records
+        .map(move |rows| {
+            rows.into_iter()
+                .find(|r| r.subject == subject)
+                .and_then(|r| r.metadata.get("project-id").cloned())
+        })
+        .distinct_until_changed()
+        .box_it()
 }
 
 fn focused_workspace() -> Observable<Option<OwnedObjectPath>> {

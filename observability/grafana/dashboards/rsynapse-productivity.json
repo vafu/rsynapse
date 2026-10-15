@@ -1,10 +1,10 @@
 {
   "uid": "rsynapse-productivity",
   "title": "Rsynapse productivity components",
-  "tags": ["rsynapse"], "timezone": "browser", "schemaVersion": 39, "version": 3,
-  "description": "Calibration inputs and explicit goals. No composite productivity score or personal-time penalty weights have been chosen.",
+  "tags": ["rsynapse"], "timezone": "browser", "schemaVersion": 39, "version": 4,
+  "description": "Calibration inputs and workday settings. No composite productivity score or personal-time penalty weights have been chosen.",
   "time": {"from": "now-30d", "to": "now"}, "refresh": "30s",
-  "links": [{"type": "link", "title": "Workday targets", "url": "/d/rsynapse-workday/rsynapse-workday"}, {"type": "link", "title": "Focus overview", "url": "/d/rsynapse-focus/rsynapse-focus"}],
+  "links": [{"type": "link", "title": "Goal work metrics", "url": "/d/rsynapse-goals/rsynapse-goals", "keepTime": true}, {"type": "link", "title": "Workday targets", "url": "/d/rsynapse-workday/rsynapse-workday"}, {"type": "link", "title": "Focus overview", "url": "/d/rsynapse-focus/rsynapse-focus"}],
   "panels": [
     {
       "id": 1, "type": "stat", "title": "Today — productive background overlap",
@@ -46,14 +46,14 @@
       ]
     },
     {
-      "id": 4, "type": "rsynapse-goals-panel", "title": "Daily goals — plan, edit and review",
-      "description": "Goal records come directly from locus through the local dashboard API. Create and edit full titles, success criteria, priorities and statuses here; outcome goals can be linked to agent sessions. Steward only observes associations needed by its activity metrics.",
-      "gridPos": {"h": 14, "w": 24, "x": 0, "y": 15},
+      "id": 4, "type": "rsynapse-workday-targets-panel", "title": "Workday target settings",
+      "description": "Configure elapsed span, unlocked and active hour preferences stored in locus. Changes apply today and future days; earlier daily log rows retain their targets.",
+      "gridPos": {"h": 7, "w": 24, "x": 0, "y": 15},
       "options": {"apiUrl": "http://127.0.0.1:8770"}, "targets": []
     },
     {
       "id": 6, "type": "table", "title": "Explicit workspace classifications",
-      "datasource": {"type": "graphite", "uid": "graphite"}, "gridPos": {"h": 5, "w": 24, "x": 0, "y": 29},
+      "datasource": {"type": "graphite", "uid": "graphite"}, "gridPos": {"h": 5, "w": 24, "x": 0, "y": 22},
       "fieldConfig": {"defaults": {}, "overrides": [{"matcher": {"id": "byName", "options": "Classification"}, "properties": [{"id": "mappings", "value": [{"type": "value", "options": {"0": {"text": "Unclassified"}, "1": {"text": "Work"}, "2": {"text": "Personal"}}}]}]}]},
       "options": {"showHeader": true},
       "targets": [{"refId": "A", "target": "aliasByNode(keepLastValue(rsynapse.productivity.classification.workspace_name.*.state), 4)"}],
@@ -62,7 +62,7 @@
     {
       "id": 7, "type": "table", "title": "Daily productivity component log",
       "description": "Event-closed union durations, stored durably in locus. Today may lag live panels until the next event. No retrospective overlap is invented from independent human/agent totals. Subsets must not be added to their parent totals.",
-      "datasource": {"type": "graphite", "uid": "graphite"}, "gridPos": {"h": 10, "w": 24, "x": 0, "y": 34},
+      "datasource": {"type": "graphite", "uid": "graphite"}, "gridPos": {"h": 10, "w": 24, "x": 0, "y": 27},
       "fieldConfig": {"defaults": {"unit": "dtdurations", "noValue": "—"}, "overrides": []}, "options": {"showHeader": true, "sortBy": [{"displayName": "Day", "desc": true}]},
       "targets": [{"refId": "A", "target": "aliasSub(aliasByNode(keepLastValue(rsynapse.productivity.20*.*_seconds.state), 2, 3), '^(.*)\\.(.*)$', '{\"Day\":\"\\1\",\"Metric\":\"\\2\"}')"}],
       "transformations": [
@@ -73,8 +73,8 @@
     },
     {
       "id": 8, "type": "text", "title": "Activity-context preferences",
-      "gridPos": {"h": 6, "w": 24, "x": 0, "y": 44},
-      "options": {"mode": "markdown", "content": "Manage goals in the editor above: select the day, add outcomes or habits, edit criteria, and update status explicitly. Outcome sessions can be linked through the Sessions button. Full records stay in locus, not Graphite.\n\nActivity-context preferences remain collector configuration:\n```sh\nrsynapse-steward classify workspace personal personal\nrsynapse-steward classify workspace rsynapse work\nrsynapse-steward classify project /path/to/project work\nrsynapse-steward classify list\n```\nOpen outcome associations may qualify agent work; personal classification always vetoes credit. Habits never grant credit. No combined productivity score is finalized."}
+      "gridPos": {"h": 6, "w": 24, "x": 0, "y": 37},
+      "options": {"mode": "markdown", "content": "Manage persistent tasks and subgoals with `proj goal`; use the shell checklist to complete or select tasks and open their notes. [Goal work metrics](/d/rsynapse-goals/rsynapse-goals) shows recorded effort and lifecycle history. Full records stay in projd, not Graphite.\n\nActivity-context preferences remain collector configuration:\n```sh\nrsynapse-steward classify workspace personal personal\nrsynapse-steward classify workspace rsynapse work\nrsynapse-steward classify project /path/to/project work\nrsynapse-steward classify list\n```\nOpen outcome associations may qualify agent work; personal classification always vetoes credit. Habits never grant credit. No combined productivity score is finalized."}
     }
   ]
 }

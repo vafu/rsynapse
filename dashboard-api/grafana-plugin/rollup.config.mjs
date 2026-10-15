@@ -5,4 +5,4 @@ const make = (input, file) => ({
   external: ['react', '@grafana/data', '@grafana/runtime'],
   plugins: [esbuild({ jsx: 'transform', target: 'es2020' })],
 });
-export default [make('src/module.tsx','dist/module.js'),make('src/workday-module.tsx','dist-workday/module.js')];
+export default [make('src/targets-module.tsx','dist-targets/module.js'),make('src/workday-module.tsx','dist-workday/module.js'),make('src/metrics-module.tsx','dist-metrics/module.js')];

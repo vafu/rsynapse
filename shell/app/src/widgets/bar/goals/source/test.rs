@@ -16,7 +16,8 @@ fn hierarchy_retains_parent_context_and_tracks_the_selected_subgoal() {
     let nested = goal("nested", "child", "Nested task");
     let active = child.object_path();
     let vm = view("p".into(), vec![nested, child, root], &active);
-    assert_eq!(vm.title, "Z root › A child");
+    assert_eq!(vm.title, "A child");
+    assert!(vm.tooltip.starts_with("Z root › A child"));
     assert_eq!(vm.active, "child");
     assert_eq!(vm.context_keys, ["root", "child"]);
     assert_eq!(
@@ -36,7 +37,11 @@ fn nested_subgoals_show_their_ancestry_and_root_tasks_still_work() {
         goal("nested", "child", "Current step"),
     ];
     let vm = view("p".into(), goals.clone(), &goals[2].object_path());
-    assert_eq!(vm.title, "Objective › Milestone › Current step");
+    assert_eq!(vm.title, "Current step");
+    assert!(
+        vm.tooltip
+            .starts_with("Objective › Milestone › Current step")
+    );
     assert_eq!(vm.active, "nested");
     assert_eq!(
         view("p".into(), goals.clone(), &goals[0].object_path()).title,
@@ -58,7 +63,8 @@ fn selected_parent_shows_its_unique_in_progress_subgoal_without_guessing_between
         vec![root.clone(), first.clone(), second.clone()],
         &root.object_path(),
     );
-    assert_eq!(vm.title, "Objective › Current work");
+    assert_eq!(vm.title, "Current work");
+    assert!(vm.tooltip.starts_with("Objective › Current work"));
     assert_eq!(vm.description, "Current step context");
     assert_eq!(vm.active, "root");
     second.status = "in-progress".into();
@@ -69,7 +75,7 @@ fn selected_parent_shows_its_unique_in_progress_subgoal_without_guessing_between
     );
     assert_eq!(
         view("p".into(), goals, &first.object_path()).title,
-        "Objective › Current work"
+        "Current work"
     );
 }
 
@@ -147,6 +153,7 @@ fn ancestor_and_subgoal_titles_follow_live_properties() {
             async fn expect(
                 stream: &mut (impl futures_util::Stream<Item = Result<GoalBarVm, String>> + Unpin),
                 title: &str,
+                context: &str,
             ) {
                 let vm = tokio::time::timeout(Duration::from_secs(5), stream.next())
                     .await
@@ -154,9 +161,15 @@ fn ancestor_and_subgoal_titles_follow_live_properties() {
                     .unwrap()
                     .unwrap();
                 assert_eq!(vm.title, title);
+                assert!(vm.tooltip.starts_with(context));
                 assert_eq!(vm.active, "root");
             }
-            expect(&mut stream, "Parent goal › Current subgoal").await;
+            expect(
+                &mut stream,
+                "Current subgoal",
+                "Parent goal › Current subgoal",
+            )
+            .await;
             let _: GoalInfo = manager
                 .call(
                     "EditGoal",
@@ -164,7 +177,12 @@ fn ancestor_and_subgoal_titles_follow_live_properties() {
                 )
                 .await
                 .unwrap();
-            expect(&mut stream, "Updated parent › Current subgoal").await;
+            expect(
+                &mut stream,
+                "Current subgoal",
+                "Updated parent › Current subgoal",
+            )
+            .await;
             let _: GoalInfo = manager
                 .call(
                     "EditGoal",
@@ -172,6 +190,11 @@ fn ancestor_and_subgoal_titles_follow_live_properties() {
                 )
                 .await
                 .unwrap();
-            expect(&mut stream, "Updated parent › Updated subgoal").await;
+            expect(
+                &mut stream,
+                "Updated subgoal",
+                "Updated parent › Updated subgoal",
+            )
+            .await;
         });
 }

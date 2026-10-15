@@ -1,5 +1,5 @@
 """Real HTTP -> session D-Bus -> locus integration in an isolated test bus."""
-import concurrent.futures, json, os, pathlib, socket, subprocess, sys, tempfile, time, urllib.error, urllib.request
+import json, os, pathlib, socket, subprocess, sys, tempfile, time, urllib.error, urllib.request
 ROOT=pathlib.Path(__file__).resolve().parents[2]
 API=os.environ.get("RSYNAPSE_API_BIN",str(ROOT/"steward/target/release/rsynapse-dashboard-api"))
 LOCUS=os.environ.get("LOCUS_BIN",str(pathlib.Path.home()/".local/bin/locusd"))
@@ -8,7 +8,7 @@ STEWARD=os.environ.get("STEWARD_BIN",str(ROOT/"steward/target/release/steward"))
 
 if "--child" not in sys.argv:
     with tempfile.TemporaryDirectory(prefix="rsynapse-goal-api-") as temp:
-        env=dict(os.environ,LOCUS_RELATIONS_PATH=temp+"/relations.json",PROJD_STORE_PATH=temp+"/projd.sqlite3",XDG_DATA_HOME=temp,XDG_DATA_DIRS=temp,RSYNAPSE_TEST_DIR=temp)
+        env=dict(os.environ,LOCUS_RELATIONS_PATH=temp+"/relations.json",PROJD_STORE_PATH=temp+"/projd.sqlite3",PROJD_GOALS_DIR=temp+"/notes",XDG_DATA_HOME=temp,XDG_DATA_DIRS=temp,RSYNAPSE_TEST_DIR=temp)
         subprocess.run(["dbus-run-session","--",sys.executable,__file__,"--child"],env=env,check=True)
     sys.exit(0)
 
@@ -93,33 +93,19 @@ try:
     assert call("/api/workday-targets")=={"span_hours":8.0,"unlocked_hours":6.0,"active_hours":4.0}
     call("/api/workday-targets","PUT",{"span_hours":8,"unlocked_hours":5.5,"active_hours":4})
     call("/api/workday-targets","PUT",{"span_hours":8,"unlocked_hours":3,"active_hours":4},400)
-    goal={"id":"goal1","date":"2026-10-07","title":"Original title","kind":"outcome","project":os.environ["RSYNAPSE_TEST_DIR"],"success":"Original criterion","priority":"high","status":"planned"}
     stream=urllib.request.urlopen(base+"/api/events",timeout=5)
     assert b"connected" in stream.readline();stream.readline();stream.readline()
-    saved_goal=call("/api/goals","POST",goal,201)
-    assert pathlib.Path(saved_goal["note_path"]).is_file()
-    assert b"goals-changed" in stream.readline();stream.close()
-    call("/api/goals","POST",goal,409)
-    rows=call("/api/goals?date=2026-10-07");assert rows==[saved_goal]
+    call("/api/workday-targets","PUT",{"span_hours":8,"unlocked_hours":5.5,"active_hours":4})
+    assert b"workday-targets-changed" in stream.readline();stream.close()
+    subprocess.run([proj_bin,"goal","add","goal1","--project",os.environ["RSYNAPSE_TEST_DIR"],"--title","Keep task history"],check=True)
+    before=subprocess.check_output([proj_bin,"goal","list","--all","--json"])
     path="/api/goals/2026-10-07/goal1"
-    call(path+"/status","PATCH",{"status":"completed"})
-    edited=call(path,"PATCH",{"title":"Edited title","success":"Edited criterion"})
-    assert edited["status"]=="completed" and edited["success"]=="Edited criterion"
-    link={"agent":"codex","session_id":"stable-session"}
-    call(path+"/links","POST",link,204);assert call(path+"/links")==[link]
-    habit=call(path,"PATCH",{"kind":"habit","project":None})
-    assert habit["kind"]=="habit" and call(path+"/links")==[]
-    call(path+"/links","POST",link,400)
-    call(path,"PATCH",{"date":"2026-10-08"},400)
-    bad=dict(goal,id="../bad");call("/api/goals","POST",bad,400)
-    race=dict(goal,id="race")
-    def create_race(_):
-        req=urllib.request.Request(base+"/api/goals",data=json.dumps(race).encode(),headers={"Content-Type":"application/json"},method="POST")
-        try:
-            with urllib.request.urlopen(req) as response:return response.status
-        except urllib.error.HTTPError as e:return e.code
-    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:assert sorted(executor.map(create_race,range(2)))==[201,409]
-    req=urllib.request.Request(base+"/api/goals",method="OPTIONS",headers={"Origin":"https://other.invalid","Access-Control-Request-Method":"POST","Access-Control-Request-Headers":"content-type"})
+    for old in ["/api/goals?date=2026-10-07","/api/goal-days","/api/projects","/api/sessions",path,path+"/links"]:
+        call(old,expected=404)
+    for old,method in [("/api/goals","POST"),(path,"PUT"),(path,"PATCH"),(path,"DELETE"),(path+"/status","PATCH"),(path+"/links","POST"),(path+"/links","DELETE")]:
+        call(old,method,{},404)
+    assert subprocess.check_output([proj_bin,"goal","list","--all","--json"])==before
+    req=urllib.request.Request(base+"/api/workday-targets",method="OPTIONS",headers={"Origin":"https://other.invalid","Access-Control-Request-Method":"PUT","Access-Control-Request-Headers":"content-type"})
     with urllib.request.urlopen(req) as response:assert response.headers.get("Access-Control-Allow-Origin") is None
     api.terminate();api.wait(timeout=5);locus.terminate();locus.wait(timeout=5)
     steward.terminate();steward.wait(timeout=5);projd.terminate();projd.wait(timeout=5)
@@ -129,12 +115,9 @@ try:
     steward=subprocess.Popen([STEWARD,"associations"],env=env)
     wait(lambda:subprocess.run(["busctl","--user","status","org.rsynapse.Steward"],capture_output=True).returncode==0)
     api=subprocess.Popen([API],env=env);wait(lambda:call("/health"))
-    rows=call("/api/goals?date=2026-10-07");assert len(rows)==2
     assert call("/api/workday-targets")["unlocked_hours"]==5.5
-    assert next(g for g in rows if g["id"]=="goal1")["success"]=="Edited criterion"
-    call(path,"DELETE",expected=204);assert len(call("/api/goals?date=2026-10-07"))==1
-    assert "2026-10-07" in call("/api/goal-days")["days"]
-    print("PASS: workspace assignment/unassignment/name preservation, overwrite rejection, CRUD, explicit status, duplicate race, SSE, links, habit conversion, CORS and persistence")
+    assert subprocess.check_output([proj_bin,"goal","list","--all","--json"])==before
+    print("PASS: workspace association preservation, workday settings validation/SSE/persistence, retired routes, untouched tasks and CORS")
 finally:
     if api is not None and api.poll() is None:api.terminate();api.wait(timeout=5)
     if locus.poll() is None:locus.terminate();locus.wait(timeout=5)

@@ -30,6 +30,8 @@ pub struct NewGoal {
 }
 #[derive(Subcommand)]
 pub enum GoalCommand {
+    #[command(flatten)]
+    Metrics(super::metrics_cli::MetricsCommand),
     List {
         #[arg(long)]
         date: Option<String>,
@@ -113,7 +115,10 @@ fn find<'a>(rows: &'a [GoalInfo], id: &str, date: Option<&str>) -> anyhow::Resul
     );
     Ok(matches[0])
 }
-async fn project(proxy: &Proxy<'_>, path: Option<PathBuf>) -> anyhow::Result<ProjectInfo> {
+pub(super) async fn project(
+    proxy: &Proxy<'_>,
+    path: Option<PathBuf>,
+) -> anyhow::Result<ProjectInfo> {
     Ok(proxy
         .call(
             "ResolveProject",
@@ -133,6 +138,7 @@ async fn select(proxy: &Proxy<'_>, goal: &GoalInfo) -> anyhow::Result<()> {
 
 pub async fn run(proxy: &Proxy<'_>, command: GoalCommand) -> anyhow::Result<()> {
     match command {
+        GoalCommand::Metrics(command) => super::metrics_cli::run(proxy, command).await?,
         GoalCommand::List {
             date,
             all,

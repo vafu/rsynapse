@@ -1,0 +1,25 @@
+{
+  "uid":"rsynapse-goals",
+  "title":"Rsynapse goal work metrics",
+  "tags":["rsynapse","goals"],
+  "timezone":"browser",
+  "schemaVersion":39,
+  "version":1,
+  "description":"Authoritative projd lifecycle/work history via the loopback dashboard API. Compare focused effort with completion lead/cycle time; goal/subgoal rollups never multiply summary totals.",
+  "time":{"from":"now-24h","to":"now"},
+  "refresh":"30s",
+  "links":[
+    {"type":"link","title":"Focus overview","url":"/d/rsynapse-focus/rsynapse-focus","keepTime":true},
+    {"type":"link","title":"Workday settings and productivity","url":"/d/rsynapse-productivity/rsynapse-productivity","keepTime":true},
+    {"type":"link","title":"Workday log","url":"/d/rsynapse-workday/rsynapse-workday","keepTime":true}
+  ],
+  "panels":[{
+    "id":1,
+    "type":"rsynapse-goal-metrics-panel",
+    "title":"Goal work — timeline, effort and completion",
+    "description":"Use the Grafana time picker and the panel's project/task filters. Summary effort counts raw spans once. Parent rows include descendants when requested. Lifecycle dates cover the task lifetime; recorded effort/status durations follow the chosen range. Unknown dates and interrupted observation remain explicit.",
+    "gridPos":{"h":42,"w":24,"x":0,"y":0},
+    "options":{"apiUrl":"http://127.0.0.1:8770"},
+    "targets":[]
+  }]
+}

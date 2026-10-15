@@ -1,5 +1,10 @@
 use super::super::selected_project::selected_project_status;
-use shell_core::source::{self, Observable, proj::GoalInfo, rx::Observable as _};
+use shell_core::source::{
+    self, Observable,
+    proj::{GoalIdentityInfo, GoalInfo},
+    rx::Observable as _,
+};
+mod catalog;
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(in crate::widgets::bar) struct GoalBarVm {
@@ -20,6 +25,11 @@ impl GoalBarVm {
 pub(super) struct GoalRow {
     pub goal: GoalInfo,
     pub depth: usize,
+    pub completed: bool,
+    pub child_count: usize,
+    pub completed_children: usize,
+    pub instance_id: String,
+    pub created_at_ms: u64,
 }
 
 pub(in crate::widgets::bar) fn goal_bar(output: Option<String>) -> Observable<GoalBarVm> {
@@ -31,12 +41,16 @@ pub(in crate::widgets::bar) fn goal_bar(output: Option<String>) -> Observable<Go
         let Some(id) = id else {
             return source::once(GoalBarVm::default());
         };
-        source::proj::goals()
+        source::proj::goal_identities()
             .combine_latest(
                 source::proj::active_goal(id.clone()),
-                move |goals, active| {
-                    let goals: Vec<_> = goals.into_iter().filter(|g| g.project_id == id).collect();
-                    view(id.clone(), goals, active.as_str())
+                move |identities, active| {
+                    let identities: Vec<_> = identities
+                        .into_iter()
+                        .filter(|g| g.deleted_at_ms == 0 && g.goal.project_id == id)
+                        .collect();
+                    let goals = identities.iter().map(|g| g.goal.clone()).collect();
+                    view_with_metadata(id.clone(), goals, active.as_str(), &identities)
                 },
             )
             .distinct_until_changed()
@@ -67,17 +81,28 @@ fn tracked_context(vm: GoalBarVm) -> Observable<GoalBarVm> {
         source::proj::goal_description(current_key),
         move |titles, description| {
             let mut vm = vm.clone();
-            vm.title = titles.join(" › ");
+            vm.title = titles
+                .last()
+                .cloned()
+                .unwrap_or_else(|| "Choose goal".into());
             vm.description = description;
-            vm.tooltip = tooltip(&vm.title, &vm.description);
+            vm.tooltip = tooltip(&titles.join(" › "), &vm.description);
             vm
         },
     )
     .distinct_until_changed()
     .box_it()
 }
-fn view(project: String, mut goals: Vec<GoalInfo>, active: &str) -> GoalBarVm {
-    goals.sort_by(|a, b| a.title.cmp(&b.title).then_with(|| a.key().cmp(&b.key())));
+#[cfg(test)]
+fn view(project: String, goals: Vec<GoalInfo>, active: &str) -> GoalBarVm {
+    view_with_metadata(project, goals, active, &[])
+}
+fn view_with_metadata(
+    project: String,
+    goals: Vec<GoalInfo>,
+    active: &str,
+    identities: &[GoalIdentityInfo],
+) -> GoalBarVm {
     let selected = goals.iter().find(|g| g.object_path() == active);
     let mut context = Vec::new();
     let mut current = selected;
@@ -103,15 +128,10 @@ fn view(project: String, mut goals: Vec<GoalInfo>, active: &str) -> GoalBarVm {
     }
     let mut result = GoalBarVm {
         project_id: Some(project),
-        title: if context.is_empty() {
-            "Choose goal".into()
-        } else {
-            context
-                .iter()
-                .map(|g| g.title.as_str())
-                .collect::<Vec<_>>()
-                .join(" › ")
-        },
+        title: context
+            .last()
+            .map(|g| g.title.clone())
+            .unwrap_or_else(|| "Choose goal".into()),
         description: context
             .last()
             .map(|g| g.description.clone())
@@ -119,19 +139,21 @@ fn view(project: String, mut goals: Vec<GoalInfo>, active: &str) -> GoalBarVm {
         active: selected.map(|g| g.key()).unwrap_or_default(),
         tooltip: String::new(),
         context_keys: context.iter().map(|g| g.key()).collect(),
-        rows: Vec::new(),
+        rows: catalog::rows(&goals, identities),
     };
-    fn children(goals: &[GoalInfo], parent: &str, depth: usize, rows: &mut Vec<GoalRow>) {
-        for g in goals.iter().filter(|g| g.parent_id == parent) {
-            rows.push(GoalRow {
-                goal: g.clone(),
-                depth,
-            });
-            children(goals, &g.key(), depth + 1, rows);
-        }
-    }
-    children(&goals, "", 0, &mut result.rows);
-    result.tooltip = tooltip(&result.title, &result.description);
+    let breadcrumb = context
+        .iter()
+        .map(|g| g.title.as_str())
+        .collect::<Vec<_>>()
+        .join(" › ");
+    result.tooltip = tooltip(
+        if breadcrumb.is_empty() {
+            &result.title
+        } else {
+            &breadcrumb
+        },
+        &result.description,
+    );
     result
 }
 fn tooltip(title: &str, description: &str) -> String {

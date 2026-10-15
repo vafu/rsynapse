@@ -2,6 +2,7 @@ mod agent_metrics;
 mod associations;
 mod focus;
 mod git_status;
+mod goal_work;
 mod metrics;
 mod namer;
 mod productivity;

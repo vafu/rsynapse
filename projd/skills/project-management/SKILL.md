@@ -53,3 +53,9 @@ complete its parent. `proj goal set NAMED_ID --title TITLE` is idempotent;
 An in-progress multi-step goal should normally have an in-progress subgoal
 associated with the current work. Work directly on a parent only for atomic tasks;
 keep its overall scope open until all completion criteria are verified.
+
+Read recorded history/effort through `proj goal history ID`, `goal timeline ID`,
+`goal stats ID`, or `proj report --from today --json`. Parent stats include subgoal
+work unless `--direct` is set. Keep focused active/idle effort separate from
+status elapsed time and completion lead time. Legacy timestamps can be unknown;
+`goal instances ID --json` provides immutable IDs for deleted/recreated keys.

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Optional local Grafana editing integration, separate from the GTK shell install.
+# Optional local Grafana metrics/settings integration, separate from the GTK shell install.
 set -euo pipefail
 repo="$(realpath "$(dirname "${BASH_SOURCE[0]}")/..")"
 prefix="${PREFIX:-$HOME/.local}"

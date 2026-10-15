@@ -7,7 +7,7 @@
   "version": 4,
   "time": {"from": "now-30d", "to": "now"},
   "refresh": "30s",
-  "links": [{"type": "link", "title": "Productivity components and goals", "url": "/d/rsynapse-productivity/rsynapse-productivity-components"}, {"type": "link", "title": "Focus overview", "url": "/d/rsynapse-focus/rsynapse-focus", "keepTime": true}],
+   "links": [{"type": "link", "title": "Workday settings and productivity", "url": "/d/rsynapse-productivity/rsynapse-productivity-components"}, {"type": "link", "title": "Focus overview", "url": "/d/rsynapse-focus/rsynapse-focus", "keepTime": true}],
   "panels": [
     {
       "id": 1, "type": "stat", "title": "Today — start and finish",

@@ -5,6 +5,8 @@ use std::path::PathBuf;
 use zbus::Proxy;
 #[path = "cli/goals.rs"]
 mod goal_cli;
+#[path = "cli/metrics.rs"]
+mod metrics_cli;
 use goal_cli::GoalCommand;
 
 #[derive(Parser)]
@@ -15,6 +17,8 @@ struct Args {
 }
 #[derive(Subcommand)]
 enum Command {
+    /// Summarize recorded goal work by project and task.
+    Report(metrics_cli::ReportArgs),
     /// Permanently remove project metadata. Files and goal history are untouched.
     #[command(alias = "trash")]
     Remove { id: String },
@@ -119,6 +123,7 @@ async fn main() -> anyhow::Result<()> {
     let conn = zbus::Connection::session().await?;
     let proxy = Proxy::new(&conn, BUS_NAME, ROOT_PATH, MANAGER_INTERFACE).await?;
     match args.command {
+        Command::Report(args) => metrics_cli::report(&proxy, args).await?,
         Command::Remove { id } => {
             let removed: bool = proxy.call("RemoveProject", &(id,)).await?;
             anyhow::ensure!(removed, "Project is not registered");

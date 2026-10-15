@@ -91,9 +91,10 @@ in progress and selects it. Several tasks can be in progress while only one is
 shown on that project's bar. Completing, deferring or removing the selected task
 clears active selection. Selection persists across restart.
 For multi-step work, keep the parent goal in progress and start the concrete
-subgoal being worked on. The shell derives its parent context from the hierarchy
-and shows a goal/subgoal breadcrumb; no duplicate parent-selection record is
-needed. If a parent remains selected, its sole in-progress child is shown too.
+subgoal being worked on. The shell derives parent context from the hierarchy for
+the tooltip/checklist, while the bar shows only the current subgoal title. No
+duplicate parent-selection record is needed. If a parent remains selected, its
+sole in-progress child supplies the title.
 
 Creation also creates a Markdown note at `$XDG_STATE_HOME/proj/goals/<ID>.md`,
 normally `~/.local/state/proj/goals/<ID>.md`. Dated goals use
@@ -139,6 +140,57 @@ the current workspace, use `steward bind-current PATH`, or click the shell's
 initialize-project icon beside an unassociated workspace name. The old script
 is kept only as `install/bin/legacy-proj` for migration reference.
 
+## Goal history and work metrics
+
+Goal metadata and lifecycle events are written in one SQLite transaction. Each
+creation has an immutable instance UUID, distinct from its human-readable key.
+Removing/recreating a named task preserves the old history without merging its
+effort into the new task. Existing records receive an `observed` baseline with
+unknown creation/first-start timestamps; timestamps are never inferred from dates
+or Markdown modification times.
+
+```sh
+proj goal instances GOAL_ID --json
+proj goal history GOAL_ID --json
+proj goal timeline GOAL_ID --from today
+proj goal stats GOAL_ID
+proj goal stats GOAL_ID --direct --json
+proj report --all --from 2026-10-01 --to 2026-11-01 --json
+proj report --project /absolute/project --from today
+proj report --project-id HISTORICAL_PROJECT_ID --json
+```
+
+History/timeline queries accept local dates, RFC3339 timestamps, or Unix
+milliseconds. `--to` is exclusive and defaults to now. Named keys resolve to
+their current instance, or the latest removed instance; pass an instance UUID
+from `goal instances` to inspect an older lifetime. Stats include descendant work
+by default; `--direct` excludes it. Reports group direct measured spans by
+project and task instance, without adding parent totals a second time.
+
+Stats distinguish input-active focus, idle focus, agent work, in-progress elapsed
+time, creation-to-last-completion lead time and first-start-to-last-completion
+cycle time. Lifecycle timestamps/completion counts cover the task lifetime;
+effort and in-progress totals honor the requested range. Zero timestamps mean
+unknown, and human output prints them as such. Focused/unlocked time is active
+plus idle; agent time is a separate axis and may exceed wall time in parallel.
+Work totals describe recorded coverage, not time reconstructed before collection.
+
+The additive `org.rsynapse.Proj.Metrics1` interface lives at `/org/rsynapse/Proj`:
+`ListGoalIdentities`, `ListGoalTracking`, `GoalHistory`, `WorkTimeline`, `GoalStats`,
+`BeginGoalWork`, `GetWorkSession` and `EndGoalWork`. Work kind is a Rust enum
+serialized as a D-Bus string (`active`, `idle`, `agent`). A producer owns its work
+sessions through its unique D-Bus connection. Owner loss closes sessions;
+graceful recorder shutdown closes them with measured monotonic durations. A
+recorder crash marks surviving open records as interrupted/unknown-duration
+coverage rather than counting unobserved downtime. Current open durations are
+computed when queried, with no heartbeat or periodic database writes.
+
+Steward submits `steward.focus` sessions from native focus/project/goal, idle and
+lock events. It attributes a single effective leaf task, with immutable ancestor
+IDs for rollups. Explicit selection resolves multiple in-progress siblings; a
+selected parent's unique in-progress child is followed just as in the bar.
+Projd stores generic work records and has no desktop source dependencies.
+
 ## Consumers
 
 `shell-source::proj` provides projects/checkouts/goals snapshots and
@@ -174,6 +226,7 @@ internal protocol change.
 bash projd/build.sh --locked
 python3 projd/tests/integration.py
 python3 projd/tests/checklist.py
+python3 projd/tests/metrics.py
 python3 projd/tests/model_migration.py
 python3 projd/tests/responsiveness.py
 python3 steward/tests/model_migration.py

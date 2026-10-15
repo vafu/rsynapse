@@ -1,0 +1,13 @@
+{
+  "type":"panel",
+  "name":"Rsynapse goal metrics",
+  "id":"rsynapse-goal-metrics-panel",
+  "skipDataQuery":true,
+  "info":{
+    "description":"Queryable goal/subgoal work timelines, effort and completion history from projd through dashboard-api.",
+    "author":{"name":"Rsynapse"},"keywords":["rsynapse","goals","metrics","timeline"],
+    "logos":{"small":"img/logo.svg","large":"img/logo.svg"},
+    "version":"0.1.0","updated":"2026-10-14","links":[]
+  },
+  "dependencies":{"grafanaDependency":">=13.0.0","plugins":[]}
+}

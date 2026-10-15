@@ -62,10 +62,10 @@ GTK4/Relm4 framework crates plus concrete Rsynapse UI surfaces.
   `rsynapse-shell request project-init` opens the same picker for the focused
    workspace and can be used as a compositor shortcut command.
    The bar also shows the project's active goal as a button (or **Choose goal**).
-   Active subgoals include their parent context as a breadcrumb, such as
-   **Finish goal management › Track the current subgoal**. A selected parent
-   also shows its unique in-progress child; multiple in-progress siblings require
-   an explicit selection instead of guessing the current step.
+   The button shows only the current subgoal title when one is being worked on,
+   otherwise the main goal title. Parent context stays in the tooltip/checklist.
+   A selected parent follows its unique in-progress child; multiple in-progress
+   siblings require an explicit selection instead of guessing the current step.
    The button is hidden when the current project has no goals.
    The main bar uses a CenterBox: windows on the left, a context block in the
    middle, and status widgets on the right. The context block is itself a
@@ -73,12 +73,22 @@ GTK4/Relm4 framework crates plus concrete Rsynapse UI surfaces.
    slot. Its start slot expands to fill the left section, with the goal
    right-aligned inside that section, next to the centered project/Git row.
    The goal is an unmeasured overlay within the left section, so long
-   breadcrumbs shrink to available space instead of displacing the center row.
-   It opens a nested checklist popover: checkboxes complete/reopen tasks, the
-   track button selects the goal displayed on the bar, and clicking a task title
-   opens its Markdown note in `$EDITOR` through a terminal. Titles/descriptions
+   titles shrink to available space instead of displacing the center row.
+   It opens a nested checklist popover: checkboxes complete/reopen tasks, and clicking a task title
+   opens its Markdown note in `$EDITOR` (then `$VISUAL`, otherwise `vi`) through a
+   terminal. The note path comes directly from projd's goal snapshot; opening a
+   note does not invoke a `proj` executable from `PATH`. Titles/descriptions
    and active selection follow projd properties. Task lists come from its reactive
    snapshots; the shell does not watch or parse Markdown for checklist state.
+   A disclosure control at the right end of each parent row expands/collapses its
+   subgoal group; leaf rows have no trailing control. Active tasks are selected
+   with `proj goal start` or `proj goal active`. Completed groups fold
+   automatically, and completed titles are struck through. A group whose children
+   are all complete is presented as complete without changing its stored status;
+   its checkbox stays mixed until explicitly completed. Manual expansion survives
+   updates; completion/reopening transitions fold/expand the group. Siblings sort
+   unfinished first, then high-to-low priority, then oldest creation date; unknown
+   legacy dates sort last within their priority. Children stay under their parent.
 
 - `launcher`
   The launcher workspace. It owns the D-Bus launcher daemon, CLI, GTK launcher

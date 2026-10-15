@@ -8,6 +8,10 @@ use shell_core::{
     gtk4_layer_shell::{KeyboardMode, LayerShell},
 };
 use std::{cell::RefCell, rc::Rc};
+mod collapse;
+mod rows;
+use collapse::CollapseState;
+use rows::RenderedRow;
 
 pub(in crate::widgets::bar) struct GoalPopup {
     popover: gtk::Popover,
@@ -15,6 +19,8 @@ pub(in crate::widgets::bar) struct GoalPopup {
     overlay: adw::ToastOverlay,
     empty: gtk::Label,
     current: Rc<RefCell<GoalBarVm>>,
+    folds: Rc<RefCell<CollapseState>>,
+    rendered: Rc<RefCell<Vec<RenderedRow>>>,
 }
 impl GoalPopup {
     pub fn new(button: &gtk::MenuButton) -> Self {
@@ -81,6 +87,8 @@ impl GoalPopup {
             overlay,
             empty,
             current,
+            folds: Rc::new(RefCell::new(CollapseState::default())),
+            rendered: Rc::new(RefCell::new(Vec::new())),
         }
     }
     pub fn update(&self, vm: &GoalBarVm) {
@@ -91,104 +99,42 @@ impl GoalPopup {
             self.popover.popdown();
         }
         *self.current.borrow_mut() = vm.clone();
+        self.folds.borrow_mut().sync(&vm.rows);
+        self.rendered.borrow_mut().clear();
         while let Some(child) = self.rows.first_child() {
             self.rows.remove(&child);
         }
         self.empty.set_visible(vm.rows.is_empty());
         for row in &vm.rows {
-            self.rows.append(&self.row(row, vm));
+            let rendered = self.row(row);
+            self.rows.append(&rendered.item);
+            self.rendered.borrow_mut().push(rendered);
         }
+        apply_folds(
+            &self.current.borrow(),
+            &self.folds.borrow(),
+            &self.rendered.borrow(),
+        );
     }
-    fn row(&self, row: &GoalRow, vm: &GoalBarVm) -> adw::ActionRow {
-        let goal = &row.goal;
-        let item = adw::ActionRow::new();
-        item.set_use_markup(false);
-        item.set_title(&goal.title);
-        item.set_title_lines(2);
-        item.set_subtitle_lines(2);
-        let status = match goal.status.as_str() {
-            "in-progress" => "In progress",
-            "completed" => "Completed",
-            "deferred" => "Deferred",
-            _ => "To do",
-        };
-        item.set_subtitle(&if goal.description.is_empty() {
-            status.into()
-        } else {
-            format!("{status} · {}", goal.description)
-        });
-        item.set_margin_start((row.depth.min(10) * 16) as i32);
-        let check = gtk::CheckButton::new();
-        check.set_valign(gtk::Align::Center);
-        check.set_active(goal.status == "completed");
-        check.update_property(&[gtk::accessible::Property::Label(&format!(
-            "Complete {}",
-            goal.title
-        ))]);
-        let key = goal.key();
-        let overlay = self.overlay.clone();
-        check.connect_toggled(move |check| {
-            if !check.is_sensitive() {
-                return;
-            }
-            let completed = check.is_active();
-            check.set_sensitive(false);
-            let weak = check.downgrade();
-            actions::run(
-                Action::Status {
-                    key: key.clone(),
-                    status: if completed { "completed" } else { "planned" }.into(),
-                },
-                &overlay,
-                move |ok| {
-                    if let Some(check) = weak.upgrade() {
-                        if !ok {
-                            check.set_active(!completed);
-                        }
-                        check.set_sensitive(true);
-                    }
-                },
-            );
-        });
-        item.add_prefix(&check);
-        let track = gtk::Button::from_icon_name("media-playback-start-symbolic");
-        track.add_css_class("flat");
-        track.set_valign(gtk::Align::Center);
-        let active = vm.active == goal.key();
-        track.set_tooltip_text(Some(if active {
-            "Currently tracked"
-        } else {
-            "Track this goal on the bar"
-        }));
-        track.set_sensitive(!active && !matches!(goal.status.as_str(), "completed" | "deferred"));
-        if active {
-            track.add_css_class("accent");
+}
+
+fn apply_folds(vm: &GoalBarVm, folds: &CollapseState, rendered: &[RenderedRow]) {
+    for ((model, row), visible) in vm.rows.iter().zip(rendered).zip(folds.visibility(&vm.rows)) {
+        row.item.set_visible(visible);
+        if let Some(button) = &row.disclosure {
+            let expanded = folds.expanded(model);
+            button.set_icon_name(if expanded {
+                "pan-down-symbolic"
+            } else {
+                "pan-end-symbolic"
+            });
+            button.set_tooltip_text(Some(&format!(
+                "{} subgoals ({}/{})",
+                if expanded { "Hide" } else { "Show" },
+                model.completed_children,
+                model.child_count
+            )));
+            button.update_state(&[gtk::accessible::State::Expanded(Some(expanded))]);
         }
-        let project = vm.project_id.clone().unwrap_or_default();
-        let key = goal.key();
-        let overlay = self.overlay.clone();
-        track.connect_clicked(move |_| {
-            actions::run(
-                Action::Track {
-                    project: project.clone(),
-                    key: key.clone(),
-                },
-                &overlay,
-                |_| {},
-            )
-        });
-        item.add_suffix(&track);
-        item.set_activatable(true);
-        item.set_tooltip_text(Some("Click the title to open its Markdown note in $EDITOR"));
-        let key = goal.key();
-        let overlay = self.overlay.clone();
-        let popup = self.popover.downgrade();
-        item.connect_activated(move |_| {
-            if let Some(p) = popup.upgrade() {
-                p.popdown();
-            }
-            actions::open_note(key.clone(), &overlay);
-        });
-        item
     }
 }

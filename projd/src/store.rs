@@ -5,6 +5,8 @@ use std::{
     path::{Path, PathBuf},
     sync::Mutex,
 };
+mod history;
+mod work;
 pub struct Store {
     db: Mutex<Connection>,
 }
@@ -53,6 +55,7 @@ impl Store {
             db.execute("VACUUM INTO ?", [backup.to_string_lossy().as_ref()])?;
         }
         crate::migrate::run(&mut db)?;
+        history::schema(&mut db)?;
         let legacy_goals: bool = db.query_row("SELECT EXISTS(SELECT 1 FROM records WHERE kind='goal' AND json_extract(json,'$.note_path') IS NULL)", [], |r| r.get(0))?;
         if legacy_goals {
             let backup = path.with_file_name(format!(
@@ -70,12 +73,14 @@ impl Store {
         self.db.lock().unwrap().execute("INSERT INTO records(kind,id,json) VALUES(?,?,?) ON CONFLICT(kind,id) DO UPDATE SET json=excluded.json",params![kind,id,serde_json::to_string(value)?])?;
         Ok(())
     }
+    #[cfg(test)]
     pub fn create<T: Serialize>(&self, kind: &str, id: &str, value: &T) -> anyhow::Result<bool> {
         Ok(self.db.lock().unwrap().execute(
             "INSERT OR IGNORE INTO records(kind,id,json) VALUES(?,?,?)",
             params![kind, id, serde_json::to_string(value)?],
         )? == 1)
     }
+    #[cfg(test)]
     pub fn remove(&self, kind: &str, id: &str) -> anyhow::Result<bool> {
         Ok(self.db.lock().unwrap().execute(
             "DELETE FROM records WHERE kind=? AND id=?",
@@ -131,6 +136,24 @@ impl Store {
                 .collect(),
         };
         let tx = db.transaction()?;
+        let goals: Vec<GoalInfo> = read(&tx, "goal")?;
+        let selected = tx.query_row(
+            "SELECT json FROM records WHERE kind='active-goal' AND id=?",
+            [id],
+            |r| r.get::<_, String>(0),
+        );
+        if let Ok(selected) = selected {
+            let key: String = serde_json::from_str(&selected)?;
+            if let Some(goal) = goals.iter().find(|g| g.key() == key) {
+                history::record(
+                    &tx,
+                    goal,
+                    "unselected",
+                    &goal.status,
+                    crate::metrics::now_ms(),
+                )?;
+            }
+        }
         for c in &removed.checkouts {
             tx.execute(
                 "DELETE FROM records WHERE kind='checkout' AND id=?",

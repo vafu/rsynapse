@@ -1351,6 +1351,7 @@ dependencies = [
  "serde_json",
  "shell-rx-macros",
  "shell-source",
+ "tempfile",
  "tokio",
  "zbus",
 ]

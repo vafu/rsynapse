@@ -9,6 +9,7 @@
   "version": 17,
   "refresh": "1m",
   "links": [
+    {"type": "link", "title": "Goal work metrics", "url": "/d/rsynapse-goals/rsynapse-goals", "keepTime": true},
     {"type": "link", "title": "Productivity components and goals", "url": "/d/rsynapse-productivity/rsynapse-productivity-components"},
     {"type": "link", "title": "Today and daily workday log", "url": "/d/rsynapse-workday/rsynapse-workday", "keepTime": true}
   ],
