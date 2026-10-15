@@ -87,6 +87,12 @@ model value from this source expression."
 
 ## D-Bus Sources
 
+Compositor-state consumers import names/path construction from
+`workspace-dbus-api` and observe its `org.rsynapse.Workspace` objects through
+the generic D-Bus primitives. Read workspace/window IDs as opaque strings from
+`Id`; never derive them from object paths or parse them as numbers. Backends
+normalize focus and optional scrolling indices before publishing properties.
+
 `shell_source::proj` exposes typed projects, optional Git checkouts and goals
 from projd. Each checkout/worktree has its own project; projects own their stored
 name, absolute CWD and icon. There are no Context objects. Observe a checkout's

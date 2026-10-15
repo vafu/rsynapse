@@ -62,12 +62,12 @@ fn checkout_row(
         badge.add_css_class("dim-label");
         row.add_suffix(&badge);
     }
-    let workspace = state.target.borrow().workspace_id;
+    let workspace = state.target.borrow().workspace_id.clone();
     let weak = Rc::downgrade(state);
     let path = checkout.path.clone();
     let project_id = project.id.clone();
     row.connect_activated(move |_| {
-        if let (Some(state), Some(workspace)) = (weak.upgrade(), workspace) {
+        if let (Some(state), Some(workspace)) = (weak.upgrade(), workspace.clone()) {
             state.chooser_popover.popdown();
             let current = state
                 .target

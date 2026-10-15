@@ -8,7 +8,7 @@ use shell_core::gtk;
 use std::rc::Rc;
 
 pub(super) struct CurrentRow {
-    pub workspace: u64,
+    pub workspace: String,
     pub project_id: String,
     pub checkout_path: String,
     stack: gtk::Stack,
@@ -17,7 +17,7 @@ pub(super) struct CurrentRow {
 }
 impl CurrentRow {
     pub fn new(
-        workspace: u64,
+        workspace: String,
         project: &ProjectChoice,
         checkout: &CheckoutChoice,
         actions: &Rc<Actions>,

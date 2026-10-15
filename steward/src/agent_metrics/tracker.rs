@@ -22,9 +22,9 @@ pub(crate) struct AgentTracker {
     members: HashMap<String, Member>,
     known: HashSet<String>,
     initialized: bool,
-    focused_window: Option<u64>,
+    focused_window: Option<String>,
     available: bool,
-    active_links: HashMap<u64, String>,
+    active_links: HashMap<String, String>,
     pending: HashMap<String, f64>,
     gauges: HashMap<String, f64>,
     retired: VecDeque<Session>,
@@ -116,7 +116,7 @@ impl AgentTracker {
                 }
             };
             if let Some(reply) = &mut member.unread {
-                reply.owner.window = member.session.window;
+                reply.owner.window = member.session.window.clone();
             }
             self.members.insert(member.session.key.clone(), member);
         }
@@ -129,7 +129,7 @@ impl AgentTracker {
         self.refresh_gauges();
     }
 
-    pub fn focus(&mut self, window: Option<u64>, available: bool, now: Instant) {
+    pub fn focus(&mut self, window: Option<String>, available: bool, now: Instant) {
         self.focused_window = window;
         if self.available != available {
             for member in self.members.values_mut() {
@@ -155,13 +155,13 @@ impl AgentTracker {
             .iter()
             .filter_map(|(key, member)| {
                 let reply = member.unread.as_ref()?;
-                let window = reply.owner.window?;
-                if self.focused_window != Some(window) {
+                let window = reply.owner.window.as_ref()?;
+                if self.focused_window.as_ref() != Some(window) {
                     return None;
                 }
                 if self
                     .active_links
-                    .get(&window)
+                    .get(window)
                     .is_some_and(|path| path != key)
                 {
                     return None;

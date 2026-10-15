@@ -32,7 +32,7 @@ install_templates() {
 
 echo "Installing release binaries to $local_bin"
 cargo_install "$repo_root/locus"
-cargo_install "$repo_root/niri-dbus"
+cargo_install "$repo_root/workspace-dbus/service"
 bash "$repo_root/projd/build.sh" --locked
 install -d "$local_bin"
 install -m 0755 "$repo_root/steward/target/release/projd" "$local_bin/projd"
@@ -50,6 +50,7 @@ ln -sfn steward "$local_bin/rsynapse-steward"
 echo "Installing helper scripts to $local_bin"
 install -d "$local_bin" "$script_dir"
 install -m 0755 "$repo_root/install/bin/rsynapse-open-url" "$script_dir/rsynapse-open-url"
+ln -sfn "$script_dir/rsynapse-open-url" "$local_bin/rsynapse-open-url"
 
 echo "Installing Rsynapse git hooks to $git_hooks_dir"
 install -d "$git_hooks_dir"
@@ -99,6 +100,7 @@ rm -f \
     "$dbus_dir/com.rsynapse.Engine.service" \
     "$dbus_dir/io.github.rsynapse.Locus.service" \
     "$dbus_dir/io.github.rsynapse.Niri.service" \
+    "$dbus_dir/org.rsynapse.Niri.service" \
     "$dbus_dir/org.rsynapse.Launcher.service" \
     "$dbus_dir/org.rsynapse.UI.service" \
     "$systemd_user_dir/locus.service" \
@@ -106,7 +108,8 @@ rm -f \
     "$systemd_user_dir/niri-dbus.service" \
     "$systemd_user_dir/rsynapse-daemon.service" \
     "$systemd_user_dir/rsynapse-ui.service" \
-    "$local_bin/locusfs"
+    "$local_bin/locusfs" \
+    "$local_bin/niri-dbus"
 
 rm -f \
     "$systemd_user_dir/default.target.wants/locus.service" \
@@ -120,7 +123,7 @@ rm -rf \
     "$systemd_user_dir/rsynapse-notifications.service.d"
 
 if systemctl --user daemon-reload >/dev/null 2>&1; then
-    systemctl --user enable rsynapse-shell.service rsynapse-notifications.service
+    systemctl --user enable workspace-dbus.service rsynapse-shell.service rsynapse-notifications.service
     systemctl --user reset-failed rsynapse-shell.service rsynapse-notifications.service >/dev/null 2>&1 || true
 else
     echo "systemd user manager is not available; skipped daemon-reload and enable"

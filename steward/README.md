@@ -22,7 +22,7 @@ leaving the process (only app-ids and project names become metric paths).
   history/query persistence; existing Carbon/Grafana metrics remain independent.
 
 - `metrics`
-  Folds niri focus streams and locus workspace→project relations into
+  Folds workspace-dbus focus streams and locus workspace→project relations into
   completed focus intervals and immediately pushes on focus changes, lock,
   and shutdown. No heartbeat or timed flush. Uses the [`graphyne`](https://crates.io/crates/graphyne)
    crate (Apache-2.0) for the Graphite plaintext protocol.
@@ -44,9 +44,18 @@ leaving the process (only app-ids and project names become metric paths).
     operation formerly in the old proj Bash helper.
     At startup it remaps old grouped-project bindings by checkout identity,
     preserves relation persistence, adopts workspace icon overrides into projects,
-    and updates compact project object-path references without changing goals.
-- `locus.rs`
-  The only zbus-aware file: a thin write client plus `records()`
+     and updates compact project object-path references without changing goals.
+- `associations/workspace_cleanup`
+  Observes the neutral API's workspace inventory and source lifecycle. Removes
+  outgoing workspace-ID relations on removal/reset/owner loss, reconciles stale
+  subjects at startup once the source is ready, and retries failed persistence
+  without advancing its local baseline. Project/goal records and name-keyed
+  preferences are preserved. No compositor protocol or polling is involved.
+  Workspace-scoped records carry the observed source owner/generation in
+  metadata, preserving their persistence flags. This distinguishes stale links
+  from a fresh binding to a reused native ID, including after steward restarts.
+- `relations.rs`
+  A thin write client plus `records()`
   observables over locus relations. Components compose observables and
   write through the client.
 - `docker-compose.yml`
@@ -117,7 +126,7 @@ curl -s 'http://localhost:8080/render?target=rsynapse.switches.workspace&format=
 Focus attribution is gated by `shell_source::session::locked()` (logind
 `LockedHint`). Locking ends the current focus interval immediately; no
 app, project, workspace, or output time accrues while locked. Unlocking
-resumes from the latest niri focus, and neither transition counts as a
+resumes from the latest workspace-dbus focus, and neither transition counts as a
 workspace switch. Lockers must update logind's `LockedHint` for this to work.
 
 Native `shell_source::wayland::input_idle()` splits focus attribution

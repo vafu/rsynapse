@@ -81,7 +81,7 @@ daemons = [subprocess.Popen([LOCUS]), subprocess.Popen([str(BIN / "projd")])]
 try:
     wait(lambda: projects())
     wait(lambda: subprocess.run(["busctl", "--user", "status", "org.rsynapse.Locus"], capture_output=True).returncode == 0)
-    ws = lambda id: key("org.rsynapse.niri.workspace.id", str(id))
+    ws = lambda id: key("org.rsynapse.workspace.id", str(id))
     relation = "org.rsynapse.workspace.project"
     override = "org.rsynapse.workspace.icon-override"
     for workspace, checkout, directory, persist in [(1, "a", "primary", True), (2, "b", "worktree", False), (3, "d", "directory", True)]:

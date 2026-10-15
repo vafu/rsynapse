@@ -2,15 +2,8 @@ use crate::relations::{self, LocusClient};
 use futures_util::StreamExt;
 use locus::{RelationEndpoint, RelationRecord};
 use shell_rx_macros::combine_latest;
-use shell_source::{
-    Observable,
-    dbus::{self, Bus, ObjectDescriptor, PropertyDescriptor},
-    rx::Observable as _,
-};
+use shell_source::rx::Observable as _;
 use std::collections::HashMap;
-use zbus::zvariant::OwnedObjectPath;
-
-const WORKSPACE_PATH_PREFIX: &str = "/org/rsynapse/Niri/Workspaces/workspace_";
 
 pub struct Namer {
     locus: LocusClient,
@@ -23,7 +16,7 @@ impl Namer {
 
     pub async fn run(self) -> anyhow::Result<()> {
         let mut states = combine_latest!(
-            focused_workspace_id(),
+            crate::workspace::focused_workspace_id(),
             relations::records(self.locus.clone(), relations::WORKSPACE_PROJECT),
             relations::records(self.locus.clone(), relations::WORKSPACE_NAME),
             shell_source::proj::projects()
@@ -95,32 +88,8 @@ fn name_update(
     Some((name, source))
 }
 
-fn workspace_subject(id: u64) -> RelationEndpoint {
-    RelationEndpoint::stable_key(locus::keys::NIRI_WORKSPACE_ID, id.to_string())
-}
-
-fn focused_workspace_id() -> Observable<Option<u64>> {
-    let descriptor = ObjectDescriptor::parse(
-        Bus::Session,
-        niri_dbus::BUS_NAME,
-        niri_dbus::ROOT_PATH,
-        niri_dbus::ROOT_INTERFACE,
-    )
-    .expect("niri descriptor");
-    dbus::optional_array_property::<OwnedObjectPath>(PropertyDescriptor::new(
-        descriptor,
-        "FocusedWorkspace",
-    ))
-    .map(|path| {
-        path.and_then(|path| {
-            path.as_str()
-                .strip_prefix(WORKSPACE_PATH_PREFIX)?
-                .parse()
-                .ok()
-        })
-    })
-    .distinct_until_changed()
-    .box_it()
+fn workspace_subject(id: impl ToString) -> RelationEndpoint {
+    RelationEndpoint::stable_key(locus::keys::WORKSPACE_ID, id.to_string())
 }
 
 #[cfg(test)]

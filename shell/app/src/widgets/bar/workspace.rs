@@ -5,21 +5,17 @@ use shell_core::source::{
 };
 use zbus::zvariant::OwnedObjectPath;
 
-const BUS_NAME: &str = "org.rsynapse.Niri";
-const ROOT_PATH: &str = "/org/rsynapse/Niri";
-const ROOT_INTERFACE: &str = "org.rsynapse.Niri1";
-const OUTPUT_INTERFACE: &str = "org.rsynapse.Niri1.Output";
-const WORKSPACE_INTERFACE: &str = "org.rsynapse.Niri1.Workspace";
-const WINDOW_INTERFACE: &str = "org.rsynapse.Niri1.Window";
-const WORKSPACE_PATH_PREFIX: &str = "/org/rsynapse/Niri/Workspaces/workspace_";
-const WINDOW_PATH_PREFIX: &str = "/org/rsynapse/Niri/Windows/window_";
+use workspace_dbus_api::{
+    BUS_NAME, MANAGER_INTERFACE as ROOT_INTERFACE, OUTPUT_INTERFACE, ROOT_PATH, WINDOW_INTERFACE,
+    WORKSPACE_INTERFACE,
+};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) struct NiriWorkspace {
+pub(super) struct WorkspaceObject {
     path: OwnedObjectPath,
 }
 
-impl NiriWorkspace {
+impl WorkspaceObject {
     fn at(path: OwnedObjectPath) -> Self {
         Self { path }
     }
@@ -28,19 +24,17 @@ impl NiriWorkspace {
         self.path.as_str()
     }
 
-    pub(super) fn path_id(&self) -> Option<u64> {
-        id_from_path(&self.path, WORKSPACE_PATH_PREFIX)
-    }
-
-    pub(super) fn id(&self) -> Observable<u64> {
-        required(self.property("Id"), 0)
+    pub(super) fn id(&self) -> Observable<String> {
+        dbus::property::<String>(self.property("Id"))
+            .filter_map(|id| id.filter(|id| !id.is_empty()))
+            .box_it()
     }
 
     pub(super) fn name(&self) -> Observable<Option<String>> {
         optional(self.property("Name"))
     }
 
-    pub(super) fn index(&self) -> Observable<u8> {
+    pub(super) fn index(&self) -> Observable<u32> {
         required(self.property("Index"), 0)
     }
 
@@ -68,7 +62,7 @@ impl NiriWorkspace {
     }
 }
 
-impl ObjectModel for NiriWorkspace {
+impl ObjectModel for WorkspaceObject {
     const INTERFACE: &'static str = WORKSPACE_INTERFACE;
 
     fn at(path: OwnedObjectPath) -> Self {
@@ -77,29 +71,27 @@ impl ObjectModel for NiriWorkspace {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) struct NiriWindow {
+pub(super) struct WindowObject {
     path: OwnedObjectPath,
 }
 
-impl NiriWindow {
+impl WindowObject {
     pub(super) fn path_key(&self) -> &str {
         self.path.as_str()
     }
 
-    pub(super) fn path_id(&self) -> Option<u64> {
-        id_from_path(&self.path, WINDOW_PATH_PREFIX)
-    }
-
-    pub(super) fn id(&self) -> Observable<u64> {
-        required(self.property("Id"), 0)
+    pub(super) fn id(&self) -> Observable<String> {
+        dbus::property::<String>(self.property("Id"))
+            .filter_map(|id| id.filter(|id| !id.is_empty()))
+            .box_it()
     }
 
     pub(super) fn app_id(&self) -> Observable<Option<String>> {
         optional(self.property("AppId"))
     }
 
-    pub(super) fn workspace(&self) -> Observable<Option<NiriWorkspace>> {
-        model_optional(self.property("Workspace"), NiriWorkspace::at)
+    pub(super) fn workspace(&self) -> Observable<Option<WorkspaceObject>> {
+        model_optional(self.property("Workspace"), WorkspaceObject::at)
     }
 
     pub(super) fn focused(&self) -> Observable<bool> {
@@ -123,7 +115,7 @@ impl NiriWindow {
     }
 }
 
-impl ObjectModel for NiriWindow {
+impl ObjectModel for WindowObject {
     const INTERFACE: &'static str = WINDOW_INTERFACE;
 
     fn at(path: OwnedObjectPath) -> Self {
@@ -131,25 +123,27 @@ impl ObjectModel for NiriWindow {
     }
 }
 
-pub(super) fn workspaces() -> Observable<Vec<NiriWorkspace>> {
-    dbus::models::<NiriWorkspace>(niri_object_manager())
+pub(super) fn workspaces() -> Observable<Vec<WorkspaceObject>> {
+    dbus::models::<WorkspaceObject>(object_manager())
         .distinct_until_changed()
         .box_it()
 }
 
-pub(super) fn windows() -> Observable<Vec<NiriWindow>> {
-    dbus::models::<NiriWindow>(niri_object_manager())
+pub(super) fn windows() -> Observable<Vec<WindowObject>> {
+    dbus::models::<WindowObject>(object_manager())
         .distinct_until_changed()
         .box_it()
 }
 
-pub(super) fn focused_workspace() -> Observable<Option<NiriWorkspace>> {
-    model_optional(root_property("FocusedWorkspace"), NiriWorkspace::at)
+pub(super) fn focused_workspace() -> Observable<Option<WorkspaceObject>> {
+    model_optional(root_property("FocusedWorkspace"), WorkspaceObject::at)
         .distinct_until_changed()
         .box_it()
 }
 
-pub(super) fn current_workspace(output_name: Option<String>) -> Observable<Option<NiriWorkspace>> {
+pub(super) fn current_workspace(
+    output_name: Option<String>,
+) -> Observable<Option<WorkspaceObject>> {
     let Some(output_name) = output_name else {
         return focused_workspace();
     };
@@ -160,7 +154,7 @@ pub(super) fn current_workspace(output_name: Option<String>) -> Observable<Optio
             OUTPUT_INTERFACE,
             "CurrentWorkspace",
         ),
-        NiriWorkspace::at,
+        WorkspaceObject::at,
     )
     .distinct_until_changed()
     .box_it()
@@ -196,24 +190,16 @@ where
 }
 
 pub(super) fn output_path_for_name(name: &str) -> String {
-    format!("{ROOT_PATH}/Outputs/{}", encode_path_segment(name))
-}
-
-fn encode_path_segment(input: &str) -> String {
-    let mut output = String::from("x");
-    for byte in input.bytes() {
-        output.push_str(&format!("{byte:02X}"));
-    }
-    output
+    workspace_dbus_api::output_path(name).to_string()
 }
 
 fn root_property(name: &'static str) -> PropertyDescriptor {
     property(ROOT_PATH, ROOT_INTERFACE, name)
 }
 
-fn niri_object_manager() -> ObjectManagerDescriptor {
+fn object_manager() -> ObjectManagerDescriptor {
     ObjectManagerDescriptor::parse(Bus::Session, BUS_NAME, ROOT_PATH)
-        .expect("static niri ObjectManager descriptor should be valid")
+        .expect("workspace ObjectManager descriptor should be valid")
 }
 
 fn property(path: &str, interface: &str, name: &'static str) -> PropertyDescriptor {
@@ -222,43 +208,23 @@ fn property(path: &str, interface: &str, name: &'static str) -> PropertyDescript
 
 fn object(path: &str, interface: &str) -> ObjectDescriptor {
     ObjectDescriptor::parse(Bus::Session, BUS_NAME, path, interface)
-        .expect("static niri D-Bus descriptor should be valid")
-}
-
-fn id_from_path(path: &OwnedObjectPath, prefix: &str) -> Option<u64> {
-    path.as_str().strip_prefix(prefix)?.parse().ok()
+        .expect("workspace D-Bus descriptor should be valid")
 }
 
 #[cfg(test)]
 mod tests {
     use shell_core::source::dbus::ObjectModel;
 
-    use super::{NiriWindow, NiriWorkspace};
+    use super::{WindowObject, WorkspaceObject};
 
     #[test]
     fn model_handles_are_comparable_by_path() {
-        let path = zbus::zvariant::OwnedObjectPath::try_from("/org/rsynapse/Niri/Windows/window_7")
-            .unwrap();
+        let path = workspace_dbus_api::window_path("opaque:7/é");
 
         assert_eq!(
-            <NiriWindow as ObjectModel>::at(path.clone()),
-            <NiriWindow as ObjectModel>::at(path)
+            <WindowObject as ObjectModel>::at(path.clone()),
+            <WindowObject as ObjectModel>::at(path)
         );
-        let _ = std::any::type_name::<NiriWorkspace>();
-    }
-
-    #[test]
-    fn model_ids_are_derived_from_paths() {
-        let workspace = <NiriWorkspace as ObjectModel>::at(
-            zbus::zvariant::OwnedObjectPath::try_from("/org/rsynapse/Niri/Workspaces/workspace_42")
-                .unwrap(),
-        );
-        let window = <NiriWindow as ObjectModel>::at(
-            zbus::zvariant::OwnedObjectPath::try_from("/org/rsynapse/Niri/Windows/window_7")
-                .unwrap(),
-        );
-
-        assert_eq!(workspace.path_id(), Some(42));
-        assert_eq!(window.path_id(), Some(7));
+        let _ = std::any::type_name::<WorkspaceObject>();
     }
 }

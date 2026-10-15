@@ -116,7 +116,7 @@ fn log_workspace_bar_monitor(monitor: Option<&gtk::gdk::Monitor>, output_name: O
     let connector = monitor.and_then(|monitor| monitor.connector());
     let geometry = monitor.map(|monitor| monitor.geometry());
     eprintln!(
-        "[bar] launching workspace rail: gtk_connector={:?} geometry={:?} niri_output_filter={:?}",
+        "[bar] launching workspace rail: gtk_connector={:?} geometry={:?} workspace_output_filter={:?}",
         connector.as_deref(),
         geometry,
         output_name

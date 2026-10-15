@@ -1,16 +1,16 @@
 use relm4::prelude::*;
 use shell_core::gtk::{self, prelude::*};
 
-use crate::{model::WindowTile, niri::NiriWindow};
+use crate::{model::WindowTile, workspace::WorkspaceWindow};
 
 pub(crate) struct WindowTileRow {
-    window: NiriWindow,
+    window: WorkspaceWindow,
     vm: WindowTile,
     __shell: sources::Runtime,
 }
 
 impl WindowTileRow {
-    fn new(window: NiriWindow) -> Self {
+    fn new(window: WorkspaceWindow) -> Self {
         Self {
             window,
             vm: WindowTile::default(),
@@ -22,7 +22,7 @@ impl WindowTileRow {
 #[shell_macros::view_model(model = WindowTile, source = WindowTile::source(model.window.clone()))]
 #[relm4::component(pub(crate))]
 impl SimpleComponent for WindowTileRow {
-    type Init = NiriWindow;
+    type Init = WorkspaceWindow;
     type Output = ();
 
     view! {

@@ -11,9 +11,9 @@ use crate::widgets::bar::{
         IconChoice, IconEvidence, IconEvidenceKind, IconPolicy, IconRequest, IconResolution,
         resolve_icon, workspace_icon_override_source,
     },
-    niri::NiriWorkspace,
     project::{ProjectDetails, project_details},
     window_source::{WindowSnapshot, window_snapshots},
+    workspace::WorkspaceObject,
 };
 
 #[cfg(test)]
@@ -38,7 +38,7 @@ pub(super) struct WorkspaceIconContext {
     request: IconRequest,
 }
 
-pub(super) fn workspace_icon_source(workspace: NiriWorkspace) -> Observable<WorkspaceIcon> {
+pub(super) fn workspace_icon_source(workspace: WorkspaceObject) -> Observable<WorkspaceIcon> {
     source::switch_map(project_details(workspace.clone()), move |project| {
         if let Some(id) = project.project_id.clone() {
             super::project_icon::icon(project, id)
@@ -49,7 +49,7 @@ pub(super) fn workspace_icon_source(workspace: NiriWorkspace) -> Observable<Work
     .distinct_until_changed()
     .box_it()
 }
-fn unassociated_icon_source(workspace: NiriWorkspace) -> Observable<WorkspaceIcon> {
+fn unassociated_icon_source(workspace: WorkspaceObject) -> Observable<WorkspaceIcon> {
     let workspace_id = workspace.id().map(Some);
     let project = project_details(workspace.clone());
     let override_icon = workspace_icon_override_source(workspace.clone());
@@ -94,15 +94,15 @@ fn workspace_icon_from_resolution(resolution: IconResolution, empty: bool) -> Wo
 }
 
 fn workspace_icon_context(
-    workspace_id: Option<u64>,
+    workspace_id: Option<String>,
     mut windows: Vec<WindowSnapshot>,
     project: ProjectDetails,
     override_icon: Option<IconChoice>,
 ) -> WorkspaceIconContext {
     windows.retain(|window| window.workspace_id == workspace_id);
     windows.sort_by(|left, right| {
-        (left.column, left.row, left.id)
-            .cmp(&(right.column, right.row, right.id))
+        (left.column, left.row, &left.id)
+            .cmp(&(right.column, right.row, &right.id))
             .then_with(|| left.window.path_key().cmp(right.window.path_key()))
     });
     let app_ids = windows

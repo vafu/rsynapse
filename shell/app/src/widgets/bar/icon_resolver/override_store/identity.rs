@@ -25,14 +25,14 @@ pub(super) fn icon_choice_from_record(record: &RelationRecord) -> Option<IconCho
 
 #[cfg(test)]
 pub(in crate::widgets::bar) fn workspace_icon_subjects_for_test(
-    id: u64,
+    id: impl ToString,
     name: Option<&str>,
 ) -> Vec<RelationEndpoint> {
-    WorkspaceIconIdentity::new(id, name).subjects
+    WorkspaceIconIdentity::new(id.to_string(), name).subjects
 }
 
 impl WorkspaceIconIdentity {
-    pub(super) fn new(id: u64, name: Option<&str>) -> Self {
+    pub(super) fn new(id: String, name: Option<&str>) -> Self {
         let id_subject = workspace_id_subject(id);
         let subjects = match name.and_then(non_empty) {
             Some(name) => vec![workspace_name_subject(name), id_subject],
@@ -46,12 +46,12 @@ impl WorkspaceIconIdentity {
     }
 }
 
-fn workspace_id_subject(id: u64) -> RelationEndpoint {
-    RelationEndpoint::stable_key(keys::NIRI_WORKSPACE_ID, id.to_string())
+fn workspace_id_subject(id: String) -> RelationEndpoint {
+    RelationEndpoint::stable_key(keys::WORKSPACE_ID, id)
 }
 
 fn workspace_name_subject(name: &str) -> RelationEndpoint {
-    RelationEndpoint::stable_key(keys::NIRI_WORKSPACE_NAME, name)
+    RelationEndpoint::stable_key(keys::WORKSPACE_NAME, name)
 }
 
 fn non_empty(value: &str) -> Option<&str> {

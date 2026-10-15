@@ -13,16 +13,18 @@ const INTERFACE: &str = "io.github.AgentDBus1.Session";
 /// and agent identity. Watch only the selected session's two properties.
 pub(super) fn agent_app(
     records: Observable<Vec<RelationRecord>>,
-    window: Option<u64>,
+    window: Option<String>,
 ) -> Observable<Option<String>> {
     let Some(window) = window else {
         return shell_source::once(None);
     };
+    let selected = window.clone();
     let paths = records
-        .map(move |records| session_path(&records, window))
+        .map(move |records| session_path(&records, &selected))
         .distinct_until_changed()
         .box_it();
     shell_source::switch_map(paths, move |path| {
+        let window = window.clone();
         let Some(path) = path else {
             return shell_source::once(None);
         };
@@ -32,7 +34,7 @@ pub(super) fn agent_app(
         combine_latest!(
             dbus::property_or(PropertyDescriptor::new(object.clone(), "WindowId"), String::new()),
             dbus::property_or(PropertyDescriptor::new(object, "AgentName"), String::new())
-            => move |(owner, name)| live_name(window, &owner, &name),
+            => move |(owner, name)| live_name(&window, &owner, &name),
         )
         .distinct_until_changed()
         .box_it()
@@ -42,8 +44,8 @@ pub(super) fn agent_app(
     .box_it()
 }
 
-fn session_path(records: &[RelationRecord], window: u64) -> Option<String> {
-    let subject = RelationEndpoint::stable_key(locus::keys::NIRI_WINDOW_ID, window.to_string());
+fn session_path(records: &[RelationRecord], window: &str) -> Option<String> {
+    let subject = RelationEndpoint::stable_key(locus::keys::WINDOW_ID, window);
     records.iter().find_map(|record| {
         if record.subject != subject {
             return None;
@@ -63,8 +65,8 @@ fn session_path(records: &[RelationRecord], window: u64) -> Option<String> {
     })
 }
 
-fn live_name(window: u64, owner: &str, name: &str) -> Option<String> {
-    if owner.parse::<u64>().ok() != Some(window) {
+fn live_name(window: &str, owner: &str, name: &str) -> Option<String> {
+    if owner != window || window.is_empty() {
         return None;
     }
     let name = name.trim();
@@ -79,7 +81,7 @@ mod tests {
     #[test]
     fn opencode_link_resolves_without_app_instance_name() {
         let record = RelationRecord {
-            subject: RelationEndpoint::stable_key(locus::keys::NIRI_WINDOW_ID, "87"),
+            subject: RelationEndpoint::stable_key(locus::keys::WINDOW_ID, "87"),
             relation: crate::relations::WINDOW_AGENT_SESSION.to_owned(),
             target: RelationEndpoint::stable_key(locus::keys::AGENT_SESSION_ID, "opencode/ses_123"),
             metadata: HashMap::from([(
@@ -89,15 +91,23 @@ mod tests {
             created_at_unix_ms: 0,
             updated_at_unix_ms: 0,
         };
-        assert!(session_path(std::slice::from_ref(&record), 87).is_some());
-        assert!(session_path(&[record], 88).is_none());
-        assert_eq!(live_name(87, "87", "opencode"), Some("opencode".to_owned()));
+        assert!(session_path(std::slice::from_ref(&record), "87").is_some());
+        assert!(session_path(&[record], "88").is_none());
+        assert_eq!(
+            live_name("87", "87", "opencode"),
+            Some("opencode".to_owned())
+        );
     }
 
     #[test]
     fn stale_or_unowned_sessions_cannot_override_app_identity() {
-        assert_eq!(live_name(87, "88", "codex"), None);
-        assert_eq!(live_name(87, "", "opencode"), None);
-        assert_eq!(live_name(87, "87", " "), None);
+        assert_eq!(live_name("87", "88", "codex"), None);
+        assert_eq!(live_name("87", "", "opencode"), None);
+        assert_eq!(live_name("87", "87", " "), None);
+        assert_eq!(live_name("007", "7", "opencode"), None);
+        assert_eq!(
+            live_name("opaque/é", "opaque/é", "opencode"),
+            Some("opencode".into())
+        );
     }
 }

@@ -13,8 +13,8 @@ pub(super) struct AppInstance {
     pub(super) icon: Option<String>,
 }
 
-pub(super) fn app_instance_for_window(window_id: u64) -> Observable<AppInstance> {
-    let subject = RelationEndpoint::stable_key(keys::NIRI_WINDOW_ID, window_id.to_string());
+pub(super) fn app_instance_for_window(window_id: String) -> Observable<AppInstance> {
+    let subject = RelationEndpoint::stable_key(keys::WINDOW_ID, window_id);
     let key = format!("{subject:?}");
     source::shared_by_key("rsynapse.window-app-instance", key, move || {
         let subject = subject.clone();

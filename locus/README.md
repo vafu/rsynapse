@@ -35,8 +35,16 @@ rather than a general RDF/SPARQL database.
 - Persists explicitly durable records atomically to `$LOCUS_RELATIONS_PATH` or
   `$XDG_STATE_HOME/rsynapse/locus/relations.json`.
 - Durable workspace preferences such as icon overrides should use the named
-  workspace key `org.rsynapse.niri.workspace.name`; numeric workspace IDs are
+  workspace key `org.rsynapse.workspace.name`; live workspace IDs are
   suitable only as a compatibility fallback for unnamed workspaces.
+
+Workspace/window association IDs are opaque strings from workspace-dbus.
+Neutral key kinds are `org.rsynapse.workspace.id`, `org.rsynapse.window.id`,
+`org.rsynapse.workspace.name` and `org.rsynapse.output.name`. Legacy
+`org.rsynapse.niri.*` key dictionaries and legacy string endpoints decode to
+their neutral equivalents without changing IDs, metadata or persistence flags.
+Steward owns workspace-lifetime cleanup; removing a workspace subject never
+deletes a project or goal.
 
 ## Explicit Persistence Contract
 

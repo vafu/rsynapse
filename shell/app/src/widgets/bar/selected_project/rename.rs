@@ -4,7 +4,7 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 #[derive(Clone)]
 pub(super) struct WorkspaceEditor {
-    target: Rc<RefCell<Option<(u64, String)>>>,
+    target: Rc<RefCell<Option<(String, String)>>>,
     content: gtk::Box,
     prepare: Rc<dyn Fn()>,
     popover: gtk::glib::WeakRef<gtk::Popover>,
@@ -12,8 +12,8 @@ pub(super) struct WorkspaceEditor {
 
 impl WorkspaceEditor {
     pub(super) fn new(popover: &gtk::Popover) -> Self {
-        let target = Rc::new(RefCell::new(None::<(u64, String)>));
-        let editing = Rc::new(RefCell::new(None::<u64>));
+        let target = Rc::new(RefCell::new(None::<(String, String)>));
+        let editing = Rc::new(RefCell::new(None::<String>));
         let content = gtk::Box::new(gtk::Orientation::Vertical, 8);
         let label = gtk::Label::new(Some("Workspace name"));
         let entry = gtk::Entry::new();
@@ -40,7 +40,7 @@ impl WorkspaceEditor {
             if current.is_none() {
                 return;
             }
-            *editing_for_open.borrow_mut() = current.as_ref().map(|(id, _)| *id);
+            *editing_for_open.borrow_mut() = current.as_ref().map(|(id, _)| id.clone());
             field.set_text(
                 current
                     .as_ref()
@@ -53,9 +53,10 @@ impl WorkspaceEditor {
             if let Some((id, _)) = current {
                 save_for_open.set_sensitive(false);
                 let (sender, receiver) = async_channel::bounded(1);
+                let read_id = id.clone();
                 relm4::spawn(async move {
                     let _ = sender
-                        .send(read_persistence(id).await.map_err(|e| e.to_string()))
+                        .send(read_persistence(read_id).await.map_err(|e| e.to_string()))
                         .await;
                 });
                 let persist = persistence_for_open.clone();
@@ -89,7 +90,7 @@ impl WorkspaceEditor {
             let Some(close) = close.upgrade() else {
                 return;
             };
-            let Some(id) = *editing.borrow() else {
+            let Some(id) = editing.borrow().clone() else {
                 return;
             };
             let name = field.text().trim().to_owned();
@@ -143,6 +144,7 @@ impl WorkspaceEditor {
     pub(super) fn set_target(&self, view: &SelectedWorkspaceView) {
         let target = view
             .workspace_id
+            .clone()
             .map(|id| (id, view.name.clone().unwrap_or_else(|| "empty".to_owned())));
         let changed = *self.target.borrow() != target;
         *self.target.borrow_mut() = target;
@@ -155,12 +157,12 @@ impl WorkspaceEditor {
     }
 }
 
-async fn save_name(id: u64, name: String, persist: bool) -> zbus::Result<()> {
+async fn save_name(id: String, name: String, persist: bool) -> zbus::Result<()> {
     let connection = zbus::Connection::session().await?;
     let proxy = locus::RelationsProxy::new(&connection).await?;
     proxy
         .set_one_with_persistence(
-            locus::RelationEndpoint::stable_key(locus::keys::NIRI_WORKSPACE_ID, id.to_string()),
+            locus::RelationEndpoint::stable_key(locus::keys::WORKSPACE_ID, id),
             "org.rsynapse.workspace.name",
             locus::RelationEndpoint::stable_key("org.rsynapse.workspace.name", name),
             HashMap::from([("source".to_owned(), "manual".to_owned())]),
@@ -170,11 +172,10 @@ async fn save_name(id: u64, name: String, persist: bool) -> zbus::Result<()> {
     Ok(())
 }
 
-async fn read_persistence(id: u64) -> zbus::Result<bool> {
+async fn read_persistence(id: String) -> zbus::Result<bool> {
     let connection = zbus::Connection::session().await?;
     let proxy = locus::RelationsProxy::new(&connection).await?;
-    let subject =
-        locus::RelationEndpoint::stable_key(locus::keys::NIRI_WORKSPACE_ID, id.to_string());
+    let subject = locus::RelationEndpoint::stable_key(locus::keys::WORKSPACE_ID, id);
     Ok(proxy
         .list_with_persistence("org.rsynapse.workspace.name")
         .await?

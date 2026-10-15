@@ -10,4 +10,5 @@ gtk.workspace = true
 relm4.workspace = true
 shell-core.workspace = true
 shell-macros.workspace = true
+workspace-dbus-api = { path = "../../../workspace-dbus/api" }
 zbus = { version = "4.4.0", default-features = false, features = ["tokio"] }

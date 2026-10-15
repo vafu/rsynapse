@@ -35,7 +35,7 @@ Installed binaries currently include:
 
 - `locusd` (daemon owning `org.rsynapse.Locus`)
 - `locus` (CLI for `locusd`, including `--persist true|false` and existing-record toggles)
-- `niri-dbus`
+- `workspace-dbus` (Niri/Umbriel backends; automatic session selection)
 - `rsynapse-shell`
 - `rsynapse-notifications`
 - `rsynapse-daemon`
@@ -48,6 +48,12 @@ Installed binaries currently include:
 Installed URL helper scripts currently include:
 
 - `rsynapse-open-url`
+
+The URL helper is also linked from the local binary directory. It detects Niri
+or Umbriel from desktop identity (or an unambiguous socket); set
+`RSYNAPSE_URL_COMPOSITOR=niri|umbriel` to override. Niri retains timestamp-based
+MRU browser selection. Umbriel prefers an active matching browser, otherwise a
+stable matching window on the workspace, since it exposes no focus history.
 
 Installed git hooks currently include:
 
@@ -65,7 +71,7 @@ Installed D-Bus activation files currently include:
 
 - `org.rsynapse.Engine.service`
 - `org.rsynapse.Locus.service`
-- `org.rsynapse.Niri.service`
+- `org.rsynapse.Workspace.service`
 - `org.rsynapse.Proj.service`
 
 Installed desktop entries currently include:
@@ -77,12 +83,21 @@ Installed systemd user units currently include:
 
 - `locusd.service` (`Type=dbus`, owning `org.rsynapse.Locus`)
 - `projd.service` (`Type=dbus`, owning `org.rsynapse.Proj`)
+- `workspace-dbus.service` (`Type=dbus`, owning `org.rsynapse.Workspace`, tied to the graphical session)
 - `rsynapse-shell.service`
 - `rsynapse-notifications.service`
 
 Set `PREFIX=/path` to install binaries, plugins, and D-Bus activation files
 under a different prefix. systemd user units are always installed under
 `~/.config/systemd/user`.
+
+The workspace API cutover requires rebuilding Locus, workspace-dbus, steward
+and shell together. Activation now starts `workspace-dbus --backend auto` through
+`workspace-dbus.service`; desktop identity takes precedence over inherited
+compositor socket variables. The unit stops with `graphical-session.target`, so
+the next session picks its own compositor after environment import.
+The installer removes the old `org.rsynapse.Niri` activation file and executable.
+Steward owns workspace-relation cleanup. Project and goal storage is unchanged.
 
 The script also removes older Rsynapse service names that predate the current
 `org.rsynapse.*` naming and the combined shell process layout.

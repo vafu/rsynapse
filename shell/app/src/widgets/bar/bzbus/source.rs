@@ -253,8 +253,8 @@ async fn emit_view(
     sender.send(Ok(snapshot)).await.is_ok()
 }
 
-fn invocation_ids_for_window(window_id: u64) -> Observable<Vec<String>> {
-    let subject = RelationEndpoint::stable_key(keys::NIRI_WINDOW_ID, window_id.to_string());
+fn invocation_ids_for_window(window_id: String) -> Observable<Vec<String>> {
+    let subject = RelationEndpoint::stable_key(keys::WINDOW_ID, window_id);
     locus_targets(subject, WINDOW_BUILD_INVOCATION_RELATION)
         .map(|targets| {
             targets

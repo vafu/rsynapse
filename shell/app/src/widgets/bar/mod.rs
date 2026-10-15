@@ -12,7 +12,6 @@ mod icon_resolver;
 mod bzbus;
 mod mpris;
 mod network;
-mod niri;
 mod power_profile;
 mod project;
 mod project_label;
@@ -23,6 +22,7 @@ mod systray;
 mod time;
 mod window_source;
 mod window_tile;
+mod workspace;
 mod workspace_bar;
 mod workspaces;
 
@@ -69,7 +69,7 @@ use super::{
 };
 use crate::{hints, request};
 
-type WindowNode = niri::NiriWindow;
+type WindowNode = workspace::WindowObject;
 pub(super) const WORKSPACE_RAIL_WIDTH: i32 = bar_indicator::SIZE;
 const BT_BATTERY_INDICATOR_WIDTH: i32 = 4;
 const BT_BATTERY_INDICATOR_HEIGHT: i32 = 18;
@@ -1652,7 +1652,7 @@ fn log_bar_monitor(primary: bool, monitor: Option<&gtk::gdk::Monitor>, output_na
     let connector = monitor.and_then(|monitor| monitor.connector());
     let geometry = monitor.map(|monitor| monitor.geometry());
     eprintln!(
-        "[bar] launching {role} bar: gtk_connector={:?} geometry={:?} niri_output_filter={:?}",
+        "[bar] launching {role} bar: gtk_connector={:?} geometry={:?} workspace_output_filter={:?}",
         connector.as_deref(),
         geometry,
         output_name

@@ -16,8 +16,8 @@ trait Projects {
 }
 #[derive(Clone)]
 pub(super) enum Action {
-    Assign { workspace: u64, path: String },
-    Unassign(u64),
+    Assign { workspace: String, path: String },
+    Unassign(String),
     Remove { id: String, name: String },
     Rename { id: String, name: String },
 }

@@ -2,7 +2,7 @@ use super::source::{ProjectLabelVm, WorkspaceIconChoice};
 #[derive(Clone, Debug)]
 pub(super) enum IconTarget {
     Project(String),
-    Workspace { id: u64, name: String },
+    Workspace { id: String, name: String },
 }
 impl IconTarget {
     pub fn from_vm(vm: &ProjectLabelVm) -> Option<Self> {
@@ -11,7 +11,7 @@ impl IconTarget {
         } else if vm.has_project {
             None
         } else {
-            vm.workspace_id.map(|id| Self::Workspace {
+            vm.workspace_id.clone().map(|id| Self::Workspace {
                 id,
                 name: vm.workspace_name.clone(),
             })
@@ -19,16 +19,19 @@ impl IconTarget {
     }
     pub fn set(&self, icon: WorkspaceIconChoice, input: String) {
         match self {
-            Self::Workspace { id, name } => {
-                super::source::set_project_icon_override(Some(*id), name.clone(), icon, input)
-            }
+            Self::Workspace { id, name } => super::source::set_project_icon_override(
+                Some(id.clone()),
+                name.clone(),
+                icon,
+                input,
+            ),
             Self::Project(id) => write(id.clone(), Some(icon.glyph)),
         }
     }
     pub fn clear(&self) {
         match self {
             Self::Workspace { id, name } => {
-                super::source::clear_project_icon_override(Some(*id), name.clone())
+                super::source::clear_project_icon_override(Some(id.clone()), name.clone())
             }
             Self::Project(id) => write(id.clone(), None),
         }

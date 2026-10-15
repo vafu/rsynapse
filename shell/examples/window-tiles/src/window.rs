@@ -5,12 +5,12 @@ use shell_core::{
 };
 
 use crate::{
-    niri::{self, NiriWindow},
     row::WindowTileRow,
+    workspace::{self, WorkspaceWindow},
 };
 
 pub(crate) struct WindowTiles {
-    vm: Vec<NiriWindow>,
+    vm: Vec<WorkspaceWindow>,
     __shell: sources::Runtime,
 }
 
@@ -23,7 +23,7 @@ impl WindowTiles {
     }
 }
 
-#[shell_macros::view_model(model = Vec<NiriWindow>, source = niri::windows().distinct_until_changed())]
+#[shell_macros::view_model(model = Vec<WorkspaceWindow>, source = workspace::windows().distinct_until_changed())]
 #[relm4::component(pub(crate) async)]
 impl SimpleAsyncComponent for WindowTiles {
     type Init = ();

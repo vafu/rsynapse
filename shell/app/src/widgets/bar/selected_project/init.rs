@@ -7,39 +7,39 @@ use std::{cell::Cell, rc::Rc};
     default_path = "/org/rsynapse/Steward"
 )]
 trait Associations {
-    fn unassign_workspace_project(&self, workspace: u64) -> zbus::Result<()>;
+    fn unassign_workspace_project(&self, workspace: &str) -> zbus::Result<()>;
     fn bind_workspace_project(
         &self,
-        workspace: u64,
+        workspace: &str,
         path: &str,
     ) -> zbus::Result<shell_core::source::proj::ProjectInfo>;
-    fn get_init_workspace(&self) -> zbus::Result<u64>;
+    fn get_init_workspace(&self) -> zbus::Result<String>;
     fn init_workspace_project(
         &self,
-        workspace: u64,
+        workspace: &str,
         path: &str,
     ) -> zbus::Result<shell_core::source::proj::ProjectInfo>;
 }
 
-pub(super) async fn unassign_workspace(workspace: u64) -> zbus::Result<()> {
+pub(super) async fn unassign_workspace(workspace: String) -> zbus::Result<()> {
     let connection = zbus::Connection::session().await?;
     AssociationsProxy::new(&connection)
         .await?
-        .unassign_workspace_project(workspace)
+        .unassign_workspace_project(&workspace)
         .await
 }
 
 pub(super) async fn bind_workspace(
-    workspace: u64,
+    workspace: String,
     path: &str,
     initialize: bool,
 ) -> zbus::Result<shell_core::source::proj::ProjectInfo> {
     let connection = zbus::Connection::session().await?;
     let proxy = AssociationsProxy::new(&connection).await?;
     if initialize {
-        proxy.init_workspace_project(workspace, path).await
+        proxy.init_workspace_project(&workspace, path).await
     } else {
-        proxy.bind_workspace_project(workspace, path).await
+        proxy.bind_workspace_project(&workspace, path).await
     }
 }
 
@@ -82,18 +82,18 @@ impl ProjectInitializer {
             controller.active.set(false);
             controller.sensitive(true);
             match result {
-                Ok(Ok(id)) => controller.open(id, &format!("workspace {id}"), true),
+                Ok(Ok(id)) => controller.open(id.clone(), &format!("workspace {id}"), true),
                 Ok(Err(error)) => controller.error(&error),
                 Err(_) => {}
             }
         });
     }
 
-    pub(super) fn open_binding(&self, workspace: u64, name: &str, initialize: bool) {
+    pub(super) fn open_binding(&self, workspace: String, name: &str, initialize: bool) {
         self.open(workspace, name, initialize);
     }
 
-    fn open(&self, workspace: u64, name: &str, initialize: bool) {
+    fn open(&self, workspace: String, name: &str, initialize: bool) {
         let Some(_parent) = self.parent() else {
             return;
         };

@@ -1,35 +1,34 @@
 use shell_core::source::{self, Observable, rx::Observable as _};
 use shell_rx_macros::combine_latest;
 
-use super::niri::{self, NiriWindow};
+use super::workspace::{self, WindowObject};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(in crate::widgets::bar) struct WindowSnapshot {
-    pub(in crate::widgets::bar) window: NiriWindow,
-    pub(in crate::widgets::bar) workspace_id: Option<u64>,
+    pub(in crate::widgets::bar) window: WindowObject,
+    pub(in crate::widgets::bar) workspace_id: Option<String>,
     pub(in crate::widgets::bar) column: u64,
     pub(in crate::widgets::bar) row: u64,
-    pub(in crate::widgets::bar) id: u64,
+    pub(in crate::widgets::bar) id: String,
     pub(in crate::widgets::bar) app_id: Option<String>,
 }
 
 pub(in crate::widgets::bar) fn window_snapshots() -> Observable<Vec<WindowSnapshot>> {
     source::shared_by_key("rsynapse.window-snapshots", "all", || {
-        source::switch_map_list(niri::windows(), window_snapshot)
+        source::switch_map_list(workspace::windows(), window_snapshot)
             .distinct_until_changed()
             .box_it()
     })
 }
 
-fn window_snapshot(window: NiriWindow) -> Observable<WindowSnapshot> {
-    let id = window.path_id().unwrap_or(u64::MAX);
-
+fn window_snapshot(window: WindowObject) -> Observable<WindowSnapshot> {
     combine_latest!(
-        window.workspace().map(|workspace| workspace.and_then(|workspace| workspace.path_id())),
+        window.id(),
+        source::switch_map(window.workspace(), |workspace| workspace.map(|w| w.id().map(Some).box_it()).unwrap_or_else(|| source::once(None))),
         window.column_index().map(|column| column.unwrap_or(u64::MAX)),
         window.row_index().map(|row| row.unwrap_or(u64::MAX)),
         window.app_id().map(|app_id| app_id.and_then(non_empty))
-            => move |(workspace_id, column, row, app_id)| WindowSnapshot {
+            => move |(id, workspace_id, column, row, app_id)| WindowSnapshot {
                 window: window.clone(),
                 workspace_id,
                 column,

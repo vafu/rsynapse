@@ -12,13 +12,13 @@ fn named_workspace_icon_identity_prefers_durable_name_with_id_fallback() {
     assert_eq!(
         workspace_icon_subjects_for_test(42, Some(" coding ")),
         vec![
-            RelationEndpoint::stable_key(keys::NIRI_WORKSPACE_NAME, "coding"),
-            RelationEndpoint::stable_key(keys::NIRI_WORKSPACE_ID, "42"),
+            RelationEndpoint::stable_key(keys::WORKSPACE_NAME, "coding"),
+            RelationEndpoint::stable_key(keys::WORKSPACE_ID, "42"),
         ]
     );
     assert_eq!(
         workspace_icon_subjects_for_test(42, None),
-        vec![RelationEndpoint::stable_key(keys::NIRI_WORKSPACE_ID, "42")]
+        vec![RelationEndpoint::stable_key(keys::WORKSPACE_ID, "42")]
     );
 }
 

@@ -75,10 +75,10 @@ impl Tracker {
         for session in &self.agents.sessions {
             let focused = focus.window_id == session.window
                 && session.window.is_some()
-                && session.window.is_some_and(|window| {
+                && session.window.as_ref().is_some_and(|window| {
                     self.agents
                         .active_links
-                        .get(&window)
+                        .get(window)
                         .is_none_or(|key| key == &session.key)
                 });
             if policy.eligible_agent(session, day) {
@@ -255,7 +255,7 @@ mod tests {
             state: "thinking".into(),
             cwd: "/work/src".into(),
             workspace: "work".into(),
-            window: Some(window),
+            window: Some(window.to_string()),
             ..Session::default()
         }
     }
@@ -272,7 +272,7 @@ mod tests {
         tracker.focus(
             FocusState {
                 idle: true,
-                window_id: Some(1),
+                window_id: Some("1".into()),
                 workspace_name: Some("personal".into()),
                 ..FocusState::default()
             },
@@ -304,7 +304,7 @@ mod tests {
             let mut tracker = setup(t);
             let mut s = session("a", 2);
             match variant {
-                0 => s.window = Some(1),
+                0 => s.window = Some("1".into()),
                 1 => s.subagent = true,
                 2 => s.state = "compacting".into(),
                 3 => s.workspace = "personal".into(),
@@ -328,7 +328,7 @@ mod tests {
         tracker.agents(
             Snapshot {
                 sessions: vec![session("a", 1)],
-                active_links: HashMap::from([(1, "other".into())]),
+                active_links: HashMap::from([("1".into(), "other".into())]),
             },
             t,
         );
@@ -391,7 +391,7 @@ mod tests {
         tracker.focus(
             FocusState {
                 idle: false,
-                window_id: Some(1),
+                window_id: Some("1".into()),
                 workspace_name: Some("personal".into()),
                 ..FocusState::default()
             },

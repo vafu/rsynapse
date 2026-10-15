@@ -2,8 +2,8 @@ use shell_core::source::{self, Observable, rx::Observable as _};
 
 use crate::widgets::bar::{
     bzbus::{BzBusView, bzbus_for_window},
-    niri::NiriWorkspace,
     window_source::{WindowSnapshot, window_snapshots},
+    workspace::WorkspaceObject,
 };
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -15,7 +15,7 @@ pub(in crate::widgets::bar::project_label) enum WorkspaceBuildState {
     Finished,
 }
 
-pub(super) fn workspace_build_state(workspace: NiriWorkspace) -> Observable<WorkspaceBuildState> {
+pub(super) fn workspace_build_state(workspace: WorkspaceObject) -> Observable<WorkspaceBuildState> {
     source::switch_map(
         workspace
             .id()
@@ -35,7 +35,7 @@ pub(super) fn workspace_build_state(workspace: NiriWorkspace) -> Observable<Work
 }
 
 fn workspace_windows(
-    workspace_id: Option<u64>,
+    workspace_id: Option<String>,
     windows: Vec<WindowSnapshot>,
 ) -> Vec<WindowSnapshot> {
     windows

@@ -40,7 +40,7 @@ pub struct Policy {
     pub projects: BTreeMap<PathBuf, Classification>,
     pub goals: Vec<Goal>,
     pub links: HashMap<String, Vec<String>>,
-    workspace_projects: HashMap<u64, PathBuf>,
+    workspace_projects: HashMap<String, PathBuf>,
 }
 
 pub fn policies(locus: &LocusClient) -> Observable<Policy> {
@@ -131,12 +131,10 @@ impl Policy {
                 },
             ) = (&record.subject, &record.target)
             {
-                if kind == locus::keys::NIRI_WORKSPACE_ID
-                    && target_kind == locus::keys::PROJECT_PATH
-                {
-                    if let Ok(id) = id.parse() {
-                        policy.workspace_projects.insert(id, PathBuf::from(target));
-                    }
+                if kind == locus::keys::WORKSPACE_ID && target_kind == locus::keys::PROJECT_PATH {
+                    policy
+                        .workspace_projects
+                        .insert(id.clone(), PathBuf::from(target));
                 }
             }
         }
@@ -173,7 +171,8 @@ impl Policy {
             focus.workspace_name.as_deref(),
             focus
                 .workspace_id
-                .and_then(|id| self.workspace_projects.get(&id))
+                .as_ref()
+                .and_then(|id| self.workspace_projects.get(id))
                 .map(PathBuf::as_path),
         )
     }
@@ -254,7 +253,7 @@ mod tests {
             session_id: "session".into(),
             agent: "codex".into(),
             state: "thinking".into(),
-            window: Some(1),
+            window: Some("1".into()),
             ..Session::default()
         };
         assert!(policy.eligible_agent(&session, "2026-10-05"));
@@ -280,7 +279,7 @@ mod tests {
             agent: "codex".into(),
             cwd: "/work/src".into(),
             state: "thinking".into(),
-            window: Some(1),
+            window: Some("1".into()),
             ..Session::default()
         };
         assert!(!policy.eligible_agent(&session, "2026-10-05"));

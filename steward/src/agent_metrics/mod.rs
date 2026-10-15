@@ -13,12 +13,12 @@ pub(super) struct Session {
     pub agent: String,
     pub state: String,
     pub cwd: String,
-    pub window: Option<u64>,
+    pub window: Option<String>,
     pub parent: String,
     pub subagent: bool,
     pub project: String,
     pub workspace: String,
-    pub workspace_id: Option<u64>,
+    pub workspace_id: Option<String>,
     pub model: String,
     pub effort: String,
 }
@@ -66,5 +66,5 @@ pub(super) struct UsageEvent {
 pub(super) struct Snapshot {
     pub sessions: Vec<Session>,
     // Exact active session links disambiguate multiple sessions sharing a window.
-    pub active_links: std::collections::HashMap<u64, String>,
+    pub active_links: std::collections::HashMap<String, String>,
 }

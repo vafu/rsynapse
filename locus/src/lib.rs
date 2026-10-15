@@ -29,8 +29,18 @@ pub enum RelationEndpoint {
 
 impl RelationEndpoint {
     pub fn stable_key(kind: impl Into<String>, id: impl Into<String>) -> Self {
+        let kind = kind.into();
+        // Existing persisted Niri associations migrate to the neutral contract.
+        // Values stay opaque strings; there is no numeric conversion.
+        let kind = match kind.as_str() {
+            "org.rsynapse.niri.output.name" => keys::OUTPUT_NAME.to_owned(),
+            "org.rsynapse.niri.workspace.id" => keys::WORKSPACE_ID.to_owned(),
+            "org.rsynapse.niri.workspace.name" => keys::WORKSPACE_NAME.to_owned(),
+            "org.rsynapse.niri.window.id" => keys::WINDOW_ID.to_owned(),
+            _ => kind,
+        };
         Self::StableKey {
-            kind: kind.into(),
+            kind,
             id: id.into(),
         }
     }
@@ -125,10 +135,10 @@ impl<'de> Visitor<'de> for RelationEndpointVisitor {
         }
         let endpoint_type = take_required(&mut fields, "type")?;
         match endpoint_type.as_str() {
-            "stable-key" => Ok(RelationEndpoint::StableKey {
-                kind: take_required(&mut fields, "kind")?,
-                id: take_required(&mut fields, "id")?,
-            }),
+            "stable-key" => Ok(RelationEndpoint::stable_key(
+                take_required::<A::Error>(&mut fields, "kind")?,
+                take_required::<A::Error>(&mut fields, "id")?,
+            )),
             "dbus-object" => Ok(RelationEndpoint::DBusObject {
                 bus: take_required(&mut fields, "bus")?,
                 service: take_required(&mut fields, "service")?,
@@ -273,6 +283,10 @@ pub trait Relations {
 }
 
 pub mod keys {
+    pub const OUTPUT_NAME: &str = "org.rsynapse.output.name";
+    pub const WORKSPACE_ID: &str = "org.rsynapse.workspace.id";
+    pub const WORKSPACE_NAME: &str = "org.rsynapse.workspace.name";
+    pub const WINDOW_ID: &str = "org.rsynapse.window.id";
     pub const APP_INSTANCE_ID: &str = "org.rsynapse.app-instance.id";
     pub const BAZEL_INVOCATION_ID: &str = "org.rsynapse.bazel.invocation.id";
     pub const NIRI_OUTPUT_NAME: &str = "org.rsynapse.niri.output.name";
@@ -333,6 +347,32 @@ mod tests {
         assert_eq!(
             endpoint,
             RelationEndpoint::stable_key("org.rsynapse.bazel.invocation.id", "inv-1")
+        );
+    }
+
+    #[test]
+    fn legacy_workspace_dictionaries_migrate_without_parsing_opaque_ids() {
+        let endpoint: RelationEndpoint = serde_json::from_str(
+            r#"{"type":"stable-key","kind":"org.rsynapse.niri.workspace.id","id":"007"}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            endpoint,
+            RelationEndpoint::StableKey {
+                kind: super::keys::WORKSPACE_ID.into(),
+                id: "007".into(),
+            }
+        );
+        let json = serde_json::to_value(&endpoint).unwrap();
+        assert_eq!(json["kind"], super::keys::WORKSPACE_ID);
+        assert_eq!(json["id"], "007");
+        let other = RelationEndpoint::stable_key("example.opaque", "DP-1:2/é");
+        assert_eq!(
+            other,
+            RelationEndpoint::StableKey {
+                kind: "example.opaque".into(),
+                id: "DP-1:2/é".into()
+            }
         );
     }
 

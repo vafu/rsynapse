@@ -19,9 +19,11 @@ than one top-level Cargo workspace.
   `shell/core`, the current combined shell app under `shell/app`, and the
   launcher workspace under `shell/launcher`.
 
-- `niri-dbus/`
-  A session D-Bus projection service for niri IPC state. It exposes outputs,
-  workspaces, windows, focus, and related events as D-Bus objects/properties.
+- `workspace-dbus/`
+  Compositor-neutral D-Bus projection of outputs, workspaces, windows and focus.
+  `api/` owns the independent `workspace-dbus-api` contract; `service/` implements
+  Niri and Umbriel backends with automatic session selection. Shell/steward
+  consume the API without compositor protocol dependencies.
 
 - `locus/`
   `locusd`, a small session D-Bus relation store for typed associations between
@@ -55,7 +57,8 @@ than one top-level Cargo workspace.
 - Keep reusable shell framework code in `shell/core`.
 - Keep concrete Rsynapse shell UI in `shell/app`, `shell/launcher`, or future
   surface crates under `shell/`.
-- Keep niri protocol projection in `niri-dbus`.
+- Keep compositor protocol projection in `workspace-dbus/service`; the public
+  contract belongs in `workspace-dbus/api`.
 - Keep cross-service relation storage in `locus`.
 - Keep project-management state and APIs in `projd`, not desktop integrations.
 - Keep service boundaries typed and D-Bus-first; do not rebuild filesystem IPC
@@ -67,7 +70,7 @@ Each project can be checked independently:
 
 ```sh
 cargo test --manifest-path locus/Cargo.toml
-cargo test --manifest-path niri-dbus/Cargo.toml
+cargo test --manifest-path workspace-dbus/Cargo.toml --workspace
 cargo test --manifest-path shell/Cargo.toml --workspace
 cargo test --manifest-path shell/launcher/Cargo.toml --workspace
 ```
@@ -96,7 +99,7 @@ See `install/README.md` for the exact paths and override knobs.
 The current session services and surfaces are:
 
 - `org.rsynapse.Engine` from the launcher daemon.
-- `org.rsynapse.Niri` from `niri-dbus`.
+- `org.rsynapse.Workspace` from `workspace-dbus`.
 - `org.rsynapse.Locus` from `locusd` (managed by `locusd.service`).
 - `org.rsynapse.Proj` from `projd` (managed by `projd.service`).
 - `rsynapse-shell` for the main shell bar/OSD process.

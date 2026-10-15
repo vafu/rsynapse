@@ -8,7 +8,7 @@ use shell_core::source::{self, Observable, rx::Observable as _};
 use zbus::{Connection, Proxy};
 
 use super::IconChoice;
-use crate::widgets::bar::niri::NiriWorkspace;
+use crate::widgets::bar::workspace::WorkspaceObject;
 use identity::{WorkspaceIconIdentity, icon_choice_from_record, icon_target};
 
 #[cfg(test)]
@@ -18,7 +18,7 @@ const WORKSPACE_ICON_OVERRIDE_RELATION: &str = "org.rsynapse.workspace.icon-over
 const PICKER_INPUT_METADATA: &str = "pick-icon-input";
 
 pub(in crate::widgets::bar) fn workspace_icon_override_source(
-    workspace: NiriWorkspace,
+    workspace: WorkspaceObject,
 ) -> Observable<Option<IconChoice>> {
     let identity = workspace
         .id()
@@ -32,7 +32,7 @@ pub(in crate::widgets::bar) fn workspace_icon_override_source(
 }
 
 pub(in crate::widgets::bar) fn set_workspace_icon_override(
-    workspace_id: u64,
+    workspace_id: String,
     workspace_name: String,
     icon: IconChoice,
     picker_input: String,
@@ -60,7 +60,7 @@ pub(in crate::widgets::bar) fn set_workspace_icon_override(
 }
 
 pub(in crate::widgets::bar) fn clear_workspace_icon_override(
-    workspace_id: u64,
+    workspace_id: String,
     workspace_name: String,
 ) {
     std::thread::spawn(move || {
@@ -186,7 +186,7 @@ async fn send_override(
 }
 
 async fn set_workspace_icon_override_async(
-    workspace_id: u64,
+    workspace_id: String,
     workspace_name: String,
     icon: IconChoice,
     picker_input: String,
@@ -224,7 +224,7 @@ async fn set_workspace_icon_override_async(
 }
 
 async fn clear_workspace_icon_override_async(
-    workspace_id: u64,
+    workspace_id: String,
     workspace_name: String,
 ) -> Result<(), String> {
     let connection = Connection::session()

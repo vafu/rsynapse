@@ -6,7 +6,7 @@ fn session(state: &str) -> Session {
         session_id: "a".to_owned(),
         agent: "codex".to_owned(),
         state: state.to_owned(),
-        window: Some(10),
+        window: Some("10".into()),
         project: "project".to_owned(),
         workspace: "workspace".to_owned(),
         ..Session::default()
@@ -49,14 +49,14 @@ fn state_durations_and_complete_busy_cycle_are_event_driven() {
 fn reaction_latency_excludes_locked_idle_time_in_available_metric() {
     let start = Instant::now();
     let mut t = AgentTracker::new();
-    t.focus(Some(20), true, start);
+    t.focus(Some("20".into()), true, start);
     t.update(snapshot(session("thinking")), start);
     t.drain();
     t.update(snapshot(session("idle")), start + Duration::from_secs(5));
     t.drain();
-    t.focus(Some(10), false, start + Duration::from_secs(8));
+    t.focus(Some("10".into()), false, start + Duration::from_secs(8));
     t.drain();
-    t.focus(Some(10), true, start + Duration::from_secs(18));
+    t.focus(Some("10".into()), true, start + Duration::from_secs(18));
     let read = t.drain();
     assert_eq!(read.get(&key("response_latency.seconds_sum")), Some(&13.0));
     assert_eq!(
@@ -64,7 +64,7 @@ fn reaction_latency_excludes_locked_idle_time_in_available_metric() {
         Some(&3.0)
     );
     assert_eq!(read.get(&key("response_latency.count")), Some(&1.0));
-    t.focus(Some(10), true, start + Duration::from_secs(20));
+    t.focus(Some("10".into()), true, start + Duration::from_secs(20));
     assert!(t.drain().is_empty());
 }
 
@@ -72,7 +72,7 @@ fn reaction_latency_excludes_locked_idle_time_in_available_metric() {
 fn already_watching_gets_zero_latency_but_startup_idle_is_not_a_completion() {
     let start = Instant::now();
     let mut t = AgentTracker::new();
-    t.focus(Some(10), true, start);
+    t.focus(Some("10".into()), true, start);
     t.update(snapshot(session("idle")), start);
     assert!(!t.drain().contains_key(&key("response_latency.count")));
     t.update(
@@ -90,15 +90,16 @@ fn already_watching_gets_zero_latency_but_startup_idle_is_not_a_completion() {
 fn selected_session_link_disambiguates_shared_terminal_windows() {
     let start = Instant::now();
     let mut t = AgentTracker::new();
-    t.focus(Some(10), true, start);
+    t.focus(Some("10".into()), true, start);
     let mut s = snapshot(session("thinking"));
-    s.active_links.insert(10, "another-session".to_owned());
+    s.active_links
+        .insert("10".into(), "another-session".to_owned());
     t.update(s.clone(), start);
     t.drain();
     s.sessions[0].state = "idle".to_owned();
     t.update(s.clone(), start + Duration::from_secs(1));
     assert!(!t.drain().contains_key(&key("response_latency.count")));
-    s.active_links.insert(10, "session-a".to_owned());
+    s.active_links.insert("10".into(), "session-a".to_owned());
     t.update(s, start + Duration::from_secs(3));
     assert_eq!(
         t.drain().get(&key("response_latency.seconds_sum")),
@@ -148,7 +149,7 @@ fn superseded_unread_response_is_cancelled_not_fake_read() {
 fn subagents_get_state_time_but_not_human_read_latency() {
     let start = Instant::now();
     let mut t = AgentTracker::new();
-    t.focus(Some(10), true, start);
+    t.focus(Some("10".into()), true, start);
     let mut s = session("thinking");
     s.subagent = true;
     t.update(snapshot(s.clone()), start);

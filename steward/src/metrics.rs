@@ -9,7 +9,7 @@ use locus::RelationRecord;
 use shell_rx_macros::combine_latest;
 use shell_source::{
     Observable,
-    dbus::{self, Bus, ObjectDescriptor, PropertyDescriptor},
+    dbus::{self, PropertyDescriptor},
     rx::Observable as _,
 };
 use zbus::zvariant::OwnedObjectPath;
@@ -19,8 +19,7 @@ use crate::{
     relations::{self, LocusClient},
 };
 
-const WORKSPACE_PATH_PREFIX: &str = "/org/rsynapse/Niri/Workspaces/workspace_";
-const WINDOW_PATH_PREFIX: &str = "/org/rsynapse/Niri/Windows/window_";
+use crate::workspace::{object as workspace_object, root_property};
 
 mod agents;
 
@@ -82,7 +81,7 @@ impl Metrics {
                         productivity.focus(state.clone(), crate::productivity::tracker_now());
                         publish_pending(productivity.publish(&self.locus).await?, &batch_sender);
                         publish_pending(workdays.observe(&state, &self.locus).await?, &batch_sender);
-                        agents.focus(state.window_id, !state.locked && !state.idle, Instant::now());
+                        agents.focus(state.window_id.clone(), !state.locked && !state.idle, Instant::now());
                         tracker.observe(state, Instant::now());
                         publish_events(&mut tracker, &batch_sender);
                         publish_pending(agents.drain(), &batch_sender);
@@ -213,23 +212,32 @@ mod lock_tests {
         lock.next(true);
         assert!(stream.next().await.unwrap().unwrap().locked);
         focus.next(FocusState {
-            workspace_id: Some(10),
+            workspace_id: Some("10".into()),
             ..FocusState::default()
         });
         lock.next(false);
-        assert_eq!(stream.next().await.unwrap().unwrap().workspace_id, Some(10));
+        assert_eq!(
+            stream
+                .next()
+                .await
+                .unwrap()
+                .unwrap()
+                .workspace_id
+                .as_deref(),
+            Some("10")
+        );
         lock.next(true);
         let cleared = stream.next().await.unwrap().unwrap();
         assert!(cleared.locked);
         assert!(cleared.workspace_id.is_none());
         focus.next(FocusState {
-            workspace_id: Some(11),
+            workspace_id: Some("11".into()),
             ..FocusState::default()
         });
         lock.next(false);
         let resumed = stream.next().await.unwrap().unwrap();
         assert!(!resumed.locked);
-        assert_eq!(resumed.workspace_id, Some(11));
+        assert_eq!(resumed.workspace_id.as_deref(), Some("11"));
     }
 
     #[tokio::test]
@@ -247,32 +255,41 @@ mod lock_tests {
         idle.next(false);
         stream.next().await;
         focus.next(FocusState {
-            workspace_id: Some(10),
+            workspace_id: Some("10".into()),
             ..FocusState::default()
         });
-        assert_eq!(stream.next().await.unwrap().unwrap().workspace_id, Some(10));
+        assert_eq!(
+            stream
+                .next()
+                .await
+                .unwrap()
+                .unwrap()
+                .workspace_id
+                .as_deref(),
+            Some("10")
+        );
         idle.next(true);
         let paused = stream.next().await.unwrap().unwrap();
         assert!(paused.idle);
-        assert_eq!(paused.workspace_id, Some(10));
+        assert_eq!(paused.workspace_id.as_deref(), Some("10"));
         lock.next(true);
         assert!(stream.next().await.unwrap().unwrap().locked);
         lock.next(false);
         let still_idle = stream.next().await.unwrap().unwrap();
         assert!(still_idle.idle);
         assert!(!still_idle.locked);
-        assert_eq!(still_idle.workspace_id, Some(10));
+        assert_eq!(still_idle.workspace_id.as_deref(), Some("10"));
         focus.next(FocusState {
-            workspace_id: Some(11),
+            workspace_id: Some("11".into()),
             ..FocusState::default()
         });
         let moved_while_idle = stream.next().await.unwrap().unwrap();
         assert!(moved_while_idle.idle);
-        assert_eq!(moved_while_idle.workspace_id, Some(11));
+        assert_eq!(moved_while_idle.workspace_id.as_deref(), Some("11"));
         idle.next(false);
         let resumed = stream.next().await.unwrap().unwrap();
         assert!(!resumed.idle);
-        assert_eq!(resumed.workspace_id, Some(11));
+        assert_eq!(resumed.workspace_id.as_deref(), Some("11"));
     }
 }
 
@@ -281,15 +298,16 @@ mod lock_tests {
 /// daemon runs, so workspace switches decode from signals with no re-reads.
 fn focus_state(locus: &LocusClient) -> Observable<FocusState> {
     let selection = combine_latest!(
-        focused_workspace(),
+        crate::workspace::focused_workspace_id(),
+        crate::workspace::focused_window_id(),
         focused_window(),
         focused_output()
-        => |(workspace, window, output)| (workspace, window, output),
+        => |(workspace, window_id, window, output)| (workspace, window_id, window, output),
     )
     .distinct_until_changed()
     .box_it();
     let locus = locus.clone();
-    shell_source::switch_map(selection, move |(workspace, window, output)| {
+    shell_source::switch_map(selection, move |(workspace, window_id, window, output)| {
         let workspace = workspace.clone();
         let window = window.clone();
         // Rebuilt per switch on purpose: shared hubs dedupe by descriptor
@@ -299,19 +317,19 @@ fn focus_state(locus: &LocusClient) -> Observable<FocusState> {
         let agents = relations::records(locus.clone(), relations::WINDOW_AGENT_SESSION);
         let names = relations::records(locus.clone(), relations::WORKSPACE_NAME);
         combine_latest!(
-            resolve_app(window.clone(), instances, agents),
+            resolve_app(window.clone(), window_id.clone(), instances, agents),
             resolve_output_name(output.clone()),
-            project_for(projects, workspace_id(&workspace)),
-            project_id_for(relations::records(locus.clone(),relations::WORKSPACE_PROJECT), workspace_id(&workspace)),
-            explicit_name_for(names, workspace_id(&workspace))
+            project_for(projects, workspace.clone()),
+            project_id_for(relations::records(locus.clone(),relations::WORKSPACE_PROJECT), workspace.clone()),
+            explicit_name_for(names, workspace.clone())
             => move |(app, output_name, project, project_id, explicit_name)| FocusState {
                 locked: false,
                 idle: false,
-                workspace_id: workspace_id(&workspace),
+                workspace_id: workspace.clone(),
                 // Explicit locus name wins; project display name covers
                 // project-native workspaces; otherwise id-only.
                 workspace_name: explicit_name.or(project.clone()),
-                window_id: window_id(&window),
+                window_id: window_id.clone(),
                 app_id: app,
                 project,
                 project_id,
@@ -327,13 +345,12 @@ fn focus_state(locus: &LocusClient) -> Observable<FocusState> {
 
 fn project_id_for(
     records: Observable<Vec<RelationRecord>>,
-    workspace_id: Option<u64>,
+    workspace_id: Option<String>,
 ) -> Observable<Option<String>> {
     let Some(id) = workspace_id else {
         return shell_source::once(None);
     };
-    let subject =
-        locus::RelationEndpoint::stable_key(locus::keys::NIRI_WORKSPACE_ID, id.to_string());
+    let subject = locus::RelationEndpoint::stable_key(locus::keys::WORKSPACE_ID, id);
     records
         .map(move |rows| {
             rows.into_iter()
@@ -342,10 +359,6 @@ fn project_id_for(
         })
         .distinct_until_changed()
         .box_it()
-}
-
-fn focused_workspace() -> Observable<Option<OwnedObjectPath>> {
-    dbus::optional_array_property::<OwnedObjectPath>(root_property("FocusedWorkspace"))
 }
 
 fn focused_window() -> Observable<Option<OwnedObjectPath>> {
@@ -360,16 +373,17 @@ fn focused_output() -> Observable<Option<OwnedObjectPath>> {
 /// then hook app-instance name (neovim, …), then canonicalized niri AppId.
 fn resolve_app(
     window: Option<OwnedObjectPath>,
+    window_id: Option<String>,
     instances: Observable<Vec<RelationRecord>>,
     agents: Observable<Vec<RelationRecord>>,
 ) -> Observable<Option<String>> {
     let Some(path) = window else {
         return shell_source::once(None);
     };
-    let hook = hook_app_name(instances, window_id(&Some(path.clone())));
-    let agent = agents::agent_app(agents, window_id(&Some(path.clone())));
+    let hook = hook_app_name(instances, window_id.clone());
+    let agent = agents::agent_app(agents, window_id);
     let app_id = dbus::optional_array_property::<String>(PropertyDescriptor::new(
-        niri_object(path.as_str(), niri_dbus::WINDOW_INTERFACE),
+        workspace_object(path.as_str(), workspace_dbus_api::WINDOW_INTERFACE),
         "AppId",
     ))
     .map(|app| app.map(|app| crate::focus::canonical_app_id(&app)));
@@ -389,7 +403,7 @@ fn resolve_output_name(output: Option<OwnedObjectPath>) -> Observable<Option<Str
     };
     dbus::property_or(
         PropertyDescriptor::new(
-            niri_object(path.as_str(), niri_dbus::OUTPUT_INTERFACE),
+            workspace_object(path.as_str(), workspace_dbus_api::OUTPUT_INTERFACE),
             "Name",
         ),
         String::new(),
@@ -401,13 +415,12 @@ fn resolve_output_name(output: Option<OwnedObjectPath>) -> Observable<Option<Str
 
 fn project_for(
     records: Observable<Vec<RelationRecord>>,
-    workspace_id: Option<u64>,
+    workspace_id: Option<String>,
 ) -> Observable<Option<String>> {
     let Some(id) = workspace_id else {
         return shell_source::once(None);
     };
-    let subject =
-        locus::RelationEndpoint::stable_key(locus::keys::NIRI_WORKSPACE_ID, id.to_string());
+    let subject = locus::RelationEndpoint::stable_key(locus::keys::WORKSPACE_ID, id);
     records
         .map(move |records| {
             records.into_iter().find_map(|record| {
@@ -423,12 +436,12 @@ fn project_for(
 
 fn hook_app_name(
     records: Observable<Vec<RelationRecord>>,
-    window_id: Option<u64>,
+    window_id: Option<String>,
 ) -> Observable<Option<String>> {
     let Some(id) = window_id else {
         return shell_source::once(None);
     };
-    let subject = locus::RelationEndpoint::stable_key(locus::keys::NIRI_WINDOW_ID, id.to_string());
+    let subject = locus::RelationEndpoint::stable_key(locus::keys::WINDOW_ID, id);
     records
         .map(move |records| {
             records.into_iter().find_map(|record| {
@@ -449,13 +462,12 @@ fn hook_app_name(
 /// Explicit workspace name from the namer-owned relation, if any.
 fn explicit_name_for(
     records: Observable<Vec<RelationRecord>>,
-    workspace_id: Option<u64>,
+    workspace_id: Option<String>,
 ) -> Observable<Option<String>> {
     let Some(id) = workspace_id else {
         return shell_source::once(None);
     };
-    let subject =
-        locus::RelationEndpoint::stable_key(locus::keys::NIRI_WORKSPACE_ID, id.to_string());
+    let subject = locus::RelationEndpoint::stable_key(locus::keys::WORKSPACE_ID, id);
     records
         .map(move |records| {
             records.into_iter().find_map(|record| {
@@ -491,34 +503,6 @@ fn project_name(record: &RelationRecord) -> Option<String> {
                     .map(str::to_owned)
             })
         })
-}
-
-fn root_property(name: &'static str) -> PropertyDescriptor {
-    PropertyDescriptor::new(
-        niri_object(niri_dbus::ROOT_PATH, niri_dbus::ROOT_INTERFACE),
-        name,
-    )
-}
-
-fn niri_object(path: &str, interface: &str) -> ObjectDescriptor {
-    ObjectDescriptor::parse(Bus::Session, niri_dbus::BUS_NAME, path, interface)
-        .expect("niri descriptor should be valid")
-}
-
-fn workspace_id(path: &Option<OwnedObjectPath>) -> Option<u64> {
-    path.as_ref()?
-        .as_str()
-        .strip_prefix(WORKSPACE_PATH_PREFIX)?
-        .parse()
-        .ok()
-}
-
-fn window_id(path: &Option<OwnedObjectPath>) -> Option<u64> {
-    path.as_ref()?
-        .as_str()
-        .strip_prefix(WINDOW_PATH_PREFIX)?
-        .parse()
-        .ok()
 }
 
 fn publish_events(tracker: &mut Tracker, batch_sender: &mpsc::Sender<Vec<(String, f64, u64)>>) {

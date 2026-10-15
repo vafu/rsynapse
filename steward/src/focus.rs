@@ -4,9 +4,9 @@ use std::{collections::HashMap, time::Instant};
 pub struct FocusState {
     pub locked: bool,
     pub idle: bool,
-    pub workspace_id: Option<u64>,
+    pub workspace_id: Option<String>,
     pub workspace_name: Option<String>,
-    pub window_id: Option<u64>,
+    pub window_id: Option<String>,
     pub app_id: Option<String>,
     pub project: Option<String>,
     pub project_id: Option<String>,
@@ -64,14 +64,14 @@ impl Tracker {
             for (dimension, before, after, forced) in [
                 (
                     "workspace",
-                    self.current.workspace_id.map(|id| id.to_string()),
-                    state.workspace_id.map(|id| id.to_string()),
+                    self.current.workspace_id.clone(),
+                    state.workspace_id.clone(),
                     false,
                 ),
                 (
                     "window",
-                    self.current.window_id.map(|id| id.to_string()),
-                    state.window_id.map(|id| id.to_string()),
+                    self.current.window_id.clone(),
+                    state.window_id.clone(),
                     false,
                 ),
                 (
@@ -108,21 +108,13 @@ impl Tracker {
             }
         }
         for (dimension, value, forced) in [
-            (
-                "workspace",
-                state.workspace_id.map(|id| id.to_string()),
-                workspace_changed,
-            ),
+            ("workspace", state.workspace_id.clone(), workspace_changed),
             (
                 "workspace_name",
                 state.workspace_name.clone(),
                 workspace_changed,
             ),
-            (
-                "window",
-                state.window_id.map(|id| id.to_string()),
-                window_changed,
-            ),
+            ("window", state.window_id.clone(), window_changed),
             ("app", state.app_id.clone(), window_changed),
             ("project", state.project.clone(), workspace_changed),
             ("output", state.output.clone(), false),
@@ -364,9 +356,9 @@ mod tests {
     use std::time::Duration;
     fn state(ws: u64, window: u64, app: &str) -> FocusState {
         FocusState {
-            workspace_id: Some(ws),
+            workspace_id: Some(ws.to_string()),
             workspace_name: Some(format!("ws-{ws}")),
-            window_id: Some(window),
+            window_id: Some(window.to_string()),
             app_id: Some(app.to_owned()),
             project: Some(format!("project-{ws}")),
             project_id: Some(format!("p-{ws}")),

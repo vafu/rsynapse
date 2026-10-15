@@ -4,8 +4,8 @@ use shell_rx_macros::combine_latest;
 use crate::widgets::nerd_icon::NerdIcon;
 
 use super::{
-    niri::{self, NiriWorkspace},
     project::{ProjectDetails, project_details},
+    workspace::{WorkspaceObject, current_workspace},
 };
 
 mod git;
@@ -25,7 +25,7 @@ use workspace::workspace_display_name;
 /// known, plus project details only when the workspace has a project.
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(super) struct SelectedWorkspaceView {
-    pub(super) workspace_id: Option<u64>,
+    pub(super) workspace_id: Option<String>,
     pub(super) visible: bool,
     pub(super) name: Option<String>,
     pub(super) project: Option<ProjectView>,
@@ -46,18 +46,22 @@ pub(super) struct ProjectView {
 pub(super) fn selected_project_status(
     output_name: Option<String>,
 ) -> Observable<SelectedWorkspaceView> {
-    source::switch_map(niri::current_workspace(output_name), |workspace| {
+    source::switch_map(current_workspace(output_name), |workspace| {
         let Some(selected) = workspace else {
             return source::once(SelectedWorkspaceView::default());
         };
-        let workspace_id = selected.path_id();
+        let names = source::switch_map(selected.id(), |id| {
+            workspace_display_name(Some(id.clone()))
+                .map(move |name| (id.clone(), name))
+                .box_it()
+        });
         combine_latest!(
-            workspace_display_name(selected.path_id()),
+            names,
             workspace_project_status(selected)
-            => move |(name, project)| {
+            => move |((id, name), project)| {
                 let project = project.visible.then_some(project);
                 SelectedWorkspaceView {
-                    workspace_id,
+                    workspace_id: Some(id),
                     visible: true,
                     name,
                     project,
@@ -71,7 +75,7 @@ pub(super) fn selected_project_status(
     .box_it()
 }
 
-fn workspace_project_status(workspace: NiriWorkspace) -> Observable<ProjectView> {
+fn workspace_project_status(workspace: WorkspaceObject) -> Observable<ProjectView> {
     source::switch_map(project_details(workspace), |project| {
         match project.path.clone() {
             // Paint the locus-derived view immediately; git metadata

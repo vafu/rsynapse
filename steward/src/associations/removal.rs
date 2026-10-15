@@ -6,11 +6,11 @@ use std::collections::HashSet;
 async fn clear(locus: &LocusClient, record: RelationRecord) -> anyhow::Result<()> {
     if record.relation == relations::WORKSPACE_PROJECT {
         if let RelationEndpoint::StableKey { kind, id } = &record.subject {
-            if kind == locus::keys::NIRI_WORKSPACE_ID {
+            if kind == locus::keys::WORKSPACE_ID {
                 Bindings {
                     locus: locus.clone(),
                 }
-                .unassign_workspace_project(id.parse()?)
+                .unassign_workspace_project(id.clone())
                 .await?;
                 return Ok(());
             }

@@ -1,17 +1,17 @@
 use shell_core::source::Source;
 
-use crate::niri::NiriWindow;
+use crate::workspace::WorkspaceWindow;
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(crate) struct WindowTile {
-    id: u64,
+    id: workspace_dbus_api::Id,
     title: Option<String>,
     app_id: Option<String>,
     focused: bool,
 }
 
 impl WindowTile {
-    pub(crate) fn source(window: NiriWindow) -> Source<Self> {
+    pub(crate) fn source(window: WorkspaceWindow) -> Source<Self> {
         window
             .id()
             .combine_latest(window.title(), |id, title| (id, title))
@@ -22,7 +22,7 @@ impl WindowTile {
     }
 
     pub(crate) fn from_dbus(
-        id: u64,
+        id: workspace_dbus_api::Id,
         title: Option<String>,
         app_id: Option<String>,
         focused: bool,
@@ -65,7 +65,7 @@ mod tests {
 
     #[test]
     fn uses_app_id_as_icon_name_and_title_fallback() {
-        let tile = WindowTile::from_dbus(9, None, Some("firefox".to_owned()), false);
+        let tile = WindowTile::from_dbus("9".into(), None, Some("firefox".to_owned()), false);
 
         assert_eq!(tile.title(), "firefox");
         assert_eq!(tile.icon_name(), "firefox");
@@ -73,7 +73,8 @@ mod tests {
 
     #[test]
     fn ignores_empty_optional_dbus_values() {
-        let tile = WindowTile::from_dbus(9, Some("".to_owned()), Some("".to_owned()), false);
+        let tile =
+            WindowTile::from_dbus("9".into(), Some("".to_owned()), Some("".to_owned()), false);
 
         assert_eq!(tile.title(), "Window");
         assert_eq!(tile.icon_name(), "application-x-executable");

@@ -1848,6 +1848,7 @@ dependencies = [
  "tracing",
  "tracing-chrome",
  "tracing-subscriber",
+ "workspace-dbus-api",
  "zbus",
  "zvariant",
 ]
@@ -1869,6 +1870,7 @@ dependencies = [
  "relm4",
  "shell-core",
  "shell-macros",
+ "workspace-dbus-api",
  "zbus",
 ]
 
@@ -2870,6 +2872,13 @@ name = "wit-bindgen"
 version = "0.57.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1ebf944e87a7c253233ad6766e082e3cd714b5d03812acc24c318f549614536e"
+
+[[package]]
+name = "workspace-dbus-api"
+version = "0.1.0"
+dependencies = [
+ "zbus",
+]
 
 [[package]]
 name = "xdg-home"

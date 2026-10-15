@@ -105,6 +105,12 @@ D-Bus services -> zbus streams -> shell_core::source::Observable<T> -> Relm4
 Framework crates must stay generic. Product behavior, widget view models,
 styling, request commands, and launcher policy belong in consumer crates.
 
+The bar consumes the independent `workspace-dbus-api` contract at
+`org.rsynapse.Workspace`. Workspace/window IDs are opaque strings read from
+properties; object paths are addresses, never parsed as IDs. Niri/Umbriel
+protocols and normalization stay in the projection service. Steward owns Locus
+association cleanup; project/goal data stay in projd.
+
 ## Common Commands
 
 From this directory:

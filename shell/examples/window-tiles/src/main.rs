@@ -1,7 +1,7 @@
 mod model;
-mod niri;
 mod row;
 mod window;
+mod workspace;
 
 use shell_core::ShellApp;
 

@@ -4,14 +4,18 @@ use std::{collections::HashMap, path::Path};
 
 pub(super) fn attribute(
     mut sessions: Vec<Session>,
-    windows: &HashMap<u64, u64>,
+    windows: &HashMap<String, String>,
     projects: &[RelationRecord],
     names: &[RelationRecord],
 ) -> Vec<Session> {
     for session in &mut sessions {
-        let workspace = session.window.and_then(|id| windows.get(&id)).copied();
-        session.workspace_id = workspace;
-        let linked = workspace.and_then(|id| {
+        let workspace = session
+            .window
+            .as_ref()
+            .and_then(|id| windows.get(id))
+            .cloned();
+        session.workspace_id = workspace.clone();
+        let linked = workspace.as_deref().and_then(|id| {
             projects
                 .iter()
                 .find(|r| workspace_id(&r.subject) == Some(id))
@@ -31,6 +35,7 @@ pub(super) fn attribute(
             .and_then(project_name)
             .unwrap_or_else(|| "unassigned".to_owned());
         session.workspace = workspace
+            .as_deref()
             .and_then(|id| names.iter().find(|r| workspace_id(&r.subject) == Some(id)))
             .and_then(|r| match &r.target {
                 RelationEndpoint::StableKey { id, .. } => Some(id.clone()),
@@ -47,7 +52,7 @@ pub(super) fn attribute(
             .map(|s| {
                 (
                     s.session_id.clone(),
-                    (s.project.clone(), s.workspace.clone(), s.window),
+                    (s.project.clone(), s.workspace.clone(), s.window.clone()),
                 )
             })
             .collect();
@@ -62,7 +67,7 @@ pub(super) fn attribute(
                     changed = true;
                 }
                 if s.window.is_none() && window.is_some() {
-                    s.window = *window;
+                    s.window = window.clone();
                     s.workspace = workspace.clone();
                     changed = true;
                 }
@@ -75,11 +80,9 @@ pub(super) fn attribute(
     sessions
 }
 
-fn workspace_id(endpoint: &RelationEndpoint) -> Option<u64> {
+fn workspace_id(endpoint: &RelationEndpoint) -> Option<&str> {
     match endpoint {
-        RelationEndpoint::StableKey { kind, id } if kind == locus::keys::NIRI_WORKSPACE_ID => {
-            id.parse().ok()
-        }
+        RelationEndpoint::StableKey { kind, id } if kind == locus::keys::WORKSPACE_ID => Some(id),
         _ => None,
     }
 }
@@ -111,7 +114,7 @@ mod tests {
     #[test]
     fn most_specific_project_path_and_parent_inheritance() {
         let record = |id, path: &str, name: &str| RelationRecord {
-            subject: RelationEndpoint::stable_key(locus::keys::NIRI_WORKSPACE_ID, id),
+            subject: RelationEndpoint::stable_key(locus::keys::WORKSPACE_ID, id),
             relation: "org.rsynapse.workspace.project".to_owned(),
             target: RelationEndpoint::stable_key(locus::keys::PROJECT_PATH, path),
             metadata: HashMap::from([("name".to_owned(), name.to_owned())]),
@@ -126,7 +129,7 @@ mod tests {
             Session {
                 session_id: "parent".to_owned(),
                 cwd: "/repo/nested/src".to_owned(),
-                window: Some(10),
+                window: Some("10".into()),
                 ..Session::default()
             },
             Session {
@@ -139,10 +142,15 @@ mod tests {
                 ..Session::default()
             },
         ];
-        let result = attribute(sessions, &HashMap::from([(10, 2)]), &projects, &[]);
+        let result = attribute(
+            sessions,
+            &HashMap::from([("10".into(), "2".into())]),
+            &projects,
+            &[],
+        );
         assert_eq!(result[0].project, "nested");
         assert_eq!(result[1].project, "nested");
-        assert_eq!(result[1].window, Some(10));
+        assert_eq!(result[1].window.as_deref(), Some("10"));
         assert_eq!(result[2].project, "unassigned");
     }
 }

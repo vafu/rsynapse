@@ -1,0 +1,4 @@
+[D-BUS Service]
+Name=org.rsynapse.Workspace
+Exec=@LOCAL_BIN@/workspace-dbus --backend auto
+SystemdService=workspace-dbus.service

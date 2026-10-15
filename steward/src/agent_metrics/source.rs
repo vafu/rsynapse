@@ -27,7 +27,7 @@ impl ObjectModel for AgentObject {
 #[derive(Clone, Debug, PartialEq)]
 struct Window(OwnedObjectPath);
 impl ObjectModel for Window {
-    const INTERFACE: &'static str = niri_dbus::WINDOW_INTERFACE;
+    const INTERFACE: &'static str = workspace_dbus_api::WINDOW_INTERFACE;
     fn at(path: OwnedObjectPath) -> Self {
         Self(path)
     }
@@ -40,8 +40,12 @@ pub(crate) fn snapshots(locus: &LocusClient) -> Observable<Snapshot> {
     );
     let sessions = shell_source::switch_map_list(sessions, session_values);
     let windows = dbus::models::<Window>(
-        ObjectManagerDescriptor::parse(Bus::Session, niri_dbus::BUS_NAME, niri_dbus::ROOT_PATH)
-            .expect("niri descriptor"),
+        ObjectManagerDescriptor::parse(
+            Bus::Session,
+            workspace_dbus_api::BUS_NAME,
+            workspace_dbus_api::ROOT_PATH,
+        )
+        .expect("niri descriptor"),
     );
     let windows = shell_source::switch_map_list(windows, window_values);
     combine_latest!(
@@ -77,7 +81,7 @@ fn session_values(object: AgentObject) -> Observable<Session> {
             key: object.0.as_str().to_owned(), session_id,
             agent: if agent.trim().is_empty() { object.0.as_str().split('/').nth(5).unwrap_or("unknown").to_owned() } else { crate::focus::canonical_app_id(agent.trim()) },
             state: if state.trim().is_empty() { "unknown".to_owned() } else { state },
-            cwd, window: window.parse().ok(), parent, subagent, model, effort,
+            cwd, window: (!window.is_empty()).then_some(window), parent, subagent, model, effort,
             ..Session::default()
         },
     ).distinct_until_changed().box_it()
@@ -149,43 +153,30 @@ pub(crate) fn usage_events() -> Observable<UsageEvent> {
     })
 }
 
-fn window_values(window: Window) -> Observable<(u64, Option<u64>)> {
-    let id = window
-        .0
-        .as_str()
-        .rsplit("window_")
-        .next()
-        .and_then(|id| id.parse().ok())
-        .unwrap_or(0);
+fn window_values(window: Window) -> Observable<(String, Option<String>)> {
     let descriptor = ObjectDescriptor::parse(
         Bus::Session,
-        niri_dbus::BUS_NAME,
+        workspace_dbus_api::BUS_NAME,
         window.0.as_str(),
-        niri_dbus::WINDOW_INTERFACE,
+        workspace_dbus_api::WINDOW_INTERFACE,
     )
     .expect("window descriptor");
-    dbus::optional_array_property::<OwnedObjectPath>(PropertyDescriptor::new(
-        descriptor,
-        "Workspace",
-    ))
-    .map(move |path| {
-        (
-            id,
-            path.and_then(|p| p.as_str().rsplit("workspace_").next()?.parse().ok()),
-        )
-    })
-    .distinct_until_changed()
-    .box_it()
+    combine_latest!(
+        dbus::property_or(PropertyDescriptor::new(descriptor.clone(), "Id"), String::new()),
+        shell_source::switch_map(dbus::optional_array_property::<OwnedObjectPath>(PropertyDescriptor::new(descriptor, "Workspace")),
+            |path| crate::workspace::id(path, workspace_dbus_api::WORKSPACE_INTERFACE))
+        => |(id, workspace)| (id, workspace),
+    ).distinct_until_changed().box_it()
 }
 
-fn active_links(records: &[RelationRecord]) -> HashMap<u64, String> {
+fn active_links(records: &[RelationRecord]) -> HashMap<String, String> {
     records
         .iter()
         .filter_map(|r| {
             let locus::RelationEndpoint::StableKey { kind, id } = &r.subject else {
                 return None;
             };
-            if kind != locus::keys::NIRI_WINDOW_ID {
+            if kind != locus::keys::WINDOW_ID {
                 return None;
             }
             let path = r
@@ -201,7 +192,7 @@ fn active_links(records: &[RelationRecord]) -> HashMap<u64, String> {
                     } if service == AGENT_BUS && interface == AGENT_INTERFACE => Some(path.clone()),
                     _ => None,
                 })?;
-            Some((id.parse().ok()?, path))
+            Some((id.clone(), path))
         })
         .collect()
 }

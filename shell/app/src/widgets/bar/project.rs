@@ -5,7 +5,7 @@ use locus::{RelationEndpoint, RelationRecord, keys};
 use shell_core::source::{self, Observable, rx::Observable as _};
 use zbus::{Connection, Proxy};
 
-use super::niri::NiriWorkspace;
+use super::workspace::WorkspaceObject;
 
 const WORKSPACE_PROJECT_RELATION: &str = "org.rsynapse.workspace.project";
 mod projd;
@@ -23,7 +23,7 @@ pub(in crate::widgets::bar) struct ProjectDetails {
 }
 
 pub(in crate::widgets::bar) fn project_details(
-    workspace: NiriWorkspace,
+    workspace: WorkspaceObject,
 ) -> Observable<ProjectDetails> {
     projd::resolve(
         source::switch_map(workspace.id().map(workspace_subject).box_it(), |subject| {
@@ -201,8 +201,8 @@ fn metadata_value(metadata: &HashMap<String, String>, keys: &[&str]) -> Option<S
         .find_map(|key| non_empty(metadata.get(*key).cloned()))
 }
 
-fn workspace_subject(id: u64) -> RelationEndpoint {
-    RelationEndpoint::stable_key(keys::NIRI_WORKSPACE_ID, id.to_string())
+fn workspace_subject(id: String) -> RelationEndpoint {
+    RelationEndpoint::stable_key(keys::WORKSPACE_ID, id)
 }
 
 fn non_empty(value: Option<String>) -> Option<String> {

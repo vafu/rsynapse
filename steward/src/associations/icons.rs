@@ -22,19 +22,19 @@ pub(super) async fn migrate(locus: &LocusClient) -> anyhow::Result<()> {
         let mut subjects = Vec::new();
         // Old pickers keyed named workspaces by their compositor name.
         if let RelationEndpoint::StableKey { kind, id } = &binding.subject {
-            if kind == locus::keys::NIRI_WORKSPACE_ID {
-                let path = format!("/org/rsynapse/Niri/Workspaces/workspace_{id}");
+            if kind == locus::keys::WORKSPACE_ID {
+                let path = workspace_dbus_api::workspace_path(id);
                 if let Ok(proxy) = zbus::Proxy::new(
                     &connection,
-                    niri_dbus::BUS_NAME,
+                    workspace_dbus_api::BUS_NAME,
                     path.as_str(),
-                    "org.rsynapse.Niri1.Workspace",
+                    workspace_dbus_api::WORKSPACE_INTERFACE,
                 )
                 .await
                 {
                     if let Ok(names) = proxy.get_property::<Vec<String>>("Name").await {
                         subjects.extend(names.into_iter().map(|name| {
-                            RelationEndpoint::stable_key(locus::keys::NIRI_WORKSPACE_NAME, name)
+                            RelationEndpoint::stable_key(locus::keys::WORKSPACE_NAME, name)
                         }));
                     }
                 }
@@ -43,7 +43,7 @@ pub(super) async fn migrate(locus: &LocusClient) -> anyhow::Result<()> {
         if let Some(name) = names.iter().find(|r| r.subject == binding.subject) {
             if let RelationEndpoint::StableKey { id, .. } = &name.target {
                 subjects.push(RelationEndpoint::stable_key(
-                    locus::keys::NIRI_WORKSPACE_NAME,
+                    locus::keys::WORKSPACE_NAME,
                     id.clone(),
                 ));
             }

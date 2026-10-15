@@ -39,8 +39,8 @@ framework-boundary work.
   custom provider task runtime, a filesystem watch transport, or a provider
   facade in this repo.
 - D-Bus service implementation belongs in sibling service projects such as
-  `../niri-dbus`, `../locus`, or adjacent AgentDBus-style services. Shell code
-  only consumes their public surfaces.
+  `../workspace-dbus/service`, `../locus`, or adjacent AgentDBus-style services.
+  Compositor-state consumers depend on `workspace-dbus-api`, never a backend.
 
 ## Observable Source Contract
 

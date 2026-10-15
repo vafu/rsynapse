@@ -97,6 +97,10 @@ Framework crates under `core/` own:
 
 ### 4. D-Bus Source Integration
 
+- Completed: shell compositor state uses the independent `workspace-dbus-api`
+  contract and opaque string IDs, with no compositor protocol dependency or
+  path-to-ID decoding. The window-tiles example targets the same API.
+
 - Use shell-core Observable primitives as the public reactive transport. D-Bus
   clients should be built on `zbus` and hidden behind `shell-core::source`
   primitives or consumer-owned typed helpers.

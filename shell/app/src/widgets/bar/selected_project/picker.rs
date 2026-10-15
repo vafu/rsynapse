@@ -129,7 +129,7 @@ impl ProjectPicker {
         add.connect_clicked(move |_| {
             if let Some(s) = weak.upgrade() {
                 let view = s.target.borrow().clone();
-                if let Some(workspace) = view.workspace_id {
+                if let Some(workspace) = view.workspace_id.clone() {
                     s.chooser_popover.popdown();
                     if let Some(p) = close.upgrade() {
                         p.popdown();
@@ -171,7 +171,7 @@ impl ProjectPicker {
         gtk::glib::idle_add_local_once(move || popup.popup());
     }
     pub(super) fn unassign_current(&self) {
-        let workspace = self.state.target.borrow().workspace_id;
+        let workspace = self.state.target.borrow().workspace_id.clone();
         if let Some(workspace) = workspace {
             self.state.actions.run(Action::Unassign(workspace));
         }
@@ -185,7 +185,7 @@ impl PickerState {
             .project
             .as_ref()
             .and_then(|p| p.project_id.clone());
-        let workspace = self.target.borrow().workspace_id;
+        let workspace = self.target.borrow().workspace_id.clone();
         let current = workspace.and_then(|id| {
             self.catalog
                 .borrow()

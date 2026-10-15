@@ -8,6 +8,7 @@ mod namer;
 mod productivity;
 mod relations;
 mod workdays;
+mod workspace;
 
 use crate::relations::LocusClient;
 use git_status::GitStatus;

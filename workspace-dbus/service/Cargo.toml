@@ -1,0 +1,22 @@
+[package]
+name = "workspace-dbus"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Compositor-independent D-Bus workspace projection service"
+publish = false
+
+[dependencies]
+anyhow = "1"
+niri-ipc = "=26.4.0"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1.52.3", features = ["io-util", "macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+workspace-dbus-api = { path = "../api" }
+zbus.workspace = true
+
+[dev-dependencies]
+futures-util = "0.3"
+tempfile = "3"

@@ -43,13 +43,14 @@ fn finds_agent_session_by_window_id_snapshot() {
         "42",
     )];
 
-    let session = find_agent_session_by_window_id(&objects, 42).expect("session");
+    let session = find_agent_session_by_window_id(&objects, "42").expect("session");
 
     assert_eq!(
         session.path.as_str(),
         "/io/github/AgentDBus/sessions/codex/session"
     );
-    assert!(find_agent_session_by_window_id(&objects, 41).is_none());
+    assert!(find_agent_session_by_window_id(&objects, "41").is_none());
+    assert!(find_agent_session_by_window_id(&objects, "042").is_none());
 }
 
 #[test]

@@ -1040,31 +1040,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "niri-dbus"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "futures-util",
- "locus",
- "niri-ipc",
- "serde_json",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "zbus",
-]
-
-[[package]]
-name = "niri-ipc"
-version = "26.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a4adbddf4037ce047854d36a60b5bf80a7990b8db2f0a0b9ede7534b0bae09a"
-dependencies = [
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "nix"
 version = "0.29.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1344,7 +1319,6 @@ dependencies = [
  "futures-util",
  "graphyne",
  "locus",
- "niri-dbus",
  "reqwest",
  "rsynapse-projd-model",
  "serde",
@@ -1353,6 +1327,7 @@ dependencies = [
  "shell-source",
  "tempfile",
  "tokio",
+ "workspace-dbus-api",
  "zbus",
 ]
 
@@ -2183,6 +2158,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "23b97319f7b8343df12cc98938e5c3eb436064524c8d2b4e30a1d3a36eecdf81"
 dependencies = [
  "memchr",
+]
+
+[[package]]
+name = "workspace-dbus-api"
+version = "0.1.0"
+dependencies = [
+ "zbus",
 ]
 
 [[package]]

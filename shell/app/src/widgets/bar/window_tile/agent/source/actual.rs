@@ -29,22 +29,20 @@ pub(super) struct AgentSeenState {
 }
 
 pub(super) fn agent_for_window(window: WindowNode) -> Observable<Option<Agent>> {
-    let Some(window_id) = window.path_id() else {
-        return source::once(None);
-    };
-
-    source::shared_by_key(
-        "rsynapse.agent-for-window",
-        window_id.to_string(),
-        move || agent_for_window_status(window_id, window.clone()),
-    )
+    source::switch_map(window.id(), move |window_id| {
+        let window = window.clone();
+        source::shared_by_key("rsynapse.agent-for-window", window_id.clone(), move || {
+            agent_for_window_status(window_id.clone(), window.clone())
+        })
+    })
     .distinct_until_changed()
     .box_it()
 }
 
-fn agent_for_window_status(window_id: u64, window: WindowNode) -> Observable<Option<Agent>> {
+fn agent_for_window_status(window_id: String, window: WindowNode) -> Observable<Option<Agent>> {
     source::from_task(move |sender| {
         let window = window.clone();
+        let window_id = window_id.clone();
         async move {
             let agent = raw_agent_for_window(window_id);
             let focused = window.focused();
@@ -55,7 +53,7 @@ fn agent_for_window_status(window_id: u64, window: WindowNode) -> Observable<Opt
     .box_it()
 }
 
-fn raw_agent_for_window(window_id: u64) -> Observable<Option<Agent>> {
+fn raw_agent_for_window(window_id: String) -> Observable<Option<Agent>> {
     source::switch_map(agent_session_for_window_id(window_id), |session| {
         session
             .map(agent_session)
@@ -89,27 +87,26 @@ async fn run_agent_seen_state(
     }
 }
 
-fn agent_session_for_window_id(window_id: u64) -> Observable<Option<AgentSession>> {
+fn agent_session_for_window_id(window_id: String) -> Observable<Option<AgentSession>> {
     // AgentDBus is authoritative for live window ownership. Locus window-agent
-    // relations can outlive niri's live window ids and make reused ids inherit
+    // relations can outlive compositor window IDs and make reused IDs inherit
     // stale agent state.
     dbus::object_manager(agent_dbus())
-        .map(move |objects| find_agent_session_by_window_id(&objects, window_id))
+        .map(move |objects| find_agent_session_by_window_id(&objects, &window_id))
         .distinct_until_changed()
         .box_it()
 }
 
 pub(super) fn find_agent_session_by_window_id(
     objects: &[DbusObject],
-    window_id: u64,
+    window_id: &str,
 ) -> Option<AgentSession> {
-    let window_id = window_id.to_string();
     objects
         .iter()
         .filter(|object| has_interface(object, AGENT_SESSION_INTERFACE))
         .find(|object| {
             snapshot_property::<String>(object, AGENT_SESSION_INTERFACE, "WindowId").as_deref()
-                == Some(window_id.as_str())
+                == Some(window_id)
         })
         .map(|object| AgentSession {
             path: object.path.clone(),

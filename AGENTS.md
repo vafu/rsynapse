@@ -35,10 +35,11 @@ components.
   launcher workspace. Package names such as `rsynapse-daemon` may be renamed
   later.
 
-- `niri-dbus/`
-  A session D-Bus projection for niri IPC. It exposes outputs, workspaces,
-  windows, focus, and events as D-Bus objects/properties/signals. It must not
-  contain shell UI policy.
+- `workspace-dbus/`
+  Compositor-neutral session D-Bus projection. `api/` owns the independent
+  workspace-dbus-api contract; `service/` implements Niri and Umbriel backends.
+  Consumers depend only on the API. Association cleanup belongs to steward,
+  not the projection service.
 
 - `locus/`
   A session D-Bus relation service. It stores typed associations between
@@ -88,7 +89,8 @@ typed session relation service rather than a general RDF desktop database.
 
 - Keep reusable shell framework code in `shell/core`.
 - Keep Rsynapse product UI under `shell/`.
-- Keep niri protocol projection in `niri-dbus`.
+- Keep compositor protocols in `workspace-dbus/service` and their shared D-Bus
+  contract in `workspace-dbus/api`.
 - Keep cross-service links in `locus`.
 - Keep agent state in AgentDBus/adjacent agent service repos.
 - Keep project-management state in projd; cross-service references stay in locusd.

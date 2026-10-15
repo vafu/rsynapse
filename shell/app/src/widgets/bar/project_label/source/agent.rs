@@ -1,9 +1,9 @@
 use shell_core::source::{self, Observable, rx::Observable as _};
 
 use crate::widgets::bar::{
-    niri::NiriWorkspace,
     window_source::{WindowSnapshot, window_snapshots},
     window_tile::agent::{Agent, State, agent_for_window},
+    workspace::WorkspaceObject,
 };
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -13,7 +13,7 @@ pub(in crate::widgets::bar::project_label) struct WorkspaceAgentState {
     pub(in crate::widgets::bar::project_label) has_unseen: bool,
 }
 
-pub(super) fn workspace_agent_state(workspace: NiriWorkspace) -> Observable<WorkspaceAgentState> {
+pub(super) fn workspace_agent_state(workspace: WorkspaceObject) -> Observable<WorkspaceAgentState> {
     source::switch_map(
         workspace
             .id()
@@ -33,7 +33,7 @@ pub(super) fn workspace_agent_state(workspace: NiriWorkspace) -> Observable<Work
 }
 
 fn workspace_windows(
-    workspace_id: Option<u64>,
+    workspace_id: Option<String>,
     windows: Vec<WindowSnapshot>,
 ) -> Vec<WindowSnapshot> {
     windows

@@ -20,11 +20,11 @@ pub(super) use self::{
     build::WorkspaceBuildState,
     workspace_icon::{WorkspaceIconCandidate, WorkspaceIconChoice},
 };
-use crate::widgets::bar::{niri::NiriWorkspace, project::project_details};
+use crate::widgets::bar::{project::project_details, workspace::WorkspaceObject};
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(in crate::widgets::bar) struct ProjectLabelVm {
-    pub(super) workspace_id: Option<u64>,
+    pub(super) workspace_id: Option<String>,
     pub(super) index: u32,
     pub(super) workspace_name: String,
     pub(super) urgent: bool,
@@ -42,7 +42,7 @@ pub(in crate::widgets::bar) struct ProjectLabelVm {
     pub(super) build: WorkspaceBuildState,
 }
 
-pub(super) fn project_label_vm(workspace: NiriWorkspace) -> Observable<ProjectLabelVm> {
+pub(super) fn project_label_vm(workspace: WorkspaceObject) -> Observable<ProjectLabelVm> {
     let project = project_details(workspace.clone());
     let workspace_icon = workspace_icon_source(workspace.clone());
     let agent = workspace_agent_state(workspace.clone());
@@ -50,7 +50,7 @@ pub(super) fn project_label_vm(workspace: NiriWorkspace) -> Observable<ProjectLa
 
     combine_latest!(
         workspace.id().map(Some),
-        workspace.index().map(u32::from),
+        workspace.index(),
         workspace.name().map(|name| name.unwrap_or_default()),
         workspace.urgent(),
         workspace.focused(),
@@ -84,7 +84,7 @@ pub(super) fn project_label_vm(workspace: NiriWorkspace) -> Observable<ProjectLa
 }
 
 pub(super) fn set_project_icon_override(
-    workspace_id: Option<u64>,
+    workspace_id: Option<String>,
     workspace_name: String,
     icon: WorkspaceIconChoice,
     picker_input: String,
@@ -96,7 +96,7 @@ pub(super) fn set_project_icon_override(
     set_workspace_icon_override(workspace_id, workspace_name, icon, picker_input);
 }
 
-pub(super) fn clear_project_icon_override(workspace_id: Option<u64>, workspace_name: String) {
+pub(super) fn clear_project_icon_override(workspace_id: Option<String>, workspace_name: String) {
     let Some(workspace_id) = workspace_id else {
         eprintln!("[project-label] cannot clear icon override without workspace id");
         return;

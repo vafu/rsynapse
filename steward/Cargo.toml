@@ -20,7 +20,7 @@ serde_json = "1"
 reqwest = { version = "0.12", default-features = false, features = ["json"] }
 locus = { path = "../locus" }
 goal-model = { package = "rsynapse-projd-model", path = "../projd/model" }
-niri-dbus = { path = "../niri-dbus" }
+workspace-dbus-api = { path = "../workspace-dbus/api" }
 shell-source = { path = "../shell/core/shell-source" }
 shell-rx-macros = { path = "../shell/core/rx-macros" }
 tokio = { version = "1.52.3", features = ["macros", "rt-multi-thread", "signal", "time"] }

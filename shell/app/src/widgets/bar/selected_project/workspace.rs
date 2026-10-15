@@ -8,11 +8,11 @@ const WORKSPACE_NAME_KIND: &str = "org.rsynapse.workspace.name";
 
 /// Preferred manual name for one workspace id from locus. Automatic names
 /// fall back to the stored project name or `empty` in the view.
-pub(super) fn workspace_display_name(workspace_id: Option<u64>) -> Observable<Option<String>> {
+pub(super) fn workspace_display_name(workspace_id: Option<String>) -> Observable<Option<String>> {
     let Some(id) = workspace_id else {
         return source::once(None);
     };
-    let subject = RelationEndpoint::stable_key(locus::keys::NIRI_WORKSPACE_ID, id.to_string());
+    let subject = RelationEndpoint::stable_key(locus::keys::WORKSPACE_ID, id.clone());
     source::shared_by_key("rsynapse.workspace-name", id.to_string(), move || {
         watch_workspace_name(subject.clone())
             .distinct_until_changed()
@@ -190,7 +190,7 @@ mod tests {
     #[test]
     fn only_manual_names_override_project_cwd_or_empty() {
         let mut record = RelationRecord {
-            subject: RelationEndpoint::stable_key(locus::keys::NIRI_WORKSPACE_ID, "7"),
+            subject: RelationEndpoint::stable_key(locus::keys::WORKSPACE_ID, "7"),
             relation: WORKSPACE_NAME_RELATION.to_owned(),
             target: RelationEndpoint::stable_key(WORKSPACE_NAME_KIND, "noble-owl"),
             metadata: HashMap::from([("source".to_owned(), "random".to_owned())]),
