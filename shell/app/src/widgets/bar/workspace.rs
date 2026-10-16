@@ -42,6 +42,14 @@ impl WorkspaceObject {
         required(self.property("Layout"), Layout::Unknown)
     }
 
+    pub(super) fn has_windows(&self) -> Observable<bool> {
+        dbus::property::<Vec<OwnedObjectPath>>(self.property("Windows"))
+            // Keep rows visible until their actual window inventory is known.
+            .map(|windows| windows.is_none_or(|windows| !windows.is_empty()))
+            .distinct_until_changed()
+            .box_it()
+    }
+
     pub(super) fn focused(&self) -> Observable<bool> {
         required(self.property("Focused"), false)
     }

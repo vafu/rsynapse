@@ -50,6 +50,36 @@ Installed desktop helper scripts currently include:
 
 - `rsynapse-open-url`
 - `ghostty-project-window`
+- `umbriel-workspace-new`
+
+`umbriel-workspace-new above|below` focuses a blank workspace immediately before
+or after the current one. It selects the trailing anonymous empty workspace and
+moves it into position using Umbriel's CLI, following workspace IDs across index
+changes. Existing windows stay on their workspaces. It is intended for dynamic
+workspace inventories; an already empty anonymous current workspace is reused.
+The inserted blank follows normal dynamic pruning when left unused.
+
+Example Umbriel bindings:
+
+```toml
+"Mod+Alt+Up" = { action = "spawn:$HOME/.config/scripts/umbriel-workspace-new above", repeat = false }
+"Mod+Alt+Down" = { action = "spawn:$HOME/.config/scripts/umbriel-workspace-new below", repeat = false }
+"Mod+Alt+K" = { action = "spawn:$HOME/.config/scripts/umbriel-workspace-new above", repeat = false }
+"Mod+Alt+J" = { action = "spawn:$HOME/.config/scripts/umbriel-workspace-new below", repeat = false }
+"Mod+Alt+BackSpace" = { action = "workspace-focus-last", repeat = false }
+```
+
+The Backspace binding returns to the previous workspace. An unused inserted
+anonymous workspace is pruned after leaving it; the compositor retains its
+automatic edge blanks. This native action does not launch a helper or create
+another application-activation reservation. Named/static workspaces remain part
+of their configured inventory. A workspace with windows remains intact.
+
+The isolated integration check requires Umbriel and Python GI/GTK4:
+
+```sh
+dbus-run-session -- python3 install/tests/test_umbriel_workspace_new.py
+```
 
 `ghostty-project-window` opens a new Ghostty window in the selected workspace's
 project CWD, resolved through workspace-dbus, Locus and projd. It supports both

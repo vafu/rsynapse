@@ -58,7 +58,7 @@ impl SimpleComponent for ProjectLabel {
     view! {
         gtk::Revealer {
             #[watch]
-            set_reveal_child: workspace_visible(&model.vm, model.selected),
+            set_reveal_child: workspace_visible(&model.vm, model.selected, model.workspace.edge_placeholder),
             set_transition_type: gtk::RevealerTransitionType::FadeSlideDown,
             set_transition_duration: 150,
             set_halign: gtk::Align::Center,

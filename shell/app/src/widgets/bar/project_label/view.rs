@@ -22,8 +22,12 @@ pub(super) fn project_group_classes(vm: &ProjectLabelVm, selected: bool) -> Vec<
     classes
 }
 
-pub(super) fn workspace_visible(vm: &ProjectLabelVm, selected: bool) -> bool {
-    selected || !vm.empty
+pub(super) fn workspace_visible(
+    vm: &ProjectLabelVm,
+    selected: bool,
+    edge_placeholder: bool,
+) -> bool {
+    selected || !edge_placeholder || !vm.empty
 }
 
 pub(super) fn project_icon_render(model: &ProjectLabelVm) -> NerdIcon {

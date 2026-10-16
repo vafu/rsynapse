@@ -116,6 +116,11 @@ property, including live changes and workspace switches. Scrolling retains the
 move-arrows glyph; Master uses a left-docked panel and Dwindle a tiled dashboard.
 The tooltip names the layout. Unknown/missing layouts use a neutral indicator.
 
+The workspace rail hides only unselected, anonymous empty edge placeholders
+without project/icon evidence. Empty interior workspaces and named workspaces
+remain visible; the selected workspace always stays represented. Occupancy comes
+from the workspace's window inventory rather than application-ID/icon heuristics.
+
 ## Common Commands
 
 From this directory:

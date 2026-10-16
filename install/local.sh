@@ -55,6 +55,8 @@ install -m 0755 "$repo_root/install/bin/rsynapse-open-url" "$script_dir/rsynapse
 ln -sfn "$script_dir/rsynapse-open-url" "$local_bin/rsynapse-open-url"
 install -m 0755 "$repo_root/install/bin/ghostty-project-window" "$script_dir/ghostty-project-window"
 ln -sfn "$script_dir/ghostty-project-window" "$local_bin/ghostty-project-window"
+install -m 0755 "$repo_root/install/bin/umbriel-workspace-new" "$script_dir/umbriel-workspace-new"
+ln -sfn "$script_dir/umbriel-workspace-new" "$local_bin/umbriel-workspace-new"
 
 echo "Installing optional Zsh agent-lane integration to $zsh_dir"
 install -d "$zsh_dir"

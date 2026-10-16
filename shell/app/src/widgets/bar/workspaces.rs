@@ -1,6 +1,8 @@
 use shell_core::source::{self, Observable, rx::Observable as _};
 use shell_rx_macros::combine_latest;
 
+mod visibility;
+
 use super::WindowNode;
 use super::window_source::{WindowSnapshot, window_snapshots};
 use super::workspace::{self, WorkspaceObject};
@@ -12,12 +14,19 @@ pub(super) struct WorkspaceEntry {
     pub(super) workspace: WorkspaceObject,
     index: u32,
     output_path: Option<String>,
+    has_windows: bool,
+    named: bool,
+    pub(super) edge_placeholder: bool,
 }
 
 pub(super) fn workspaces(output_name: Option<String>) -> Observable<Vec<WorkspaceNode>> {
     let output_path = output_name.as_deref().map(workspace::output_path_for_name);
     source::switch_map_list(workspace::workspaces(), workspace_entry)
-        .map(move |workspaces| filter_workspaces_for_output(workspaces, output_path.as_deref()))
+        .map(move |workspaces| {
+            let mut workspaces = filter_workspaces_for_output(workspaces, output_path.as_deref());
+            visibility::mark_edge_placeholders(&mut workspaces);
+            workspaces
+        })
         .distinct_until_changed()
         .box_it()
 }
@@ -25,11 +34,16 @@ pub(super) fn workspaces(output_name: Option<String>) -> Observable<Vec<Workspac
 fn workspace_entry(workspace: WorkspaceObject) -> Observable<WorkspaceEntry> {
     combine_latest!(
         workspace.index(),
-        workspace.output_path_key()
-            => move |(index, output_path)| WorkspaceEntry {
+        workspace.output_path_key(),
+        workspace.has_windows(),
+        workspace.name()
+            => move |(index, output_path, has_windows, name)| WorkspaceEntry {
                 workspace: workspace.clone(),
                 index,
                 output_path,
+                has_windows,
+                named: name.is_some(),
+                edge_placeholder: false,
             },
     )
     .distinct_until_changed()
@@ -224,6 +238,9 @@ mod tests {
             workspace: workspace_object(index),
             index,
             output_path: output_path.map(str::to_owned),
+            has_windows: true,
+            named: false,
+            edge_placeholder: false,
         }
     }
 
