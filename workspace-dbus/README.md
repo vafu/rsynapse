@@ -26,6 +26,9 @@ Umbriel implementation ┘
   semantics, ownership and cutover rules.
 
 Both implementations and shell/steward consumers use this contract.
+Workspace `Layout` is the effective mode (`scrolling`, `master`, `dwindle`, or
+`unknown`), exposed as a typed string enum with live property changes. Niri
+always reports scrolling; Umbriel follows each workspace's effective mode.
 Consumer compositor state must
 depend only on `workspace-dbus-api`, never on a service implementation crate.
 

@@ -94,6 +94,7 @@ All are read-only and emit changes.
 | --- | --- | --- |
 | `Id` | `s` | Opaque immutable identity |
 | `Name` | `as` | Zero or one explicit compositor name; anonymous means empty array |
+| `Layout` | `s` | Effective tiling mode: `scrolling`, `master`, `dwindle`, or `unknown` |
 | `Index` | `u` | One-based display position on its output, not identity |
 | `Output` | `ao` | Zero or one containing output |
 | `Active` | `b` | Current on its output, independently of global focus |
@@ -101,6 +102,14 @@ All are read-only and emit changes.
 | `Urgent` | `b` | Compositor reports workspace urgency |
 | `ActiveWindow` | `ao` | Zero or one remembered focused member, even when the workspace is inactive |
 | `Windows` | `ao` | Member windows; ordering alone is not a portable layout coordinate |
+
+`Layout` reports the workspace's effective current mode, including runtime
+overrides and per-workspace configuration. It emits `PropertiesChanged` on mode
+changes even when focus and window membership are unchanged. Niri always reports
+`scrolling`; Umbriel projects its workspace snapshot's `layout`. Unknown or absent
+native modes report `unknown`, never an assumed scrolling layout. The API's Rust
+`Layout` enum uses the same string wire representation and tolerates future modes
+as `Unknown`. Initial ObjectManager snapshots include the effective mode.
 
 ## Window properties
 
@@ -147,7 +156,8 @@ into global application-focus fields.
 
 This baseline covers current Rsynapse compositor-state consumption. It does not
 require Niri tile geometry, focus timestamps, runtime config diagnostics,
-compositor version, HDR/VRR inspection, or compositor-specific layout features.
+compositor version, HDR/VRR inspection, or compositor-specific layout settings
+beyond the effective workspace tiling mode.
 Those can be added independently when a consumer needs them. Window-control
 methods are a separate extension; the URL helper can be patched independently.
 

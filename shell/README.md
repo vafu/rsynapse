@@ -111,6 +111,11 @@ properties; object paths are addresses, never parsed as IDs. Niri/Umbriel
 protocols and normalization stay in the projection service. Steward owns Locus
 association cleanup; project/goal data stay in projd.
 
+The bar's corner indicator follows its output's selected workspace `Layout`
+property, including live changes and workspace switches. Scrolling retains the
+move-arrows glyph; Master uses a left-docked panel and Dwindle a tiled dashboard.
+The tooltip names the layout. Unknown/missing layouts use a neutral indicator.
+
 ## Common Commands
 
 From this directory:

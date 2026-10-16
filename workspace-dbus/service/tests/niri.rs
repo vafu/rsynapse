@@ -75,6 +75,10 @@ async fn exercise() -> anyhow::Result<()> {
     assert_eq!(window.id().await?, "12");
     assert_eq!(workspace.id().await?, "5");
     assert_eq!(workspace.index().await?, 2);
+    assert_eq!(
+        workspace.layout().await?,
+        workspace_dbus_api::Layout::Scrolling
+    );
     assert_eq!(window.column_index().await?, [0]);
     assert_eq!(window.row_index().await?, [0]);
     assert!(window.pid().await?.is_empty());

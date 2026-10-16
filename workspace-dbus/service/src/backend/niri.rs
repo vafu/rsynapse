@@ -8,7 +8,7 @@ use std::{
     panic::{AssertUnwindSafe, catch_unwind},
     path::{Path, PathBuf},
 };
-use workspace_dbus_api::{output_path, window_path, workspace_path};
+use workspace_dbus_api::{Layout, output_path, window_path, workspace_path};
 mod socket;
 use socket::Socket;
 
@@ -128,6 +128,7 @@ impl Niri {
             result.workspaces.insert(
                 ws.id.to_string(),
                 model::Workspace {
+                    layout: Layout::Scrolling,
                     name: ws.name.clone().into_iter().collect(),
                     index: u32::from(ws.idx),
                     output: ws.output.as_deref().map(output_path).into_iter().collect(),

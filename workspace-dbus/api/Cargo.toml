@@ -7,6 +7,7 @@ description = "Compositor-independent workspace and window D-Bus contract"
 publish = false
 
 [dependencies]
+serde = { version = "1", features = ["derive"] }
 zbus.workspace = true
 
 [dev-dependencies]

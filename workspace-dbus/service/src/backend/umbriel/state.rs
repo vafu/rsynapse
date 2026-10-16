@@ -147,6 +147,7 @@ fn project(
         result.workspaces.insert(
             workspace.id.clone(),
             model::Workspace {
+                layout: workspace.layout,
                 name: workspace
                     .named
                     .then(|| workspace.name.clone())

@@ -147,6 +147,7 @@ workspaces = ["1", "2"]
             native = nws[id]
             assert workspace['Index'] == native['index']
             assert workspace['Name'] == ([native['name']] if native['named'] else [])
+            assert workspace['Layout'] == native['layout']
         focused = next((w for w in nw.values() if w['active']), None)
         if focused:
             assert next(properties(path, WINDOW)['Id'] for path in root['FocusedWindow']) == focused['id']
@@ -214,6 +215,8 @@ workspaces = ["1", "2"]
             request('msg', arg=f'workspace-set-layout:{mode}')
             target = next(w['id'] for w in request('workspaces') if w['focused'])
             members = [w['id'] for w in request('windows') if w['workspace'] == target]
+            wait(lambda: any(properties(path, WORKSPACE)['Id'] == target
+                and properties(path, WORKSPACE)['Layout'] == mode for path in properties(ROOT, MANAGER)['Workspaces']))
             wait(lambda: all(bool(inventory()[1][id]['ColumnIndex']) == (mode == 'scrolling') for id in members))
             verify()
         request('msg', arg=f'window-toggle-floating:{b}')

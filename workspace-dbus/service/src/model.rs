@@ -1,5 +1,5 @@
 use std::collections::BTreeMap;
-use workspace_dbus_api::{output_path, window_path, workspace_path};
+use workspace_dbus_api::{Layout, output_path, window_path, workspace_path};
 use zbus::zvariant::OwnedObjectPath;
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -23,6 +23,7 @@ pub struct Output {
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Workspace {
+    pub layout: Layout,
     pub name: Vec<String>,
     pub index: u32,
     pub output: Vec<OwnedObjectPath>,
@@ -68,6 +69,7 @@ impl Projection {
                 .workspaces
                 .entry(id.clone())
                 .or_insert_with(|| Workspace {
+                    layout: value.layout,
                     name: value.name.clone(),
                     index: value.index,
                     active: false,

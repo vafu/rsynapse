@@ -2,8 +2,8 @@ use futures_util::StreamExt;
 use serde_json::json;
 use std::{process::Command, time::Duration};
 use workspace_dbus_api::{
-    BUS_NAME, ManagerProxy, OutputProxy, ROOT_PATH, WindowProxy, WorkspaceProxy, output_path,
-    window_path, workspace_path,
+    BUS_NAME, Layout, ManagerProxy, OutputProxy, ROOT_PATH, WindowProxy, WorkspaceProxy,
+    output_path, window_path, workspace_path,
 };
 use zbus::{
     Connection,
@@ -86,6 +86,8 @@ async fn exercise() -> anyhow::Result<()> {
     assert_eq!(window.id().await?, WINDOW);
     assert_eq!(other.id().await?, OTHER);
     assert_eq!(workspace.id().await?, WORKSPACE);
+    assert_eq!(workspace.layout().await?, Layout::Scrolling);
+    assert_eq!(other_workspace.layout().await?, Layout::Dwindle);
     assert!(workspace.name().await?.is_empty());
     assert_eq!(other_workspace.name().await?, ["1"]);
     assert_eq!(window.pid().await?, [321]);
@@ -103,6 +105,23 @@ async fn exercise() -> anyhow::Result<()> {
         [workspace_path(WORKSPACE)]
     );
     assert_eq!(other_workspace.active_window().await?, [window_path(OTHER)]);
+
+    // Layout-only snapshots update existing objects without a window/focus
+    // change or projection reset, including unknown future compositor modes.
+    let mut layouts = workspace.receive_layout_changed().await;
+    for (wire, expected) in [
+        ("master", Layout::Master),
+        ("dwindle", Layout::Dwindle),
+        ("scrolling", Layout::Scrolling),
+        ("future-layout", Layout::Unknown),
+    ] {
+        let mut snapshot = support::workspaces();
+        snapshot[0]["layout"] = json!(wire);
+        source.send("workspaces", snapshot);
+        assert_eq!(layouts.next().await.unwrap().get().await?, expected);
+        assert_eq!(other_workspace.layout().await?, Layout::Dwindle);
+        assert_eq!(manager.generation().await?, generation);
+    }
 
     let objects = ObjectManagerProxy::builder(&connection)
         .destination(BUS_NAME)?
@@ -205,7 +224,7 @@ async fn exercise() -> anyhow::Result<()> {
     source.send(
         "workspaces",
         json!([{"id":"new/output:é","name":"new","named":true,"index":3,
-        "output":"DP-C","active":true,"focused":true,"urgent":false,"focused_window":WINDOW}]),
+        "output":"DP-C","active":true,"focused":true,"urgent":false,"focused_window":WINDOW,"layout":"master"}]),
     );
     assert_eq!(
         membership.next().await.unwrap().get().await?,
@@ -214,6 +233,13 @@ async fn exercise() -> anyhow::Result<()> {
     assert_eq!(
         focused_workspace.next().await.unwrap().get().await?,
         [workspace_path("new/output:é")]
+    );
+    let added = objects.get_managed_objects().await?;
+    let properties =
+        &added[&workspace_path("new/output:é")][workspace_dbus_api::WORKSPACE_INTERFACE];
+    assert_eq!(
+        Layout::try_from(properties["Layout"].try_clone()?)?,
+        Layout::Master
     );
     assert_eq!(
         OutputProxy::builder(&connection)

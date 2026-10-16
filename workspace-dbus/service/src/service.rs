@@ -174,7 +174,7 @@ impl Host {
                 .await?;
             let iface = r.get().await;
             let ctx = r.signal_context();
-            changed!(b, a, iface, ctx, name => name_changed, index => index_changed, output => output_changed, active => active_changed, focused => focused_changed, urgent => urgent_changed, active_window => active_window_changed, windows => windows_changed);
+            changed!(b, a, iface, ctx, layout => layout_changed, name => name_changed, index => index_changed, output => output_changed, active => active_changed, focused => focused_changed, urgent => urgent_changed, active_window => active_window_changed, windows => windows_changed);
         }
         for (id, a) in &after.windows {
             let b = &before.windows[id];

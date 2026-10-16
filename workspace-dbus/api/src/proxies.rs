@@ -1,6 +1,6 @@
 use zbus::{proxy, zvariant::OwnedObjectPath};
 
-use crate::Id;
+use crate::{Id, Layout};
 
 /// Live compositor projection. All optional object references contain 0 or 1 paths.
 #[proxy(
@@ -65,6 +65,10 @@ pub trait Output {
 pub trait Workspace {
     #[zbus(property(emits_changed_signal = "const"))]
     fn id(&self) -> zbus::Result<Id>;
+
+    /// Effective current layout; changes independently of workspace selection.
+    #[zbus(property)]
+    fn layout(&self) -> zbus::Result<Layout>;
 
     /// An explicit name, or an empty array for an anonymous workspace.
     #[zbus(property)]

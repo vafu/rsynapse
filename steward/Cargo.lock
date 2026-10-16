@@ -2164,6 +2164,7 @@ dependencies = [
 name = "workspace-dbus-api"
 version = "0.1.0"
 dependencies = [
+ "serde",
  "zbus",
 ]
 

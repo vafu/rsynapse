@@ -7,6 +7,7 @@ mod brightness;
 mod context_zone;
 mod goals;
 mod icon_resolver;
+mod layout_indicator;
 // Build status icon rendering is paused while the status is moved to a new surface.
 // mod build_indicator;
 mod bzbus;
@@ -164,6 +165,9 @@ pub struct MainBar {
     #[source(selected_project_status(output_name.clone()))]
     selected_project: SelectedWorkspaceView,
 
+    #[source(layout_indicator::status(output_name.clone()))]
+    layout: layout_indicator::LayoutIndicatorView,
+
     #[source(battery_status())]
     battery: BatteryView,
 
@@ -258,7 +262,10 @@ impl SimpleAsyncComponent for MainBar {
                             set_css_classes: &["bar-corner-icon", "nerdicon"],
                             set_halign: gtk::Align::Center,
                             set_valign: gtk::Align::Center,
-                            set_nerd_icon: NerdIcon::move_handle(),
+                            #[watch]
+                            set_nerd_icon: model.layout.icon.clone(),
+                            #[watch]
+                            set_tooltip_text: Some(model.layout.tooltip),
                         }
                     },
 

@@ -1,6 +1,7 @@
 use crate::model::Projection;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use workspace_dbus_api::Layout;
 use zbus::{interface, zvariant::OwnedObjectPath};
 pub type State = Arc<RwLock<Projection>>;
 
@@ -91,6 +92,16 @@ impl Workspace {
     #[zbus(property(emits_changed_signal = "const"))]
     fn id(&self) -> &str {
         &self.id
+    }
+    #[zbus(property)]
+    async fn layout(&self) -> Layout {
+        self.state
+            .read()
+            .await
+            .workspaces
+            .get(&self.id)
+            .map(|v| v.layout)
+            .unwrap_or_default()
     }
     #[zbus(property)]
     async fn name(&self) -> Vec<String> {

@@ -16,6 +16,7 @@ pub struct State {
     pub window_present: bool,
     pub focused: bool,
     pub title: String,
+    pub layout: String,
 }
 
 pub type SharedState = Arc<RwLock<State>>;
@@ -27,6 +28,7 @@ pub async fn serve() -> zbus::Result<(Connection, SharedState)> {
         window_present: true,
         focused: true,
         title: "initial title".into(),
+        layout: "scrolling".into(),
     }));
     let connection = Builder::session()?
         .serve_at(workspace_dbus_api::ROOT_PATH, zbus::fdo::ObjectManager)?
@@ -146,6 +148,11 @@ pub struct Workspace(pub SharedState);
 
 #[interface(name = "org.rsynapse.Workspace.Workspace1")]
 impl Workspace {
+    #[zbus(property)]
+    async fn layout(&self) -> String {
+        self.0.read().await.layout.clone()
+    }
+
     #[zbus(property(emits_changed_signal = "const"))]
     fn id(&self) -> &str {
         WORKSPACE

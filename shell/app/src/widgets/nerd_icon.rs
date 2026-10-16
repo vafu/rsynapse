@@ -34,6 +34,7 @@ pub(crate) mod md {
     pub(crate) const MD_CAR_TURBOCHARGER: &str = "\u{f101a}";
     pub(crate) const MD_CELLPHONE_INFORMATION: &str = "\u{f0f41}";
     pub(crate) const MD_CLOUD_OFF_OUTLINE: &str = "\u{f0164}";
+    pub(crate) const MD_DOCK_LEFT: &str = "\u{f10aa}";
     pub(crate) const MD_GOOGLE_CHROME: &str = "\u{f02af}";
     pub(crate) const MD_HARDDISK: &str = "\u{f02ca}";
     pub(crate) const MD_HEADPHONES_SETTINGS: &str = "\u{f02cd}";
@@ -43,6 +44,7 @@ pub(crate) mod md {
     pub(crate) const MD_ROBOT: &str = "\u{f06a9}";
     pub(crate) const MD_SPEEDOMETER: &str = "\u{f04c5}";
     pub(crate) const MD_SPEAKER: &str = "\u{f04c3}";
+    pub(crate) const MD_VIEW_DASHBOARD: &str = "\u{f056e}";
     pub(crate) const MD_WRENCH: &str = "\u{f05b7}";
 }
 

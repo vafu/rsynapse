@@ -1,5 +1,6 @@
 //! Only fields needed by the neutral API; native extensions are ignored.
 use serde::Deserialize;
+use workspace_dbus_api::Layout;
 
 #[derive(Debug, Deserialize)]
 #[serde(tag = "event", content = "data", rename_all = "snake_case")]
@@ -23,6 +24,8 @@ pub(super) struct Output {
 #[derive(Debug, Deserialize)]
 pub(super) struct Workspace {
     pub id: String,
+    #[serde(default)]
+    pub layout: Layout,
     pub name: String,
     pub named: bool,
     pub index: u32,

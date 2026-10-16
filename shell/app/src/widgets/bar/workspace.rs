@@ -6,8 +6,8 @@ use shell_core::source::{
 use zbus::zvariant::OwnedObjectPath;
 
 use workspace_dbus_api::{
-    BUS_NAME, MANAGER_INTERFACE as ROOT_INTERFACE, OUTPUT_INTERFACE, ROOT_PATH, WINDOW_INTERFACE,
-    WORKSPACE_INTERFACE,
+    BUS_NAME, Layout, MANAGER_INTERFACE as ROOT_INTERFACE, OUTPUT_INTERFACE, ROOT_PATH,
+    WINDOW_INTERFACE, WORKSPACE_INTERFACE,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -36,6 +36,10 @@ impl WorkspaceObject {
 
     pub(super) fn index(&self) -> Observable<u32> {
         required(self.property("Index"), 0)
+    }
+
+    pub(super) fn layout(&self) -> Observable<Layout> {
+        required(self.property("Layout"), Layout::Unknown)
     }
 
     pub(super) fn focused(&self) -> Observable<bool> {

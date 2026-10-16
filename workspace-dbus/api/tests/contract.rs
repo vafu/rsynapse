@@ -2,7 +2,7 @@ use std::{process::Command, time::Duration};
 
 use futures_util::StreamExt;
 use workspace_dbus_api::{
-    BUS_NAME, MANAGER_INTERFACE, ManagerProxy, OUTPUT_INTERFACE, OutputProxy, ROOT_PATH,
+    BUS_NAME, Layout, MANAGER_INTERFACE, ManagerProxy, OUTPUT_INTERFACE, OutputProxy, ROOT_PATH,
     WINDOW_INTERFACE, WORKSPACE_INTERFACE, WindowProxy, WorkspaceProxy, output_path, window_path,
     workspace_path,
 };
@@ -88,6 +88,7 @@ async fn verify_contract() -> zbus::Result<()> {
     assert_eq!(workspace.id().await?, WORKSPACE);
     assert_eq!(workspace.name().await?, ["2"]);
     assert_eq!(workspace.index().await?, 2);
+    assert_eq!(workspace.layout().await?, Layout::Scrolling);
     assert_eq!(workspace.output().await?, [output_path(OUTPUT)]);
     assert!(workspace.active().await?);
     assert!(workspace.focused().await?);
@@ -132,6 +133,14 @@ async fn verify_contract() -> zbus::Result<()> {
         .1;
     assert_eq!(workspace_properties["Id"].value_signature().as_str(), "s");
     assert_eq!(
+        workspace_properties["Layout"].value_signature().as_str(),
+        "s"
+    );
+    assert_eq!(
+        Layout::try_from(workspace_properties["Layout"].try_clone()?)?,
+        Layout::Scrolling
+    );
+    assert_eq!(
         workspace_properties["Index"].value_signature().as_str(),
         "u"
     );
@@ -145,6 +154,28 @@ async fn verify_contract() -> zbus::Result<()> {
         .await?;
     assert!(introspection.contains(MANAGER_INTERFACE));
     assert!(introspection.contains("org.freedesktop.DBus.ObjectManager"));
+
+    // Independent producer sends strings; typed clients decode all modes and
+    // observe changes without relying on membership/focus notifications.
+    let workspace_ref = service
+        .object_server()
+        .interface::<_, support::Workspace>(workspace_path(WORKSPACE))
+        .await?;
+    let mut layouts = workspace.receive_layout_changed().await;
+    for (wire, expected) in [
+        ("master", Layout::Master),
+        ("dwindle", Layout::Dwindle),
+        ("scrolling", Layout::Scrolling),
+        ("future-layout", Layout::Unknown),
+    ] {
+        state.write().await.layout = wire.into();
+        workspace_ref
+            .get()
+            .await
+            .layout_changed(workspace_ref.signal_context())
+            .await?;
+        assert_eq!(layouts.next().await.unwrap().get().await?, expected);
+    }
 
     // Title is live in the new contract (the old bridge omitted its signal).
     let mut titles = window.receive_title_changed().await;

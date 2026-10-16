@@ -4,9 +4,11 @@
 //! compositor protocol, UI framework, project-management or relation-store code.
 //! See the workspace's CONTRACT.md for identity, focus and lifecycle semantics.
 
+mod layout;
 pub mod paths;
 mod proxies;
 
+pub use layout::Layout;
 pub use paths::{output_path, window_path, workspace_path};
 pub use proxies::{ManagerProxy, OutputProxy, WindowProxy, WorkspaceProxy};
 
