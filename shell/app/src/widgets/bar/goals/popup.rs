@@ -70,7 +70,8 @@ impl GoalPopup {
         popover.connect_visible_notify(move |p| {
             if let Some(window) = p.root().and_downcast::<gtk::Window>() {
                 window.set_keyboard_mode(if p.is_visible() {
-                    KeyboardMode::Exclusive
+                    // Exclusive layer focus would dismiss an existing popup grab.
+                    KeyboardMode::OnDemand
                 } else {
                     KeyboardMode::None
                 });

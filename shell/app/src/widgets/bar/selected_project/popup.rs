@@ -96,7 +96,8 @@ impl WorkspacePopup {
         popover.connect_visible_notify(move |popover| {
             if let Some(window) = popover.root().and_downcast::<gtk::Window>() {
                 window.set_keyboard_mode(if popover.is_visible() {
-                    KeyboardMode::Exclusive
+                    // The popup grab owns focus; exclusive mode can revoke it.
+                    KeyboardMode::OnDemand
                 } else {
                     KeyboardMode::None
                 });

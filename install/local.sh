@@ -10,6 +10,7 @@ script_dir="$HOME/.config/scripts"
 plugin_dir="$prefix/lib/rsynapse/plugins"
 git_hooks_dir="$prefix/share/rsynapse/git-hooks"
 systemd_user_dir="$HOME/.config/systemd/user"
+zsh_dir="$HOME/.config/zsh"
 
 cargo_install() {
     local path="$1"
@@ -33,6 +34,7 @@ install_templates() {
 echo "Installing release binaries to $local_bin"
 cargo_install "$repo_root/locus"
 cargo_install "$repo_root/workspace-dbus/service"
+cargo_install "$repo_root/workspace-dbus/terminal-id"
 bash "$repo_root/projd/build.sh" --locked
 install -d "$local_bin"
 install -m 0755 "$repo_root/steward/target/release/projd" "$local_bin/projd"
@@ -51,6 +53,12 @@ echo "Installing helper scripts to $local_bin"
 install -d "$local_bin" "$script_dir"
 install -m 0755 "$repo_root/install/bin/rsynapse-open-url" "$script_dir/rsynapse-open-url"
 ln -sfn "$script_dir/rsynapse-open-url" "$local_bin/rsynapse-open-url"
+install -m 0755 "$repo_root/install/bin/ghostty-project-window" "$script_dir/ghostty-project-window"
+ln -sfn "$script_dir/ghostty-project-window" "$local_bin/ghostty-project-window"
+
+echo "Installing optional Zsh agent-lane integration to $zsh_dir"
+install -d "$zsh_dir"
+install -m 0644 "$repo_root/install/zsh/codex-lanes.zsh" "$zsh_dir/codex-lanes.zsh"
 
 echo "Installing Rsynapse git hooks to $git_hooks_dir"
 install -d "$git_hooks_dir"

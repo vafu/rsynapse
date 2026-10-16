@@ -19,6 +19,9 @@ Umbriel implementation ┘
 - `service/` (`workspace-dbus`): the projection host, neutral state/object
   lifecycle and private `backend/niri` and `backend/umbriel` implementations.
   No Locus or projd dependency.
+- `terminal-id/` (`workspace-terminal-id`): a client of the API only. Resolves a
+  Ghostty terminal's opaque window ID with an OSC title challenge and typed
+  D-Bus property streams; no compositor socket, focus guess or PID matching.
 - [CONTRACT.md](CONTRACT.md): property signatures, identity/focus/lifecycle
   semantics, ownership and cutover rules.
 
@@ -30,6 +33,22 @@ Projects/goals remain owned by projd. Steward decides associations and measures
 work; Locus stores relations. This service does not interpret or clear those
 relations. It reports object lifetime through D-Bus; consumers own relation
 cleanup and persistence decisions.
+
+## Terminal window identity
+
+```sh
+window_id="$(workspace-terminal-id "$(uuidgen)")"
+export AGENT_DBUS_WINDOW="$window_id"
+```
+
+Run this in the launching terminal before starting an agent. The helper subscribes
+to inventory/title changes before writing a fresh OSC 2 title token to `/dev/tty`,
+then prints the matching window's `Id` property. An optional second argument selects
+a TTY explicitly. Multiple Ghostty windows may share one process; focus and PID are
+not proof of ownership. The three-second deadline bounds failure only; discovery
+is signal-driven, with no sleep or retry polling. The calling shell should restore
+its normal terminal title afterward. Use `AGENT_DBUS_WINDOW` for either backend;
+do not put opaque Umbriel IDs into `NIRI_WINDOW_ID`.
 
 ## Verification
 

@@ -184,6 +184,8 @@ async fn verify_contract() -> zbus::Result<()> {
 
     let mut removed = objects.receive_interfaces_removed().await?;
     let mut windows = manager.receive_windows_changed().await;
+    let mut workspace_windows = workspace.receive_windows_changed().await;
+    let mut active_window = workspace.receive_active_window_changed().await;
     state.write().await.window_present = false;
     let workspace_ref = service
         .object_server()
@@ -213,8 +215,18 @@ async fn verify_contract() -> zbus::Result<()> {
     assert_eq!(args.object_path().as_str(), window_path(WINDOW).as_str());
     assert!(args.interfaces().contains(&WINDOW_INTERFACE));
     assert!(windows.next().await.unwrap().get().await?.is_empty());
-    assert!(workspace.windows().await?.is_empty());
-    assert!(workspace.active_window().await?.is_empty());
+    // Separate proxy caches process signals independently. Observing the
+    // manager's update is not a barrier for the workspace's property streams.
+    assert!(
+        workspace_windows
+            .next()
+            .await
+            .unwrap()
+            .get()
+            .await?
+            .is_empty()
+    );
+    assert!(active_window.next().await.unwrap().get().await?.is_empty());
     assert!(
         !objects
             .get_managed_objects()

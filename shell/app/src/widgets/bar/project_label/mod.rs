@@ -206,7 +206,8 @@ impl SimpleComponent for ProjectLabel {
             let visible = popover.is_visible();
             if let Some(window) = popover.root().and_downcast::<gtk::Window>() {
                 window.set_keyboard_mode(if visible {
-                    KeyboardMode::Exclusive
+                    // Let the popup grab focus without forcing a new layer grab.
+                    KeyboardMode::OnDemand
                 } else {
                     KeyboardMode::None
                 });

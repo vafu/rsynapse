@@ -24,7 +24,7 @@ Run from the repository root:
 The installer writes only user-local paths by default:
 
 - Binaries: `~/.local/bin`
-- URL helper scripts: `~/.config/scripts`
+- Desktop helper scripts: `~/.config/scripts`
 - Launcher plugins: `~/.local/lib/rsynapse/plugins`
 - D-Bus activation files: `~/.local/share/dbus-1/services`
 - Desktop entries: `~/.local/share/applications`
@@ -36,6 +36,7 @@ Installed binaries currently include:
 - `locusd` (daemon owning `org.rsynapse.Locus`)
 - `locus` (CLI for `locusd`, including `--persist true|false` and existing-record toggles)
 - `workspace-dbus` (Niri/Umbriel backends; automatic session selection)
+- `workspace-terminal-id` (terminal-specific window discovery over the neutral API)
 - `rsynapse-shell`
 - `rsynapse-notifications`
 - `rsynapse-daemon`
@@ -45,9 +46,38 @@ Installed binaries currently include:
 - `projd`
 - `steward`
 
-Installed URL helper scripts currently include:
+Installed desktop helper scripts currently include:
 
 - `rsynapse-open-url`
+- `ghostty-project-window`
+
+`ghostty-project-window` opens a new Ghostty window in the selected workspace's
+project CWD, resolved through workspace-dbus, Locus and projd. It supports both
+Niri and Umbriel, keeps Ghostty's inherited-directory behavior disabled, and
+falls back to `/tmp` when no valid project directory is available. Bind it to
+the compositor's terminal shortcut, for example Umbriel's
+`spawn:$HOME/.config/scripts/ghostty-project-window`. It is also linked from the
+local binary directory.
+
+Verify the launch helper without opening desktop windows:
+
+```sh
+python3 install/tests/test_ghostty_project_window.py
+```
+
+The installer also provides `~/.config/zsh/codex-lanes.zsh`. Source it after
+llm-router-pilot's lane definitions and the Locus shell integration to make
+`codexdk` and `codexdkc` use the same terminal association wrapper as `codex`:
+
+```zsh
+source "$HOME/.config/zsh/codex-lanes.zsh"
+```
+
+Codex's AgentDBus hooks must also be active in the lane's own `CODEX_HOME`.
+Hook trust keys include the hooks file's absolute path: trust for
+`~/.codex/hooks.json` does not cover `~/.codex-databricks/hooks.json`. This lane
+refreshes its config from `~/.codex/config.toml` on launch, so persist matching
+lane hook state in that source config. Do not edit only the generated lane copy.
 
 The URL helper is also linked from the local binary directory. It detects Niri
 or Umbriel from desktop identity (or an unambiguous socket); set
