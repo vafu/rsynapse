@@ -1,4 +1,4 @@
-use super::{Bindings, PROJECT_AGENT, WINDOW_PROJECT};
+use super::{Bindings, PROJECT_AGENT, WINDOW_PROJECT, WINDOW_WORKSPACE_PROJECT};
 use crate::relations::{self, LocusClient};
 use locus::{RelationEndpoint, RelationRecord};
 use std::collections::HashSet;
@@ -24,7 +24,11 @@ pub(super) async fn removed(
     locus: &LocusClient,
     project: goal_model::RemovedProjectInfo,
 ) -> anyhow::Result<()> {
-    for relation in [relations::WORKSPACE_PROJECT, WINDOW_PROJECT] {
+    for relation in [
+        relations::WORKSPACE_PROJECT,
+        WINDOW_PROJECT,
+        WINDOW_WORKSPACE_PROJECT,
+    ] {
         for record in locus.list(relation).await? {
             if record.metadata.get("project-id") == Some(&project.project.id)
                 || matches!(&record.target,RelationEndpoint::StableKey{kind,id} if kind==locus::keys::PROJECT_PATH && (id==&project.project.cwd||project.checkouts.iter().any(|c|&c.root_path==id)))
@@ -45,7 +49,11 @@ pub(super) async fn reconcile(
     projects: Vec<goal_model::ProjectInfo>,
 ) -> anyhow::Result<()> {
     let ids: HashSet<_> = projects.iter().map(|p| p.id.clone()).collect();
-    for relation in [relations::WORKSPACE_PROJECT, WINDOW_PROJECT] {
+    for relation in [
+        relations::WORKSPACE_PROJECT,
+        WINDOW_PROJECT,
+        WINDOW_WORKSPACE_PROJECT,
+    ] {
         for state in locus.list_with_persistence(relation).await? {
             let mut record = state.record;
             let linked = record

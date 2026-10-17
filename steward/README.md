@@ -54,6 +54,16 @@ leaving the process (only app-ids and project names become metric paths).
   Workspace-scoped records carry the observed source owner/generation in
   metadata, preserving their persistence flags. This distinguishes stale links
   from a fresh binding to a reused native ID, including after steward restarts.
+  Snapshot requests use a separate D-Bus connection from bounded signal queues,
+  preventing a hotplug burst from blocking the binding lock.
+- `associations/workspace_recovery`
+  Records session-only `org.rsynapse.window.workspace-project` anchors for the
+  current workspace's project intent, separately from an agent/window's own CWD
+  project. When a compositor replaces workspace objects during monitor changes,
+  a surviving same-owner/generation window can restore an unassigned workspace's
+  project. Multiple different project anchors are left for explicit selection;
+  existing bindings and explicit unassignment win. Closing windows, source resets,
+  and project removal clear obsolete anchors. No project metadata is recreated.
 - `relations.rs`
   A thin write client plus `records()`
   observables over locus relations. Components compose observables and
@@ -77,6 +87,15 @@ leaving the process (only app-ids and project names become metric paths).
   containing the focused name or None, rather than one row per entity.
 
 ## Registry note
+
+An opt-in end-to-end hotplug check uses a private D-Bus, headless Umbriel, and
+isolated Locus/projd state (requires built service binaries and Python GI/GTK4):
+
+```sh
+python3 steward/tests/umbriel_hotplug.py \
+  --steward "$PWD/steward/target/release/steward" \
+  --artifacts /tmp/rsynapse-hotplug-test
+```
 
 Relation persistence is explicit: the namer and git-status publishers use
 `SetOneWithPersistence(..., false)` for computed state, and workday summaries

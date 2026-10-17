@@ -38,6 +38,10 @@ the projection has no Locus dependency.
 - IDs are immutable for an object's lifetime and distinct within its collection
   in the current projection. A workspace's display index and name may change
   without changing its identity. Output `Name` identifies its connector.
+- A removed workspace ID is not reused within one source generation. Umbriel
+  can restart native workspace counters when a monitor reconnects; the backend
+  assigns a fresh public ID to that new lifetime and rewrites all references.
+  Public IDs must not be joined directly to native compositor IDs by consumers.
 - IDs are live identities scoped by the well-known service's unique bus owner
   and `Generation`, not persistent cross-session keys. New bus owner or
   generation means consumers must reconcile their live bindings. Steward/Locus

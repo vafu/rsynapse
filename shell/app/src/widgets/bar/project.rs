@@ -8,6 +8,8 @@ use zbus::{Connection, Proxy};
 use super::workspace::WorkspaceObject;
 
 const WORKSPACE_PROJECT_RELATION: &str = "org.rsynapse.workspace.project";
+#[cfg(test)]
+mod backpressure;
 mod projd;
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -63,6 +65,15 @@ async fn run_locus_workspace_project(
     let proxy = locus_proxy(&connection)
         .await
         .map_err(|error| format!("connect locus proxy: {error}"))?;
+    // Do not await List replies on the connection whose bounded signal queues
+    // can fill during hotplug/association replay. Otherwise the display watcher
+    // can stall even after Steward successfully commits the assignment.
+    let reads = Connection::session()
+        .await
+        .map_err(|error| format!("connect locus reads: {error}"))?;
+    let reader = locus_proxy(&reads)
+        .await
+        .map_err(|error| format!("connect locus reader: {error}"))?;
 
     let mut added = Box::pin(
         proxy
@@ -89,32 +100,32 @@ async fn run_locus_workspace_project(
             .map_err(to_string)?,
     );
 
-    send_project(&sender, &proxy, &subject).await?;
+    send_project(&sender, &reader, &subject).await?;
 
     loop {
         tokio::select! {
             message = added.next() => {
                 let Some(message) = message else { return Ok(()); };
                 if relation_record_matches(&message, &subject)? {
-                    send_project(&sender, &proxy, &subject).await?;
+                    send_project(&sender, &reader, &subject).await?;
                 }
             }
             message = updated.next() => {
                 let Some(message) = message else { return Ok(()); };
                 if relation_record_matches(&message, &subject)? {
-                    send_project(&sender, &proxy, &subject).await?;
+                    send_project(&sender, &reader, &subject).await?;
                 }
             }
             message = removed.next() => {
                 let Some(message) = message else { return Ok(()); };
                 if relation_record_matches(&message, &subject)? {
-                    send_project(&sender, &proxy, &subject).await?;
+                    send_project(&sender, &reader, &subject).await?;
                 }
             }
             message = cleared.next() => {
                 let Some(message) = message else { return Ok(()); };
                 if clear_matches(&message, &subject)? {
-                    send_project(&sender, &proxy, &subject).await?;
+                    send_project(&sender, &reader, &subject).await?;
                 }
             }
         }

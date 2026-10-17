@@ -1,6 +1,6 @@
 use super::protocol::{Event, Layer, Output, Window, Workspace};
 use crate::model::{self, Projection};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use workspace_dbus_api::{output_path, window_path, workspace_path};
 
 #[derive(Default)]
@@ -10,6 +10,9 @@ pub(super) struct State {
     windows: Option<BTreeMap<String, Window>>,
     layers: Option<Vec<Layer>>,
     overview: Option<bool>,
+    workspace_ids: BTreeMap<String, String>,
+    used_workspace_ids: BTreeSet<String>,
+    next_workspace_id: u64,
 }
 
 impl State {
@@ -21,7 +24,19 @@ impl State {
                     values.iter().all(|w| w.index > 0),
                     "Umbriel workspace indices must be one-based"
                 );
-                self.workspaces = Some(keyed(values, |v| &v.id)?);
+                let values = keyed(values, |v| &v.id)?;
+                self.workspace_ids.retain(|id, _| values.contains_key(id));
+                for id in values.keys() {
+                    if !self.workspace_ids.contains_key(id) {
+                        let mut public_id = id.clone();
+                        while !self.used_workspace_ids.insert(public_id.clone()) {
+                            self.next_workspace_id += 1;
+                            public_id = format!("{id}#{}", self.next_workspace_id);
+                        }
+                        self.workspace_ids.insert(id.clone(), public_id);
+                    }
+                }
+                self.workspaces = Some(values);
             }
             Event::Windows(values) => self.windows = Some(keyed(values, |v| &v.id)?),
             Event::Layers(values) => self.layers = Some(values),
@@ -38,7 +53,12 @@ impl State {
             return Ok(None);
         };
         Ok(Some(project(
-            outputs, workspaces, windows, layers, *overview,
+            outputs,
+            workspaces,
+            windows,
+            layers,
+            *overview,
+            &self.workspace_ids,
         )))
     }
 }
@@ -76,6 +96,7 @@ fn project(
     windows: &BTreeMap<String, Window>,
     layers: &[Layer],
     overview: bool,
+    workspace_ids: &BTreeMap<String, String>,
 ) -> Projection {
     let layer = layers.iter().find(|l| l.mapped && l.focused);
     // Workspace-local `focused` is deliberately not deserialized for windows.
@@ -114,7 +135,7 @@ fn project(
         .into_iter()
         .collect();
     result.manager.focused_workspace = focused_workspace
-        .map(|w| workspace_path(&w.id))
+        .map(|w| workspace_path(&workspace_ids[&w.id]))
         .into_iter()
         .collect();
     for output in outputs.values() {
@@ -128,10 +149,13 @@ fn project(
             model::Output {
                 focused: focused_output.is_some_and(|o| o.name == output.name),
                 current_workspace: active_workspace(output, workspaces)
-                    .map(|w| workspace_path(&w.id))
+                    .map(|w| workspace_path(&workspace_ids[&w.id]))
                     .into_iter()
                     .collect(),
-                workspaces: members.iter().map(|w| workspace_path(&w.id)).collect(),
+                workspaces: members
+                    .iter()
+                    .map(|w| workspace_path(&workspace_ids[&w.id]))
+                    .collect(),
             },
         );
     }
@@ -145,7 +169,7 @@ fn project(
                 .cmp(&(position(b).unwrap_or((u64::MAX, u64::MAX)), &b.id))
         });
         result.workspaces.insert(
-            workspace.id.clone(),
+            workspace_ids[&workspace.id].clone(),
             model::Workspace {
                 layout: workspace.layout,
                 name: workspace
@@ -185,8 +209,9 @@ fn project(
                     .into_iter()
                     .collect(),
                 pid: (window.pid > 0).then_some(window.pid).into_iter().collect(),
-                workspace: (!window.workspace.is_empty())
-                    .then(|| workspace_path(&window.workspace))
+                workspace: workspace_ids
+                    .get(&window.workspace)
+                    .map(|id| workspace_path(id))
                     .into_iter()
                     .collect(),
                 output: (!window.output.is_empty())

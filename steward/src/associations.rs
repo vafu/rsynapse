@@ -13,9 +13,11 @@ const ROOT: &str = "/org/rsynapse/Steward";
 mod icons;
 mod removal;
 mod workspace_cleanup;
+mod workspace_recovery;
 const BUS: &str = "org.rsynapse.Steward";
 const PROJECT_GOAL: &str = "org.rsynapse.goal.project";
 const WINDOW_PROJECT: &str = "org.rsynapse.window.project";
+const WINDOW_WORKSPACE_PROJECT: &str = "org.rsynapse.window.workspace-project";
 const PROJECT_AGENT: &str = "org.rsynapse.project.agent";
 const WORKSPACE_PROJECT_POLICY: &str = "org.rsynapse.workspace.project-policy";
 static BIND_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
@@ -103,6 +105,7 @@ async fn bind_context(
                 false,
             )
             .await?;
+        workspace_recovery::remember(locus, &workspace, &target, &metadata).await?;
         if explicit {
             let subject = RelationEndpoint::stable_key(locus::keys::WORKSPACE_ID, workspace);
             for policy in locus.list(WORKSPACE_PROJECT_POLICY).await? {

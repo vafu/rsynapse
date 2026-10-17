@@ -11,6 +11,7 @@ mod layout_indicator;
 // Build status icon rendering is paused while the status is moved to a new surface.
 // mod build_indicator;
 mod bzbus;
+mod monitors;
 mod mpris;
 mod network;
 mod power_profile;
@@ -54,6 +55,7 @@ use self::bluetooth::{
     BluetoothDeviceGroup, BluetoothGroupPopover, BluetoothView, bluetooth_status,
 };
 use self::brightness::{BrightnessView, brightness_status};
+use self::monitors::{primary_output, secondary_bar_changes};
 use self::mpris::{MprisView, mpris_status};
 use self::network::{NetworkView, network_status};
 use self::power_profile::{PowerProfileView, power_profile_status};
@@ -159,13 +161,16 @@ pub struct MainBar {
     _brightness_osd_ready: bool,
     output_name: Option<String>,
 
-    #[source(selected_workspace_windows(output_name.clone()))]
+    output_scope: shell_core::source::StateSignal<Option<String>>,
+    _window: gtk::glib::WeakRef<gtk::Window>,
+
+    #[source(shell_core::source::switch_map(output_scope.observable(), selected_workspace_windows))]
     windows: Vec<WindowNode>,
 
-    #[source(selected_project_status(output_name.clone()))]
+    #[source(shell_core::source::switch_map(output_scope.observable(), selected_project_status))]
     selected_project: SelectedWorkspaceView,
 
-    #[source(layout_indicator::status(output_name.clone()))]
+    #[source(shell_core::source::switch_map(output_scope.observable(), layout_indicator::status))]
     layout: layout_indicator::LayoutIndicatorView,
 
     #[source(battery_status())]
@@ -211,7 +216,7 @@ pub struct MainBar {
     _project_initializer: Option<selected_project::ProjectInitializer>,
     _goal_popup: Option<goals::GoalPopup>,
 
-    #[source(goals::goal_bar(output_name.clone()))]
+    #[source(shell_core::source::switch_map(output_scope.observable(), goals::goal_bar))]
     goals: goals::GoalBarVm,
 
     #[source(selected_project::project_catalog())]
@@ -1175,7 +1180,9 @@ impl SimpleAsyncComponent for MainBar {
             monitor_list,
             false,
             false,
-            output_name,
+            output_name.clone(),
+            shell_core::source::StateSignal::new(output_name),
+            root.downgrade(),
             None,
             None,
             None,
@@ -1420,20 +1427,47 @@ impl MainBar {
     }
 
     fn reconcile_secondary_bars(&mut self) {
-        let Some(primary_output) = self.output_name.as_deref() else {
-            return;
-        };
         let monitors = available_monitors();
         let connected = monitors
             .iter()
             .filter_map(|monitor| monitor_output_name(Some(monitor)))
             .collect::<Vec<_>>();
+        let selected = primary_output(self.output_name.as_deref(), &connected);
+        if let Some(monitor) = monitors
+            .iter()
+            .find(|monitor| monitor_output_name(Some(monitor)) == selected)
+        {
+            // Rebind even when a replacement display reuses the connector name:
+            // its GDK monitor object is a new lifetime.
+            if let Some(window) = self._window.upgrade() {
+                window.set_monitor(Some(monitor));
+            }
+            if self.output_name != selected {
+                if let Some(rail) = self._workspace_bar.take() {
+                    rail.widget().close();
+                    relm4::main_application().remove_window(rail.widget());
+                }
+                self._workspace_bar = launch_workspace_bar(
+                    "Rsynapse Workspace Rail",
+                    Some(monitor.clone()),
+                    selected.clone(),
+                );
+            } else if let Some(rail) = &self._workspace_bar {
+                rail.widget().set_monitor(Some(monitor));
+            }
+        }
+        self.output_name = selected.clone();
+        self.output_scope.set(selected.clone());
         let existing = self
             ._child_bars
             .iter()
             .map(|bar| bar.output_name.clone())
             .collect::<Vec<_>>();
-        let (removed, added) = secondary_bar_changes(&existing, &connected, primary_output);
+        let (removed, added) = secondary_bar_changes(
+            &existing,
+            &connected,
+            selected.as_deref().unwrap_or_default(),
+        );
 
         for output_name in removed {
             if let Some(index) = self
@@ -1611,36 +1645,6 @@ fn launch_secondary_bar(title: &'static str, monitor: gtk::gdk::Monitor) -> Seco
         output_name,
         controller,
     }
-}
-
-fn secondary_bar_changes(
-    existing: &[String],
-    connected: &[String],
-    primary_output: &str,
-) -> (Vec<String>, Vec<String>) {
-    let primary_output = connected
-        .iter()
-        .find(|output| output.as_str() == primary_output)
-        .or_else(|| connected.first());
-    let desired = connected
-        .iter()
-        .filter(|output| Some(*output) != primary_output)
-        .fold(Vec::new(), |mut outputs, output| {
-            if !outputs.contains(output) {
-                outputs.push(output.clone());
-            }
-            outputs
-        });
-    let removed = existing
-        .iter()
-        .filter(|output| !desired.contains(output))
-        .cloned()
-        .collect();
-    let added = desired
-        .into_iter()
-        .filter(|output| !existing.contains(output))
-        .collect();
-    (removed, added)
 }
 
 fn monitor_output_name(monitor: Option<&gtk::gdk::Monitor>) -> Option<String> {

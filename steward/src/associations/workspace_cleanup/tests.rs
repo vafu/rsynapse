@@ -10,6 +10,7 @@ fn ready(owner: &str, generation: u64, ids: &[&str]) -> Snapshot {
         generation,
         connected: true,
         ids: ids.iter().map(|id| (*id).into()).collect(),
+        windows: HashMap::new(),
     }
 }
 
@@ -146,6 +147,10 @@ impl Manager {
     async fn workspaces(&self) -> Vec<OwnedObjectPath> {
         self.0.lock().await.clone()
     }
+    #[zbus(property)]
+    fn windows(&self) -> Vec<OwnedObjectPath> {
+        vec![]
+    }
 }
 struct Workspace(String);
 #[interface(name = "org.rsynapse.Workspace.Workspace1")]
@@ -168,6 +173,40 @@ fn record(subject: RelationEndpoint, relation: &str) -> RelationRecord {
 }
 fn subject(id: &str) -> RelationEndpoint {
     RelationEndpoint::stable_key(locus::keys::WORKSPACE_ID, id)
+}
+
+#[test]
+fn current_epoch_project_edits_still_refresh_recovery_anchors() {
+    let mut tracker = Reconciler::default();
+    tracker.commit(ready(":1.1", 1, &["live"]));
+    let mut changed = record(subject("live"), crate::relations::WORKSPACE_PROJECT);
+    changed.metadata.insert(OWNER.into(), ":1.1".into());
+    changed.metadata.insert(GENERATION.into(), "1".into());
+    for relation in [
+        crate::relations::WORKSPACE_PROJECT,
+        super::super::WORKSPACE_PROJECT_POLICY,
+    ] {
+        changed.relation = relation.into();
+        let message = zbus::Message::signal(
+            locus::OBJECT_PATH,
+            locus::RELATIONS_INTERFACE,
+            "RelationUpdated",
+        )
+        .unwrap()
+        .build(&changed)
+        .unwrap();
+        assert!(relation_changed(&message, &tracker));
+    }
+    changed.relation = crate::relations::WORKSPACE_NAME.into();
+    let message = zbus::Message::signal(
+        locus::OBJECT_PATH,
+        locus::RELATIONS_INTERFACE,
+        "RelationUpdated",
+    )
+    .unwrap()
+    .build(&changed)
+    .unwrap();
+    assert!(!relation_changed(&message, &tracker));
 }
 
 #[test]

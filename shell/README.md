@@ -116,6 +116,13 @@ property, including live changes and workspace switches. Scrolling retains the
 move-arrows glyph; Master uses a left-docked panel and Dwindle a tiled dashboard.
 The tooltip names the layout. Unknown/missing layouts use a neutral indicator.
 
+When the primary monitor disappears, the bar and rail move to a live monitor and
+their output-scoped window, project/picker, goal and layout subscriptions switch
+together. Reconnecting a display under the same connector refreshes the GDK
+monitor binding; the replacement primary is removed from secondary controllers.
+An output temporarily absent from the projection yields an empty rail rather
+than falling back to other monitors' workspace targets.
+
 The workspace rail hides only unselected, anonymous empty edge placeholders
 without project/icon evidence. Empty interior workspaces and named workspaces
 remain visible; the selected workspace always stays represented. Occupancy comes

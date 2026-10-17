@@ -281,6 +281,31 @@ async fn exercise() -> anyhow::Result<()> {
     while connections.next().await.unwrap().get().await? {}
     while !connections.next().await.unwrap().get().await? {}
     assert_eq!(manager.windows().await?.len(), 2);
+    // A monitor can disappear/reappear while the IPC connection survives and
+    // reuse native workspace counters. Those are new D-Bus object lifetimes.
+    let old_workspaces = manager.workspaces().await?;
+    let mut memberships = restored.receive_workspace_changed().await;
+    let mut workspace_inventory = manager.receive_workspaces_changed().await;
+    source.send("workspaces", json!([]));
+    assert!(
+        workspace_inventory
+            .next()
+            .await
+            .unwrap()
+            .get()
+            .await?
+            .is_empty()
+    );
+    assert!(memberships.next().await.unwrap().get().await?.is_empty());
+    let generation = manager.generation().await?;
+    source.send("workspaces", support::workspaces());
+    let fresh = workspace_inventory.next().await.unwrap().get().await?;
+    assert_eq!(fresh.len(), 2);
+    assert!(fresh.iter().all(|path| !old_workspaces.contains(path)));
+    let membership = memberships.next().await.unwrap().get().await?;
+    assert_eq!(membership.len(), 1);
+    assert!(fresh.contains(&membership[0]));
+    assert_eq!(manager.generation().await?, generation);
     host.abort();
     Ok(())
 }

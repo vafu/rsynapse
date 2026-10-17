@@ -2,8 +2,10 @@
 use crate::relations::LocusClient;
 use futures_util::StreamExt;
 use locus::RelationEndpoint;
-use std::collections::HashSet;
-use workspace_dbus_api::{BUS_NAME, MANAGER_INTERFACE, ROOT_PATH, WORKSPACE_INTERFACE};
+use std::collections::{HashMap, HashSet};
+use workspace_dbus_api::{
+    BUS_NAME, MANAGER_INTERFACE, ROOT_PATH, WINDOW_INTERFACE, WORKSPACE_INTERFACE,
+};
 use zbus::{
     Connection, MatchRule, MessageStream,
     fdo::{DBusProxy, ObjectManagerProxy, PropertiesProxy},
@@ -17,7 +19,7 @@ const GENERATION: &str = "workspace-source-generation";
 fn source_changed(message: &zbus::Message) -> bool {
     let header = message.header();
     match header.member().map(|name| name.as_str()) {
-        Some("PropertiesChanged") if header.path().is_some_and(|p| p.as_str() == ROOT_PATH) => {
+        Some("PropertiesChanged") => {
             let Ok((interface, changed, invalidated)) = message.body().deserialize::<(
                 String,
                 std::collections::HashMap<String, zbus::zvariant::OwnedValue>,
@@ -25,13 +27,16 @@ fn source_changed(message: &zbus::Message) -> bool {
             )>() else {
                 return true;
             };
-            interface == MANAGER_INTERFACE
-                && ["Connected", "Generation", "Workspaces"]
-                    .iter()
-                    .any(|name| {
-                        changed.contains_key(*name)
-                            || invalidated.iter().any(|value| value.as_str() == *name)
-                    })
+            let names: &[&str] = match interface.as_str() {
+                MANAGER_INTERFACE => &["Connected", "Generation", "Workspaces", "Windows"],
+                WINDOW_INTERFACE => &["Workspace"],
+                WORKSPACE_INTERFACE => &["Windows"],
+                _ => return false,
+            };
+            names.iter().any(|name| {
+                changed.contains_key(*name)
+                    || invalidated.iter().any(|value| value.as_str() == *name)
+            })
         }
         Some("InterfacesAdded") => {
             let Ok((_, interfaces)) = message.body().deserialize::<(
@@ -44,6 +49,7 @@ fn source_changed(message: &zbus::Message) -> bool {
                 return true;
             };
             interfaces.contains_key(WORKSPACE_INTERFACE)
+                || interfaces.contains_key(WINDOW_INTERFACE)
         }
         Some("InterfacesRemoved") => {
             let Ok((_, interfaces)) = message
@@ -52,7 +58,9 @@ fn source_changed(message: &zbus::Message) -> bool {
             else {
                 return true;
             };
-            interfaces.iter().any(|name| name == WORKSPACE_INTERFACE)
+            interfaces
+                .iter()
+                .any(|name| [WORKSPACE_INTERFACE, WINDOW_INTERFACE].contains(&name.as_str()))
         }
         _ => false,
     }
@@ -75,6 +83,18 @@ fn relation_changed(message: &zbus::Message, tracker: &Reconciler) -> bool {
     if kind != locus::keys::WORKSPACE_ID {
         return false;
     }
+    // Project/assignment-policy edits must refresh window recovery anchors even
+    // when the workspace epoch is already current (for example a direct Locus
+    // edit or a project-ID migration). Anchor writes themselves are window-keyed
+    // and do not feed this watcher back into a loop.
+    if [
+        crate::relations::WORKSPACE_PROJECT,
+        super::WORKSPACE_PROJECT_POLICY,
+    ]
+    .contains(&record.relation.as_str())
+    {
+        return true;
+    }
     // Our own epoch annotation already describes an observed live workspace.
     // It need not cause another full inventory/Locus read.
     !tracker.epoch.as_ref().is_some_and(|(owner, generation)| {
@@ -85,11 +105,12 @@ fn relation_changed(message: &zbus::Message, tracker: &Reconciler) -> bool {
 }
 
 #[derive(Clone, Debug, Default)]
-struct Snapshot {
-    owner: String,
-    generation: u64,
-    connected: bool,
-    ids: HashSet<String>,
+pub(super) struct Snapshot {
+    pub(super) owner: String,
+    pub(super) generation: u64,
+    pub(super) connected: bool,
+    pub(super) ids: HashSet<String>,
+    pub(super) windows: HashMap<String, Option<String>>,
 }
 
 #[derive(Default)]
@@ -128,6 +149,7 @@ struct Root {
     connected: bool,
     generation: u64,
     paths: Vec<OwnedObjectPath>,
+    windows: Vec<OwnedObjectPath>,
 }
 async fn root(proxy: &PropertiesProxy<'_>) -> anyhow::Result<Root> {
     let mut props = proxy
@@ -149,10 +171,15 @@ async fn root(proxy: &PropertiesProxy<'_>) -> anyhow::Result<Root> {
                 .remove("Workspaces")
                 .ok_or_else(|| anyhow::anyhow!("missing Workspaces"))?,
         )?,
+        windows: Vec::try_from(
+            props
+                .remove("Windows")
+                .ok_or_else(|| anyhow::anyhow!("missing Windows"))?,
+        )?,
     })
 }
 
-async fn snapshot(connection: &Connection) -> anyhow::Result<Option<Snapshot>> {
+pub(super) async fn snapshot(connection: &Connection) -> anyhow::Result<Option<Snapshot>> {
     let bus = DBusProxy::new(connection).await?;
     let owner = match bus.get_name_owner(BUS_NAME.try_into()?).await {
         Ok(owner) => owner.to_string(),
@@ -207,6 +234,7 @@ async fn snapshot(connection: &Connection) -> anyhow::Result<Option<Snapshot>> {
         return Ok(None);
     }
     let mut ids = HashSet::new();
+    let mut workspace_ids = HashMap::new();
     for path in &before.paths {
         let Some(value) = objects
             .get(path)
@@ -221,7 +249,32 @@ async fn snapshot(connection: &Connection) -> anyhow::Result<Option<Snapshot>> {
         };
         let id = String::try_from(value.try_clone()?)?;
         anyhow::ensure!(!id.is_empty(), "workspace has an empty Id");
-        ids.insert(id);
+        ids.insert(id.clone());
+        workspace_ids.insert(path.clone(), id);
+    }
+    let mut windows = HashMap::new();
+    for path in &before.windows {
+        let Some(properties) = objects
+            .get(path)
+            .and_then(|interfaces| interfaces.get(WINDOW_INTERFACE))
+        else {
+            return Ok(None);
+        };
+        let Some(id) = properties.get("Id") else {
+            return Ok(None);
+        };
+        let Some(workspace) = properties.get("Workspace") else {
+            return Ok(None);
+        };
+        let id = String::try_from(id.try_clone()?)?;
+        let paths = Vec::<OwnedObjectPath>::try_from(workspace.try_clone()?)?;
+        windows.insert(
+            id,
+            paths
+                .first()
+                .and_then(|path| workspace_ids.get(path))
+                .cloned(),
+        );
     }
     let after = match root(&properties).await {
         Ok(root) => root,
@@ -241,6 +294,7 @@ async fn snapshot(connection: &Connection) -> anyhow::Result<Option<Snapshot>> {
         generation: before.generation,
         connected: true,
         ids,
+        windows,
     }))
 }
 
@@ -333,6 +387,10 @@ pub(super) fn stamp(
 
 pub(super) async fn run(locus: LocusClient) -> anyhow::Result<()> {
     let connection = Connection::session().await?;
+    // A hotplug burst can fill a bounded signal queue while reconciliation is
+    // awaiting replies. Keep snapshot requests off the subscribed connection so
+    // its reader cannot block those replies (and hold BIND_LOCK indefinitely).
+    let reads = Connection::session().await?;
     let mut source = MessageStream::for_match_rule(
         MatchRule::builder()
             .msg_type(Type::Signal)
@@ -359,8 +417,9 @@ pub(super) async fn run(locus: LocusClient) -> anyhow::Result<()> {
     loop {
         {
             let _lock = super::BIND_LOCK.lock().await;
-            if let Some(snapshot) = snapshot(&connection).await? {
-                reconcile(&locus, &mut tracker, snapshot).await?;
+            if let Some(snapshot) = snapshot(&reads).await? {
+                reconcile(&locus, &mut tracker, snapshot.clone()).await?;
+                super::workspace_recovery::reconcile(&locus, &snapshot).await?;
             }
         }
         loop {
@@ -380,5 +439,7 @@ pub(super) async fn run(locus: LocusClient) -> anyhow::Result<()> {
     }
 }
 
+#[cfg(test)]
+mod backpressure;
 #[cfg(test)]
 mod tests;

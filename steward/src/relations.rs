@@ -99,12 +99,21 @@ pub fn records(client: LocusClient, relation: &'static str) -> Observable<Vec<Re
         from_task(move |sender| {
             let client = client.clone();
             async move {
+                // Snapshot replies must not share a connection with bounded
+                // signal queues that can fill while the snapshot is in flight.
+                let watch = match LocusClient::connect().await {
+                    Ok(watch) => watch,
+                    Err(error) => {
+                        let _ = sender.send(Err(error.to_string())).await;
+                        return;
+                    }
+                };
                 // Subscribe before the initial snapshot so policy edits during
                 // startup cannot fall into the List/subscribe gap.
-                let mut added = Box::pin(signal_stream(&client, "RelationAdded").await);
-                let mut updated = Box::pin(signal_stream(&client, "RelationUpdated").await);
-                let mut removed = Box::pin(signal_stream(&client, "RelationRemoved").await);
-                let mut cleared = Box::pin(signal_stream(&client, "RelationCleared").await);
+                let mut added = Box::pin(signal_stream(&watch, "RelationAdded").await);
+                let mut updated = Box::pin(signal_stream(&watch, "RelationUpdated").await);
+                let mut removed = Box::pin(signal_stream(&watch, "RelationRemoved").await);
+                let mut cleared = Box::pin(signal_stream(&watch, "RelationCleared").await);
                 if sender
                     .send(list_records(&client, relation).await)
                     .await
@@ -177,3 +186,6 @@ fn message_matches(message: &zbus::Message, relation: &str) -> bool {
         _ => false,
     }
 }
+
+#[cfg(test)]
+mod backpressure;

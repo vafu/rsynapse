@@ -113,16 +113,10 @@ fn filter_workspaces_for_output(
         .cloned()
         .collect();
 
-    if filtered.is_empty() && !workspaces.is_empty() {
-        eprintln!(
-            "[bar] no workspaces matched output {output_path}; showing unfiltered workspaces"
-        );
-        sort_workspaces(&mut workspaces);
-        workspaces
-    } else {
-        sort_workspaces(&mut filtered);
-        filtered
-    }
+    // During hotplug a monitor and its projected output can appear/disappear
+    // in either order. Never render other outputs' workspaces as a fallback.
+    sort_workspaces(&mut filtered);
+    filtered
 }
 
 fn workspace_matches_output(
@@ -178,7 +172,7 @@ mod tests {
     }
 
     #[test]
-    fn output_filter_falls_back_to_all_workspaces_when_connector_misses() {
+    fn missing_output_does_not_expose_another_outputs_workspace_targets() {
         let workspaces = vec![workspace(
             1,
             Some("/org/rsynapse/Workspace/Outputs/x44502D32"),
@@ -189,7 +183,7 @@ mod tests {
                 workspaces.clone(),
                 Some("/org/rsynapse/Workspace/Outputs/x4D49534D41544348")
             ),
-            workspaces
+            Vec::new()
         );
     }
 
