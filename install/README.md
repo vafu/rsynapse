@@ -156,8 +156,20 @@ and shell together. Activation now starts `workspace-dbus --backend auto` throug
 `workspace-dbus.service`; desktop identity takes precedence over inherited
 compositor socket variables. The unit stops with `graphical-session.target`, so
 the next session picks its own compositor after environment import.
+It is ordered after, and requires an already-active, `graphical-session.target`.
+This lets UWSM/native compositor readiness publish socket variables before the
+service snapshots its environment; early D-Bus requests cannot start a permanently
+disconnected projection. The pre-target alone is too early. Session activation
+still starts the enabled unit automatically.
 The installer removes the old `org.rsynapse.Niri` activation file and executable.
 Steward owns workspace-relation cleanup. Project and goal storage is unchanged.
+
+The startup-order regression uses uniquely named fixture units on the user
+manager, without touching the real graphical session or its environment:
+
+```sh
+python3 install/tests/test_workspace_session_startup.py
+```
 
 The script also removes older Rsynapse service names that predate the current
 `org.rsynapse.*` naming and the combined shell process layout.

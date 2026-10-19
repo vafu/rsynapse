@@ -88,7 +88,14 @@ The installer builds `service/`, installs the neutral D-Bus activation file and
 `workspace-dbus.service`, and enables it under `graphical-session.target`.
 Activation delegates to that unit with `--backend auto`; `PartOf` stops the
 projection with the graphical session so the next compositor session selects
-its own backend after environment import. On systems without systemd, the D-Bus
+its own backend after environment import. The unit starts after the active
+`graphical-session.target`, not merely its pre-target: under UWSM the pre-target
+precedes compositor startup and publication of `WAYLAND_DISPLAY`/`UMBRIEL_SOCKET`.
+`Requisite` rejects premature D-Bus activation without pulling in a graphical
+session. Enabling the unit on the session target starts it once readiness is
+reached. Importing environment variables does not update an already-running
+process; transport retries alone cannot repair an early environment snapshot.
+On systems without systemd, the D-Bus
 activation Exec still names the same binary. Use an explicit backend and a
 private D-Bus when testing nested compositors alongside the current desktop.
 

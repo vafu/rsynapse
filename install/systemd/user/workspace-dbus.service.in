@@ -1,6 +1,8 @@
 [Unit]
 Description=Compositor-neutral workspace D-Bus service
-After=graphical-session-pre.target
+# Session readiness includes compositor socket/environment publication.
+After=graphical-session.target
+Requisite=graphical-session.target
 PartOf=graphical-session.target
 
 [Service]
