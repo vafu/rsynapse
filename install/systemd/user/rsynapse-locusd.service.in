@@ -4,8 +4,9 @@ Description=Locus session D-Bus relation daemon
 [Service]
 Type=dbus
 BusName=org.rsynapse.Locus
-ExecStart=@LOCAL_BIN@/locusd
+ExecStart=@LOCAL_BIN@/rsynapse-locusd
 Restart=on-failure
 
 [Install]
 WantedBy=default.target
+Alias=locusd.service

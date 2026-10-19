@@ -11,7 +11,21 @@ machine: the emitter pushes Graphite plaintext to a local carbon daemon,
 and Grafana visualizes it. No accounts, no cloud, no window titles ever
 leaving the process (only app-ids and project names become metric paths).
 
+## Desktop session restoration
+
+Steward owns durable logical workspace identities, session capture and
+command-driven window restoration. Locus persists project associations; session
+descriptions and versioned launch recipes live in Steward's own state file.
+See [SESSION.md](SESSION.md) for commands, lifecycle, launch configuration,
+supported behavior and isolated integration testing.
+
 ## Components (`src/`)
+
+- `session/`
+  Captures workspace order/layout, project links and application launch recipes.
+  Restores through the optional workspace-dbus control interface, matching new
+  windows by explicit launch identity or causal fresh process identity. Named
+  snapshots retain immutable project references, and restores are repeatable.
 
 - `goal_work`
   Attributes human focus to the focused workspace's stable project ID and its
@@ -93,7 +107,7 @@ isolated Locus/projd state (requires built service binaries and Python GI/GTK4):
 
 ```sh
 python3 steward/tests/umbriel_hotplug.py \
-  --steward "$PWD/steward/target/release/steward" \
+  --steward "$PWD/steward/target/release/rsynapse-steward" \
   --artifacts /tmp/rsynapse-hotplug-test
 ```
 
@@ -127,7 +141,7 @@ docker compose -f observability/docker-compose.yml up -d
 ./steward/build.sh
 
 # 3. install + start the user service (unit is installed by install/local.sh)
-install -m755 steward/target/release/steward ~/.local/bin/steward
+install -m755 steward/target/release/rsynapse-steward ~/.local/bin/rsynapse-steward
 systemctl --user enable --now rsynapse-steward.service
 ```
 

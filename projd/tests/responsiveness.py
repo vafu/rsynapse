@@ -1,7 +1,7 @@
 """Registration and CRUD remain responsive during a deliberately blocked Git scan."""
 import json,os,pathlib,shutil,signal,subprocess,sys,tempfile,time
 ROOT=pathlib.Path(__file__).resolve().parents[2]
-PROJ=str(ROOT/'steward/target/release/proj');PROJD=str(ROOT/'steward/target/release/projd')
+PROJ=str(ROOT/'steward/target/release/proj');PROJD=str(ROOT/'steward/target/release/rsynapse-projd')
 if '--child' not in sys.argv:
     with tempfile.TemporaryDirectory(prefix='projd-responsive-') as temp:
         base=pathlib.Path(temp);bin=base/'bin';bin.mkdir()

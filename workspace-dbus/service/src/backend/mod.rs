@@ -1,7 +1,7 @@
 //! Backend protocols are private to the producer, not the API or its consumers.
 mod niri;
 mod selection;
-mod umbriel;
+pub(crate) mod umbriel;
 pub use selection::BackendKind;
 
 use crate::model::Projection;

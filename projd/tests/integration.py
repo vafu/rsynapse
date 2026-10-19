@@ -1,7 +1,7 @@
 """Real Project/Checkout object references, independent worktrees, and durable icons."""
 import concurrent.futures,json,os,pathlib,subprocess,sys,tempfile,time
 ROOT=pathlib.Path(__file__).resolve().parents[2]
-PROJD=os.environ.get('PROJD_BIN',str(ROOT/'steward/target/release/projd'));PROJ=os.environ.get('PROJ_BIN',str(ROOT/'steward/target/release/proj'))
+PROJD=os.environ.get('PROJD_BIN',str(ROOT/'steward/target/release/rsynapse-projd'));PROJ=os.environ.get('PROJ_BIN',str(ROOT/'steward/target/release/proj'))
 if '--child' not in sys.argv:
     with tempfile.TemporaryDirectory(prefix='projd-test-') as temp:
         env=dict(os.environ,PROJD_STORE_PATH=temp+'/store.sqlite3',XDG_DATA_HOME=temp,XDG_DATA_DIRS=temp,TEST_PROJECT_DIR=temp)

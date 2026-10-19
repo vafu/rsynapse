@@ -37,8 +37,6 @@ cargo_install "$repo_root/workspace-dbus/service"
 cargo_install "$repo_root/workspace-dbus/terminal-id"
 bash "$repo_root/projd/build.sh" --locked
 install -d "$local_bin"
-install -m 0755 "$repo_root/steward/target/release/projd" "$local_bin/projd"
-install -m 0755 "$repo_root/steward/target/release/proj" "$local_bin/proj"
 cargo_install "$repo_root/shell/app"
 cargo_install "$repo_root/shell/launcher/rsynapse-daemon"
 cargo_install "$repo_root/shell/launcher/rsynapse-cli"
@@ -46,8 +44,6 @@ cargo_install "$repo_root/shell/launcher/rsynapse-ui"
 
 echo "Building steward against public crates.io"
 "$repo_root/steward/build.sh"
-install -m 0755 "$repo_root/steward/target/release/steward" "$local_bin/steward"
-ln -sfn steward "$local_bin/rsynapse-steward"
 
 echo "Installing helper scripts to $local_bin"
 install -d "$local_bin" "$script_dir"
@@ -89,9 +85,6 @@ plugin_target="${CARGO_TARGET_DIR:-"$repo_root/shell/launcher/target"}/release"
 find "$plugin_target" -maxdepth 1 -type f -name 'librsynapse_plugin_*.so' \
     -exec install -m 0755 {} "$plugin_dir/" \;
 
-echo "Installing D-Bus activation files to $dbus_dir"
-install_templates "$repo_root/install/dbus-1/services" "$dbus_dir" ".in"
-
 echo "Installing desktop entries to $applications_dir"
 install_templates "$repo_root/install/applications" "$applications_dir" ".in"
 if command -v xdg-mime >/dev/null 2>&1; then
@@ -101,8 +94,9 @@ else
     echo "xdg-mime is not available; skipped URL handler activation"
 fi
 
-echo "Installing systemd user units to $systemd_user_dir"
-install_templates "$repo_root/install/systemd/user" "$systemd_user_dir" ".in"
+echo "Installing namespaced daemons, systemd units and D-Bus activation files"
+python3 "$repo_root/install/session-services.py" --prefix "$prefix" \
+    --config-home "$HOME/.config" --install-built
 
 echo "Removing deprecated Rsynapse service definitions"
 rm -f \
@@ -132,11 +126,7 @@ rm -rf \
     "$systemd_user_dir/rsynapse-shell.service.d" \
     "$systemd_user_dir/rsynapse-notifications.service.d"
 
-if systemctl --user daemon-reload >/dev/null 2>&1; then
-    systemctl --user enable workspace-dbus.service rsynapse-shell.service rsynapse-notifications.service
-    systemctl --user reset-failed rsynapse-shell.service rsynapse-notifications.service >/dev/null 2>&1 || true
-else
-    echo "systemd user manager is not available; skipped daemon-reload and enable"
-fi
+# Cleanup above may have removed obsolete loaded units.
+systemctl --user daemon-reload >/dev/null 2>&1 || true
 
 echo "Rsynapse local install complete"

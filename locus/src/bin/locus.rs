@@ -1,4 +1,4 @@
-//! CLI for locusd's org.rsynapse.Locus relation service.
+//! CLI for rsynapse-locusd's org.rsynapse.Locus relation service.
 use anyhow::{Context, bail};
 use locus::{RelationEndpoint, RelationsProxy};
 
@@ -20,7 +20,7 @@ async fn main() -> anyhow::Result<()> {
     let usage = "locus list [RELATION]\n\
                  locus set|set-one SUBJECT_JSON RELATION TARGET_JSON METADATA_JSON [--persist true|false]\n\
                  locus persist SUBJECT_JSON RELATION TARGET_JSON true|false\n\
-                 CLI for locusd (org.rsynapse.Locus). New records default to persist false.";
+                 CLI for rsynapse-locusd (org.rsynapse.Locus). New records default to persist false.";
     if args.is_empty() || matches!(args[0].as_str(), "--help" | "-h") {
         println!("{usage}");
         return Ok(());

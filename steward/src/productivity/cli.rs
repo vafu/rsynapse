@@ -7,9 +7,9 @@ use std::{collections::HashMap, path::PathBuf};
 
 #[derive(Parser)]
 #[command(
-    name = "steward",
+    name = "rsynapse-steward",
     about = "Session steward and activity-context preferences",
-    after_help = "Manage projects and daily goals with proj, or Grafana's Rsynapse goals panel."
+    after_help = "Manage projects and goals with proj. Use steward session --help for desktop capture and restoration."
 )]
 struct Args {
     #[command(subcommand)]
@@ -26,6 +26,11 @@ enum Command {
         path: PathBuf,
     },
     Associations,
+    /// Save and restore project-aware desktop sessions.
+    Session {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
 }
 #[derive(Subcommand)]
 enum Classify {
@@ -68,6 +73,9 @@ pub async fn run() -> anyhow::Result<bool> {
         Command::Associations => {
             crate::associations::run(locus).await?;
             return Ok(true);
+        }
+        Command::Session { .. } => {
+            unreachable!("session CLI is dispatched before activity preferences")
         }
         Command::Classify { command } => command,
     };

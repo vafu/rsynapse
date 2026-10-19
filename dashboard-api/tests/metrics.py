@@ -28,7 +28,7 @@ def wait(fn):
     raise AssertionError('Private service was not ready')
 conn=Gio.bus_get_sync(Gio.BusType.SESSION,None)
 def metrics(method,sig,args):return conn.call_sync('org.rsynapse.Proj','/org/rsynapse/Proj','org.rsynapse.Proj.Metrics1',method,GLib.Variant(sig,args),None,Gio.DBusCallFlags.NONE,5000,None).unpack()
-processes=[subprocess.Popen([str(pathlib.Path.home()/'.local/bin/locusd')]),subprocess.Popen([str(BIN/'projd')])]
+processes=[subprocess.Popen([str(pathlib.Path.home()/'.local/bin/rsynapse-locusd')]),subprocess.Popen([str(BIN/'rsynapse-projd')])]
 try:
     wait(lambda:subprocess.run([str(BIN/'proj'),'project','list','--json'],capture_output=True).returncode==0)
     base=pathlib.Path(os.environ['TEST_ROOT']);first=base/'first';second=base/'second';first.mkdir();second.mkdir()

@@ -4,9 +4,10 @@ version = "0.1.0"
 edition = "2024"
 description = "Headless session steward for the Rsynapse desktop: metrics, workspace naming, project git status"
 publish = false
+autobins = false
 
 [[bin]]
-name = "steward"
+name = "rsynapse-steward"
 path = "src/main.rs"
 
 [dependencies]
@@ -17,13 +18,15 @@ graphyne = "0.2"
 chrono = { version = "0.4", features = ["serde"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+getrandom = "0.2"
+shlex = "2"
 reqwest = { version = "0.12", default-features = false, features = ["json"] }
 locus = { path = "../locus" }
 goal-model = { package = "rsynapse-projd-model", path = "../projd/model" }
 workspace-dbus-api = { path = "../workspace-dbus/api" }
 shell-source = { path = "../shell/core/shell-source" }
 shell-rx-macros = { path = "../shell/core/rx-macros" }
-tokio = { version = "1.52.3", features = ["macros", "rt-multi-thread", "signal", "time"] }
+tokio = { version = "1.52.3", features = ["macros", "rt-multi-thread", "signal", "time", "process"] }
 zbus = { version = "4.4.0", default-features = false, features = ["tokio"] }
 
 [dev-dependencies]

@@ -4,10 +4,12 @@
 //! compositor protocol, UI framework, project-management or relation-store code.
 //! See the workspace's CONTRACT.md for identity, focus and lifecycle semantics.
 
+mod control;
 mod layout;
 pub mod paths;
 mod proxies;
 
+pub use control::ControlProxy;
 pub use layout::Layout;
 pub use paths::{output_path, window_path, workspace_path};
 pub use proxies::{ManagerProxy, OutputProxy, WindowProxy, WorkspaceProxy};
@@ -17,6 +19,7 @@ pub const BUS_NAME: &str = "org.rsynapse.Workspace";
 /// Manager object and standard ObjectManager root.
 pub const ROOT_PATH: &str = "/org/rsynapse/Workspace";
 pub const MANAGER_INTERFACE: &str = "org.rsynapse.Workspace.Manager1";
+pub const CONTROL_INTERFACE: &str = "org.rsynapse.Workspace.Control1";
 pub const OUTPUT_INTERFACE: &str = "org.rsynapse.Workspace.Output1";
 pub const WORKSPACE_INTERFACE: &str = "org.rsynapse.Workspace.Workspace1";
 pub const WINDOW_INTERFACE: &str = "org.rsynapse.Workspace.Window1";

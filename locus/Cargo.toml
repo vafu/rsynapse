@@ -4,11 +4,11 @@ version = "0.1.0"
 edition = "2024"
 description = "D-Bus relation store for desktop object associations"
 publish = false
-default-run = "locusd"
+default-run = "rsynapse-locusd"
 autobins = false
 
 [[bin]]
-name = "locusd"
+name = "rsynapse-locusd"
 path = "src/main.rs"
 
 [[bin]]

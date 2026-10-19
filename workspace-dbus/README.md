@@ -1,5 +1,9 @@
 # workspace-dbus
 
+The daemon executable/unit is `rsynapse-workspace-dbus` /
+`rsynapse-workspace-dbus.service`. The installer retains `workspace-dbus` command
+and unit aliases. The independent package/API crate names are unchanged.
+
 Compositor-independent session D-Bus projection of outputs, workspaces, windows
 and focus.
 
@@ -19,6 +23,10 @@ Umbriel implementation ┘
 - `service/` (`workspace-dbus`): the projection host, neutral state/object
   lifecycle and private `backend/niri` and `backend/umbriel` implementations.
   No Locus or projd dependency.
+  Its optional `Control1` interface provides epoch-scoped workspace selection,
+  layout and window placement for Steward restoration. Umbriel supports these
+  controls; Niri currently exposes an empty capability list. No saved-session
+  state or project policy enters this service.
 - `terminal-id/` (`workspace-terminal-id`): a client of the API only. Resolves a
   Ghostty terminal's opaque window ID with an OSC title challenge and typed
   D-Bus property streams; no compositor socket, focus guess or PID matching.
@@ -85,7 +93,7 @@ adding backend-specific properties to the API. Native output membership is kept
 independent of workspace membership for scratchpads and pinned windows.
 
 The installer builds `service/`, installs the neutral D-Bus activation file and
-`workspace-dbus.service`, and enables it under `graphical-session.target`.
+`rsynapse-workspace-dbus.service`, and enables it under `graphical-session.target`.
 Activation delegates to that unit with `--backend auto`; `PartOf` stops the
 projection with the graphical session so the next compositor session selects
 its own backend after environment import. The unit starts after the active
@@ -116,7 +124,7 @@ uses Umbriel plus Python GI/GTK4 on a private headless runtime and D-Bus:
 ```sh
 cargo build --manifest-path workspace-dbus/Cargo.toml -p workspace-dbus
 dbus-run-session -- python3 workspace-dbus/service/tests/umbriel_live.py \
-  --producer "$PWD/workspace-dbus/target/debug/workspace-dbus" \
+  --producer "$PWD/workspace-dbus/target/debug/rsynapse-workspace-dbus" \
   --umbriel umbriel --artifacts /tmp/umbriel-workspace-test
 ```
 

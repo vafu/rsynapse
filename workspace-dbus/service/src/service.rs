@@ -17,13 +17,28 @@ pub struct Config {
 pub async fn run(config: Config) -> anyhow::Result<()> {
     let backend = config.backend.resolve()?;
     let state: State = Arc::new(RwLock::new(Projection::default()));
+    let (changed, changes) = tokio::sync::watch::channel(0u64);
     let connection = Builder::session()?
         .serve_at(ROOT_PATH, dbus::Manager(state.clone()))?
+        .serve_at(
+            ROOT_PATH,
+            crate::control::Control {
+                state: state.clone(),
+                kind: backend,
+                socket: config.socket.clone(),
+                changed: changes,
+                lock: Arc::new(tokio::sync::Mutex::new(())),
+            },
+        )?
         .serve_at(ROOT_PATH, zbus::fdo::ObjectManager)?
         .name(BUS_NAME)?
         .build()
         .await?;
-    let host = Host { connection, state };
+    let host = Host {
+        connection,
+        state,
+        changed,
+    };
     tracing::info!(?backend, "owning {BUS_NAME}");
     loop {
         if let Err(error) = host.session(&config, backend).await {
@@ -43,6 +58,7 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
 struct Host {
     connection: Connection,
     state: State,
+    changed: tokio::sync::watch::Sender<u64>,
 }
 
 macro_rules! changed {
@@ -119,6 +135,8 @@ impl Host {
         }
         *self.state.write().await = next.clone();
         self.emit_changes(&staged, &next).await?;
+        self.changed
+            .send_modify(|revision| *revision = revision.wrapping_add(1));
         for id in before
             .windows
             .keys()

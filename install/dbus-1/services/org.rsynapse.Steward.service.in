@@ -1,0 +1,4 @@
+[D-BUS Service]
+Name=org.rsynapse.Steward
+Exec=@LOCAL_BIN@/rsynapse-steward
+SystemdService=rsynapse-steward.service

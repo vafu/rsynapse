@@ -39,7 +39,7 @@ db=sqlite3.connect(os.environ['PROJD_STORE_PATH'])
 db.execute('CREATE TABLE records(kind TEXT,id TEXT,json TEXT,PRIMARY KEY(kind,id))')
 db.execute('INSERT INTO records VALUES(?,?,?)',('goal','2026-10-07/archived',json.dumps(legacy)))
 db.commit();db.close()
-daemon = subprocess.Popen([str(BIN/'projd')])
+daemon = subprocess.Popen([str(BIN/'rsynapse-projd')])
 try:
     ready()
     archived=show('2026-10-07/archived')
@@ -88,7 +88,7 @@ try:
     cli('goal','status',child,'todo')
     cli('goal','active',top)
     daemon.terminate(); daemon.wait(timeout=5)
-    daemon=subprocess.Popen([str(BIN/'projd')]); ready()
+    daemon=subprocess.Popen([str(BIN/'rsynapse-projd')]); ready()
     assert json.loads(cli('goal','active','--project',str(first)).stdout)['id']==top
     assert note.read_bytes()==content
     cli('goal','add','habit','--kind','habit','--title','Dated habit','--success','Preserve history','--date','2026-10-07')

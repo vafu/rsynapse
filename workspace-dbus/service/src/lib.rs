@@ -6,3 +6,4 @@ mod service;
 
 pub use backend::BackendKind;
 pub use service::{Config, run};
+mod control;

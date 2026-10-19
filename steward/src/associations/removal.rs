@@ -49,6 +49,7 @@ pub(super) async fn reconcile(
     projects: Vec<goal_model::ProjectInfo>,
 ) -> anyhow::Result<()> {
     let ids: HashSet<_> = projects.iter().map(|p| p.id.clone()).collect();
+    crate::session::reconcile_projects(locus, &ids).await?;
     for relation in [
         relations::WORKSPACE_PROJECT,
         WINDOW_PROJECT,

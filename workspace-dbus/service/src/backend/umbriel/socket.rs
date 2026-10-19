@@ -64,7 +64,7 @@ fn decode(line: &str) -> anyhow::Result<Event> {
     }
 }
 
-fn socket_path(
+pub(super) fn socket_path(
     explicit: Option<&Path>,
     socket: Option<&OsStr>,
     runtime: Option<&OsStr>,

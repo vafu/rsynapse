@@ -22,7 +22,8 @@ on each object. Collections contain live object paths, not serialized protocol
 payloads. New objects appear through `InterfacesAdded`; removed objects through
 `InterfacesRemoved`. Mutable properties emit `PropertiesChanged`.
 
-The service owns compositor observation and normalization only. It must not
+The service owns compositor observation, normalization and optional compositor
+controls. It must not
 depend on projd, steward or Locus or read/write their state. Projects, goals,
 workspace naming overrides, associations and work attribution are outside this
 contract. Steward/Locus react to object lifecycle and apply their own relation
@@ -158,12 +159,38 @@ into global application-focus fields.
 
 ## Scope and cutover
 
+### Optional session controls
+
+`org.rsynapse.Workspace.Control1` is an additive interface on the root. It owns
+no saved sessions or project policy. `Capabilities: as` lists supported controls;
+currently Umbriel advertises `select-workspace`, `set-layout`, `place-window`.
+Niri continues projecting state and advertises an empty list.
+
+Clients bind the control proxy to the source's **unique bus owner** and pass its
+observed `Generation` (`t`) on each call. Disconnected/stale generations fail.
+Completion waits for projected state changes; timeouts bound failure only.
+
+- `SelectWorkspace(generation: t, output: s, index: u) -> id: s`: selects a
+  one-based position on an existing output and returns the actual opaque live
+  ID. A dynamic output may clamp to its trailing empty workspace. It does not
+  promise persistent empty workspaces or create named configuration entries.
+- `SetLayout(generation: t, workspace: s, layout: s)`: selects the identified
+  workspace and sets a supported layout (`scrolling`, `master`, `dwindle`).
+- `PlaceWindow(generation: t, window: s, workspace: s, floating: b)`: places a
+  live window on the identified workspace and sets its floating state.
+
+Commands are serialized. Umbriel actions may temporarily change focus. Native
+selectors are resolved from current backend-owned projection properties, never
+by parsing public IDs. A destination that expires during placement fails rather
+than silently selecting a different workspace. Exact geometry/tiling restoration
+and application launching are outside these methods.
+
 This baseline covers current Rsynapse compositor-state consumption. It does not
 require Niri tile geometry, focus timestamps, runtime config diagnostics,
 compositor version, HDR/VRR inspection, or compositor-specific layout settings
 beyond the effective workspace tiling mode.
-Those can be added independently when a consumer needs them. Window-control
-methods are a separate extension; the URL helper can be patched independently.
+Those can be added independently when a consumer needs them. Controls are the
+optional extension above; the URL helper can be patched independently.
 
 Implementation status:
 

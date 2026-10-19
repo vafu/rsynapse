@@ -28,14 +28,14 @@ with tempfile.TemporaryDirectory(prefix="rsynapse-locus-test-") as directory:
     try:
         env = dict(os.environ, DBUS_SESSION_BUS_ADDRESS=bus.stdout.readline().strip(),
                    LOCUS_RELATIONS_PATH=str(Path(directory) / "relations.json"),
-                   RUST_LOG="locusd=info")
+                   RUST_LOG="rsynapse_locusd=info")
         path = Path(env["LOCUS_RELATIONS_PATH"])
         subject = key("org.rsynapse.niri.window.id", "42")
         target = key("arbitrary.target", "x")
         endpoint_args = [json.dumps(subject), "test.relation", json.dumps(target)]
 
         def start():
-            process = subprocess.Popen([str(binaries / "locusd")], env=env,
+            process = subprocess.Popen([str(binaries / "rsynapse-locusd")], env=env,
                                        stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                                        text=True)
             ready, _, _ = select.select([process.stdout], [], [], 10)
@@ -59,12 +59,12 @@ with tempfile.TemporaryDirectory(prefix="rsynapse-locus-test-") as directory:
 
         # Both help paths must work without a bus and identify the binary role.
         offline_env = dict(env, DBUS_SESSION_BUS_ADDRESS="unix:path=/nonexistent/locus-test-bus")
-        for binary, expected_help in [("locus", "CLI for locusd"), ("locusd", "relation daemon")]:
+        for binary, expected_help in [("locus", "CLI for rsynapse-locusd"), ("rsynapse-locusd", "relation daemon")]:
             help_result = subprocess.run([str(binaries / binary), "--help"], env=offline_env,
                                          capture_output=True, text=True, timeout=10)
             assert help_result.returncode == 0, help_result.stderr
             assert expected_help in help_result.stdout, help_result.stdout
-        invalid_daemon = subprocess.run([str(binaries / "locusd"), "--schema", "unused.yaml"],
+        invalid_daemon = subprocess.run([str(binaries / "rsynapse-locusd"), "--schema", "unused.yaml"],
                                         env=offline_env, capture_output=True, text=True, timeout=10)
         assert invalid_daemon.returncode != 0
         assert "takes no arguments" in invalid_daemon.stderr

@@ -99,10 +99,17 @@ See `install/README.md` for the exact paths and override knobs.
 The current session services and surfaces are:
 
 - `org.rsynapse.Engine` from the launcher daemon.
-- `org.rsynapse.Workspace` from `workspace-dbus`.
-- `org.rsynapse.Locus` from `locusd` (managed by `locusd.service`).
-- `org.rsynapse.Proj` from `projd` (managed by `projd.service`).
+- `org.rsynapse.Workspace` from `rsynapse-workspace-dbus` (`rsynapse-workspace-dbus.service`).
+- `org.rsynapse.Locus` from `rsynapse-locusd` (`rsynapse-locusd.service`).
+- `org.rsynapse.Proj` from `rsynapse-projd` (`rsynapse-projd.service`).
+- `org.rsynapse.Steward` from `rsynapse-steward` (`rsynapse-steward.service`).
 - `rsynapse-shell` for the main shell bar/OSD process.
 - `rsynapse-notifications` for notification popups and notification center.
 
 All D-Bus APIs are still internal and unstable.
+
+Daemon executables and systemd units consistently use `rsynapse-*`; public bus
+names use `org.rsynapse.*`. The installer retains `workspace-dbus`, `steward`,
+`locusd` and `projd` command aliases and the three former unit-name aliases for
+existing clients/scripts. `proj` and `locus` remain the short domain CLIs.
+The services retain independent responsibilities and API crates.

@@ -2,9 +2,9 @@
 import json, os, pathlib, socket, subprocess, sys, tempfile, time, urllib.error, urllib.request
 ROOT=pathlib.Path(__file__).resolve().parents[2]
 API=os.environ.get("RSYNAPSE_API_BIN",str(ROOT/"steward/target/release/rsynapse-dashboard-api"))
-LOCUS=os.environ.get("LOCUS_BIN",str(pathlib.Path.home()/".local/bin/locusd"))
-PROJD=os.environ.get("PROJD_BIN",str(ROOT/"steward/target/release/projd"))
-STEWARD=os.environ.get("STEWARD_BIN",str(ROOT/"steward/target/release/steward"))
+LOCUS=os.environ.get("LOCUS_BIN",str(pathlib.Path.home()/".local/bin/rsynapse-locusd"))
+PROJD=os.environ.get("PROJD_BIN",str(ROOT/"steward/target/release/rsynapse-projd"))
+STEWARD=os.environ.get("STEWARD_BIN",str(ROOT/"steward/target/release/rsynapse-steward"))
 
 if "--child" not in sys.argv:
     with tempfile.TemporaryDirectory(prefix="rsynapse-goal-api-") as temp:

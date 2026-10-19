@@ -3,10 +3,11 @@ name = "projd"
 version = "0.1.0"
 edition = "2024"
 publish = false
-default-run = "projd"
+default-run = "rsynapse-projd"
+autobins = false
 
 [[bin]]
-name = "projd"
+name = "rsynapse-projd"
 path = "src/main.rs"
 [[bin]]
 name = "proj"

@@ -10,7 +10,7 @@ import tempfile
 import uuid
 
 
-TEMPLATE = Path(__file__).resolve().parents[1] / "systemd/user/workspace-dbus.service.in"
+TEMPLATE = Path(__file__).resolve().parents[1] / "systemd/user/rsynapse-workspace-dbus.service.in"
 
 
 def systemctl(*args, check=True):
@@ -62,6 +62,8 @@ def exercise():
             f"ExecStart={command} ready {control} {environment}\n"
         )
         unit = TEMPLATE.read_text().replace("graphical-session-pre.target", pre)
+        # A fixture must never acquire/remove the real compatibility unit alias.
+        unit = unit.replace("Alias=workspace-dbus.service\n", "")
         unit = unit.replace("graphical-session.target", session)
         unit = unit.replace("@LOCAL_BIN@", str(Path.home() / ".local/bin"))
         unit = unit.replace("org.rsynapse.Workspace", "org.rsynapse.StartupTest.t" + uuid.uuid4().hex)

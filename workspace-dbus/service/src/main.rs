@@ -25,7 +25,7 @@ async fn main() -> anyhow::Result<()> {
             }
             "--help" | "-h" => {
                 println!(
-                    "workspace-dbus [--backend auto|niri|umbriel] [--socket PATH]\nDefault: auto (XDG_CURRENT_DESKTOP, then unambiguous compositor socket).\nNiri: NIRI_SOCKET. Umbriel: UMBRIEL_SOCKET or $XDG_RUNTIME_DIR/umbriel-$WAYLAND_DISPLAY.sock."
+                    "rsynapse-workspace-dbus [--backend auto|niri|umbriel] [--socket PATH]\nDefault: auto (XDG_CURRENT_DESKTOP, then unambiguous compositor socket).\nNiri: NIRI_SOCKET. Umbriel: UMBRIEL_SOCKET or $XDG_RUNTIME_DIR/umbriel-$WAYLAND_DISPLAY.sock."
                 );
                 return Ok(());
             }

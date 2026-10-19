@@ -121,11 +121,14 @@ Goal storage is owned by the dedicated planner, not this persistence contract.
 
 ## Commands
 
+The daemon executable/unit is `rsynapse-locusd` / `rsynapse-locusd.service`.
+Installation retains the `locusd` command/unit aliases; `locus` remains the CLI.
+
 From this directory:
 
 ```sh
 cargo test
-cargo run --bin locusd
+cargo run --bin rsynapse-locusd
 cargo run --bin locus -- --help
 busctl --user introspect org.rsynapse.Locus /org/rsynapse/Locus
 ```
@@ -154,7 +157,7 @@ env CARGO_HOME=/home/vfuchedzhy/proj/rsynapse/steward/.cargo-home \
   --manifest-path /home/vfuchedzhy/proj/rsynapse/locus/Cargo.toml --bins
 ```
 
-Outputs are `locus-persistence-release-target/release/locusd` and
+Outputs are `locus-persistence-release-target/release/rsynapse-locusd` and
 `locus-persistence-release-target/release/locus` beneath `/tmp/opencode`.
 `cargo install --path .../locus` also installs both explicitly declared bins;
 the workspace's `install/local.sh` renders their activation/unit templates.
@@ -164,22 +167,22 @@ and its writers before replacing the old daemon executable named `locus`.
 Install both release binaries under `~/.local/bin`. Render
 `install/dbus-1/services/org.rsynapse.Locus.service.in` into
 `~/.local/share/dbus-1/services/org.rsynapse.Locus.service` and
-`install/systemd/user/locusd.service.in` into
-`~/.config/systemd/user/locusd.service`, substituting `@LOCAL_BIN@` with the
-absolute binary directory. Reload user systemd and start `locusd.service`,
-then resume updated consumers. Activation executes `locusd` and delegates to
+`install/systemd/user/rsynapse-locusd.service.in` into
+`~/.config/systemd/user/rsynapse-locusd.service`, substituting `@LOCAL_BIN@` with the
+absolute binary directory. Reload user systemd and start `rsynapse-locusd.service`,
+then resume updated consumers. Activation executes `rsynapse-locusd` and delegates to
 that same `Type=dbus`, `BusName=org.rsynapse.Locus` unit.
 
 An existing unit running `~/.cargo/bin/locusd --schema ...` must be replaced by
 the rendered unit. This implementation takes no arguments: configure the
 snapshot through `LOCUS_RELATIONS_PATH` or the existing XDG state default;
 `--schema`/`--static-store` are not supported. Preserve the existing snapshot
-and any configured store-path override. `locusd --help` describes its role;
+and any configured store-path override. `rsynapse-locusd --help` describes its role;
 `locus --help` lists CLI commands without connecting to D-Bus.
 
 Dashboard integration helpers must set `LOCUS_BIN` to the daemon, for example
-`/tmp/opencode/locus-persistence-target/debug/locusd` for private-bus tests or
-`~/.local/bin/locusd` after deployment. Goal storage remains in the separate
+`/tmp/opencode/locus-persistence-target/debug/rsynapse-locusd` for private-bus tests or
+`~/.local/bin/rsynapse-locusd` after deployment. Goal storage remains in the separate
 SQLite planner with its typed Planner D-Bus projection.
 
 No live daemon is restarted by the persistence tests.

@@ -28,7 +28,7 @@ def ready():
 base=pathlib.Path(os.environ['TEST_ROOT']); project=base/'project';project.mkdir()
 legacy=dict(id='legacy',date='2026-10-07',title='Existing habit',kind='habit',project='',success='Criterion',priority='medium',status='in-progress')
 db=sqlite3.connect(os.environ['PROJD_STORE_PATH']);db.execute('CREATE TABLE records(kind TEXT,id TEXT,json TEXT,PRIMARY KEY(kind,id))');db.execute('INSERT INTO records VALUES(?,?,?)',('goal','2026-10-07/legacy',json.dumps(legacy)));db.commit();db.close()
-daemon=subprocess.Popen([str(BIN/'projd')])
+daemon=subprocess.Popen([str(BIN/'rsynapse-projd')])
 try:
     ready()
     legacy_stats=stats('2026-10-07/legacy');assert legacy_stats['history_partial'] and legacy_stats['created_at_ms']==0 and legacy_stats['first_started_at_ms']==0
@@ -79,7 +79,7 @@ try:
     assert not info[12] and info[13]=='source-disconnected'
     # A recorder crash cannot recover elapsed time from an unclosed row: mark a gap.
     crash=call(producer,'BeginGoalWork','(sss)',(new_id,'active','test.crash'))
-    daemon.kill();daemon.wait(timeout=5);daemon=subprocess.Popen([str(BIN/'projd')]);ready()
+    daemon.kill();daemon.wait(timeout=5);daemon=subprocess.Popen([str(BIN/'rsynapse-projd')]);ready()
     interrupted=next(w for w in timeline(new_id) if w['id']==crash[0])
     assert not interrupted['open'] and interrupted['duration_ms']==0 and 'unknown-duration' in interrupted['end_reason']
     assert stats(new_id)['history_partial'] and stats(new_id)['interrupted_sessions']==1

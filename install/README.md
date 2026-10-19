@@ -33,9 +33,9 @@ The installer writes only user-local paths by default:
 
 Installed binaries currently include:
 
-- `locusd` (daemon owning `org.rsynapse.Locus`)
-- `locus` (CLI for `locusd`, including `--persist true|false` and existing-record toggles)
-- `workspace-dbus` (Niri/Umbriel backends; automatic session selection)
+- `rsynapse-locusd` (daemon owning `org.rsynapse.Locus`)
+- `locus` (CLI for `rsynapse-locusd`, including `--persist true|false` and existing-record toggles)
+- `rsynapse-workspace-dbus` (Niri/Umbriel backends; automatic session selection)
 - `workspace-terminal-id` (terminal-specific window discovery over the neutral API)
 - `rsynapse-shell`
 - `rsynapse-notifications`
@@ -43,8 +43,30 @@ Installed binaries currently include:
 - `rsynapse-cli`
 - `rsynapse-ui`
 - `proj`
-- `projd`
-- `steward`
+- `rsynapse-projd`
+- `rsynapse-steward`
+
+Daemon binaries and their systemd units use matching `rsynapse-*` names; their
+public D-Bus names remain `org.rsynapse.*`. Short commands `workspace-dbus`,
+`steward`, `locusd`, and `projd` are installed as relative compatibility symlinks.
+The `proj` and `locus` command names remain the domain-facing CLIs.
+
+`install/session-services.py` owns daemon artifact/metadata installation and
+legacy-name migration. The full installer calls it after building the binaries.
+It atomically publishes Projd/Steward artifacts, reverses the former
+`rsynapse-steward -> steward` symlink, renders activation/unit templates, replaces
+owned legacy unit files with aliases, and migrates their enabled target links.
+Existing unit drop-in directories remain intact and apply through the aliases.
+Locally edited base unit files are preserved with a migration error instead of
+being overwritten. Running service processes are not restarted by installation.
+
+For offline staging/verification with already-installed canonical binaries:
+
+```sh
+python3 install/session-services.py --prefix /tmp/rsynapse-prefix \
+  --config-home /tmp/rsynapse-config --no-reload
+python3 install/tests/test_service_names.py
+```
 
 Installed desktop helper scripts currently include:
 
@@ -133,6 +155,7 @@ Installed D-Bus activation files currently include:
 - `org.rsynapse.Locus.service`
 - `org.rsynapse.Workspace.service`
 - `org.rsynapse.Proj.service`
+- `org.rsynapse.Steward.service`
 
 Installed desktop entries currently include:
 
@@ -141,9 +164,10 @@ Installed desktop entries currently include:
 
 Installed systemd user units currently include:
 
-- `locusd.service` (`Type=dbus`, owning `org.rsynapse.Locus`)
-- `projd.service` (`Type=dbus`, owning `org.rsynapse.Proj`)
-- `workspace-dbus.service` (`Type=dbus`, owning `org.rsynapse.Workspace`, tied to the graphical session)
+- `rsynapse-locusd.service` (`Type=dbus`, owning `org.rsynapse.Locus`)
+- `rsynapse-projd.service` (`Type=dbus`, owning `org.rsynapse.Proj`)
+- `rsynapse-workspace-dbus.service` (`Type=dbus`, owning `org.rsynapse.Workspace`, tied to the graphical session)
+- `rsynapse-steward.service` (`Type=dbus`, owning `org.rsynapse.Steward`)
 - `rsynapse-shell.service`
 - `rsynapse-notifications.service`
 
@@ -151,9 +175,25 @@ Set `PREFIX=/path` to install binaries, plugins, and D-Bus activation files
 under a different prefix. systemd user units are always installed under
 `~/.config/systemd/user`.
 
+Steward D-Bus activation delegates to `rsynapse-steward.service`; the fallback
+Exec starts the same `rsynapse-steward` binary without systemd. Both its Associations1
+and Session1 interfaces use this bus name. The installer enables the unit,
+reloads systemd definitions and refreshes D-Bus activation configuration without
+restarting running services. Systemd considers Steward ready when it owns the
+bus name, after registering its interfaces.
+
+Verify the activation fallback on a private D-Bus with isolated state:
+
+```sh
+python3 install/tests/test_steward_activation.py
+```
+
+This uses installed binaries, a disconnected private projection, and temporary
+activation files. It starts no compositor and does not contact host systemd.
+
 The workspace API cutover requires rebuilding Locus, workspace-dbus, steward
-and shell together. Activation now starts `workspace-dbus --backend auto` through
-`workspace-dbus.service`; desktop identity takes precedence over inherited
+and shell together. Activation starts `rsynapse-workspace-dbus --backend auto` through
+`rsynapse-workspace-dbus.service`; desktop identity takes precedence over inherited
 compositor socket variables. The unit stops with `graphical-session.target`, so
 the next session picks its own compositor after environment import.
 It is ordered after, and requires an already-active, `graphical-session.target`.
@@ -174,8 +214,8 @@ python3 install/tests/test_workspace_session_startup.py
 The script also removes older Rsynapse service names that predate the current
 `org.rsynapse.*` naming and the combined shell process layout.
 
-The locus package now explicitly builds and installs `locusd` and `locus`.
-D-Bus activation starts `@LOCAL_BIN@/locusd` through `locusd.service`; the
+The locus package explicitly builds and installs `rsynapse-locusd` and `locus`.
+D-Bus activation starts `@LOCAL_BIN@/rsynapse-locusd` through `rsynapse-locusd.service`; the
 rendered systemd unit uses the same executable with no arguments. Replace any
 older unit invoking `~/.cargo/bin/locusd --schema ...` during a coordinated
 deployment. Stop the current service owner and its writers before overwriting

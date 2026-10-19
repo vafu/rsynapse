@@ -7,6 +7,7 @@ mod metrics;
 mod namer;
 mod productivity;
 mod relations;
+mod session;
 mod workdays;
 mod workspace;
 
@@ -17,6 +18,9 @@ use namer::Namer;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    if session::cli::run().await? {
+        return Ok(());
+    }
     if productivity::cli::run().await? {
         return Ok(());
     }

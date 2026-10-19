@@ -10,7 +10,7 @@ import time
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 BIN = ROOT / "steward/target/release"
-LOCUS = os.environ.get("LOCUS_BIN", str(pathlib.Path.home() / ".local/bin/locusd"))
+LOCUS = os.environ.get("LOCUS_BIN", str(pathlib.Path.home() / ".local/bin/rsynapse-locusd"))
 
 if "--child" not in sys.argv:
     with tempfile.TemporaryDirectory(prefix="steward-model-migration-") as temp:
@@ -77,7 +77,7 @@ def projects():
     return json.loads(subprocess.check_output([str(BIN / "proj"), "project", "list", "--json"], text=True))
 
 base = pathlib.Path(os.environ["TEST_ROOT"])
-daemons = [subprocess.Popen([LOCUS]), subprocess.Popen([str(BIN / "projd")])]
+daemons = [subprocess.Popen([LOCUS]), subprocess.Popen([str(BIN / "rsynapse-projd")])]
 try:
     wait(lambda: projects())
     wait(lambda: subprocess.run(["busctl", "--user", "status", "org.rsynapse.Locus"], capture_output=True).returncode == 0)
@@ -96,7 +96,7 @@ try:
                      path="/org/rsynapse/Proj/Projects/n70", interface="org.rsynapse.Proj.Project1")
     bind(old_agent, "org.rsynapse.project.agent", key("org.rsynapse.agent.session.id", "codex/session"))
     before_goals = subprocess.check_output([str(BIN / "proj"), "goal", "list", "--all", "--json"])
-    daemons.append(subprocess.Popen([str(BIN / "steward"), "associations"]))
+    daemons.append(subprocess.Popen([str(BIN / "rsynapse-steward"), "associations"]))
     wait(lambda: all(p["icon"] for p in projects() if p["checkout_id"]))
     migrated = projects()
     primary = next(p for p in migrated if p["id"] == "p")

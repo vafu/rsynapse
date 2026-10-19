@@ -5,6 +5,11 @@ edition.workspace = true
 license.workspace = true
 description = "Compositor-independent D-Bus workspace projection service"
 publish = false
+autobins = false
+
+[[bin]]
+name = "rsynapse-workspace-dbus"
+path = "src/main.rs"
 
 [dependencies]
 anyhow = "1"

@@ -222,6 +222,10 @@ internal protocol change.
 
 ## Build and verification
 
+The service executable and unit are `rsynapse-projd` and
+`rsynapse-projd.service`; installation retains `projd` command/unit aliases.
+`proj` remains the client command and project persistence/API ownership is unchanged.
+
 ```sh
 bash projd/build.sh --locked
 python3 projd/tests/integration.py
@@ -230,13 +234,13 @@ python3 projd/tests/metrics.py
 python3 projd/tests/model_migration.py
 python3 projd/tests/responsiveness.py
 python3 steward/tests/model_migration.py
-PROJD_BIN="$PWD/steward/target/release/projd" \
+PROJD_BIN="$PWD/steward/target/release/rsynapse-projd" \
   cargo test --manifest-path shell/Cargo.toml -p shell-source \
   --test project_icons -- --ignored
-PROJD_BIN="$PWD/steward/target/release/projd" \
+PROJD_BIN="$PWD/steward/target/release/rsynapse-projd" \
   cargo test --manifest-path shell/Cargo.toml -p shell-source \
   --test goals -- --ignored
-PROJD_BIN="$PWD/steward/target/release/projd" \
+PROJD_BIN="$PWD/steward/target/release/rsynapse-projd" \
   cargo test --manifest-path shell/Cargo.toml -p rsynapse-shell --lib \
   shell_autopicks_only_unset_project_icons -- --ignored
 ```

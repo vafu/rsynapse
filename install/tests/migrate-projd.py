@@ -14,7 +14,7 @@ def bind(kind,id,relation,target_kind,target,metadata,persist):
     flat=[str(len(metadata))]
     for k,v in metadata.items():flat.extend([k,v])
     call("SetWithPersistence","a{ss}sa{ss}a{ss}b",*endpoint(kind,id),relation,*endpoint(target_kind,target),*flat,str(persist).lower())
-daemons=[subprocess.Popen([os.environ["LOCUS_BIN"]]),subprocess.Popen([str(ROOT/"steward/target/release/projd")])]
+daemons=[subprocess.Popen([os.environ["LOCUS_BIN"]]),subprocess.Popen([str(ROOT/"steward/target/release/rsynapse-projd")])]
 try:
     for _ in range(500):
         try:call("List","s","");subprocess.check_output([PROJ,"goal","list","--all","--json"],stderr=subprocess.DEVNULL);break

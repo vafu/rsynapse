@@ -1,6 +1,8 @@
+mod commands;
 mod protocol;
 mod socket;
 mod state;
+pub(crate) use commands::command;
 
 use crate::model::Projection;
 use socket::Socket;

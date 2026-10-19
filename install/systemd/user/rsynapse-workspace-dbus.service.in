@@ -8,9 +8,10 @@ PartOf=graphical-session.target
 [Service]
 Type=dbus
 BusName=org.rsynapse.Workspace
-ExecStart=@LOCAL_BIN@/workspace-dbus --backend auto
+ExecStart=@LOCAL_BIN@/rsynapse-workspace-dbus --backend auto
 Restart=on-failure
 RestartSec=1s
 
 [Install]
 WantedBy=graphical-session.target
+Alias=workspace-dbus.service

@@ -136,6 +136,24 @@ pub async fn bind_current(
 ) -> anyhow::Result<goal_model::ProjectInfo> {
     bind(locus, path, Some(focused_workspace().await?), None, false).await
 }
+pub(crate) async fn restore_workspace(
+    locus: &LocusClient,
+    workspace: &str,
+    project: Option<goal_model::ProjectInfo>,
+) -> anyhow::Result<()> {
+    if let Some(project) = project {
+        let _guard = BIND_LOCK.lock().await;
+        workspace_cleanup::synchronize(locus).await?;
+        bind_context(locus, project, Some(workspace.into()), None, true).await?;
+    } else {
+        Bindings {
+            locus: locus.clone(),
+        }
+        .unassign_workspace_project(workspace.into())
+        .await?;
+    }
+    Ok(())
+}
 async fn focused_workspace() -> anyhow::Result<String> {
     let conn = Connection::session().await?;
     let manager = workspace_dbus_api::ManagerProxy::new(&conn).await?;
@@ -406,7 +424,9 @@ pub async fn run(locus: LocusClient) -> anyhow::Result<()> {
     // binding branch waits for it, preventing that future from being polled.
     let mut cleanup = tokio::task::JoinSet::new();
     cleanup.spawn(workspace_cleanup::run(locus.clone()));
+    let session = crate::session::Manager::new(locus.clone()).await?;
     let _conn = zbus::connection::Builder::session()?
+        .serve_at(ROOT, crate::session::Sessions(session.clone()))?
         .serve_at(
             ROOT,
             Bindings {
@@ -416,6 +436,7 @@ pub async fn run(locus: LocusClient) -> anyhow::Result<()> {
         .name(BUS)?
         .build()
         .await?;
+    cleanup.spawn(crate::session::watch(session));
     let mut goals = shell_source::proj::goals().into_stream();
     let mut agents = crate::agent_metrics::snapshots(&locus).into_stream();
     let mut checkouts = shell_source::proj::checkouts().into_stream();
