@@ -44,6 +44,9 @@ pub trait Manager {
     gen_blocking = false
 )]
 pub trait Output {
+    /// Connected output currently participating in the logical desktop.
+    #[zbus(property)]
+    fn enabled(&self) -> zbus::Result<bool>;
     #[zbus(property(emits_changed_signal = "const"))]
     fn name(&self) -> zbus::Result<String>;
 

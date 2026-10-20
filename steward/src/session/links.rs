@@ -12,6 +12,98 @@ pub const SLOT_PROJECT: &str = "org.rsynapse.session.workspace.project";
 pub const CHECKPOINT_PROJECT: &str = "org.rsynapse.session.checkpoint.project";
 pub const CAPTURE: &str = "org.rsynapse.session.capture";
 pub const PROJECT: &str = "org.rsynapse.project.id";
+pub const OUTPUT_PREFERENCE: &str = "org.rsynapse.session.workspace.preferred-output";
+
+pub fn preferred_output(records: &[RelationRecord], slot: &str) -> Option<(String, u32, bool)> {
+    let record = target(records, OUTPUT_PREFERENCE, SLOT, slot)?;
+    let output = key(&record.target, locus::keys::OUTPUT_NAME)?;
+    let index = record.metadata.get("index")?.parse::<u32>().ok()?;
+    (index > 0 && index <= 64).then(|| {
+        (
+            output,
+            index,
+            record.metadata.get("fallback").is_some_and(|v| v == "true"),
+        )
+    })
+}
+
+pub async fn set_preferred_output(
+    locus: &LocusClient,
+    records: &[RelationRecord],
+    slot: &str,
+    output: &str,
+    index: u32,
+    fallback: bool,
+) -> anyhow::Result<()> {
+    let mut meta = metadata(None);
+    meta.insert("index".into(), index.to_string());
+    meta.insert("fallback".into(), fallback.to_string());
+    set(
+        locus,
+        records,
+        OUTPUT_PREFERENCE,
+        RelationEndpoint::stable_key(SLOT, slot),
+        RelationEndpoint::stable_key(locus::keys::OUTPUT_NAME, output),
+        meta,
+        true,
+    )
+    .await
+}
+
+/// A logical workspace has one live location in a source epoch. When returning
+/// from fallback, retire the old physical binding even if a disabled output
+/// retains its empty workspace object.
+pub async fn bind_slot(
+    locus: &LocusClient,
+    source: &Snapshot,
+    slot: &str,
+    live: &str,
+) -> anyhow::Result<()> {
+    let records = locus.list("").await?;
+    let desired = RelationEndpoint::stable_key(SLOT, slot);
+    let subject = RelationEndpoint::stable_key(locus::keys::WORKSPACE_ID, live);
+    for record in &records {
+        if record.relation != LIVE_SLOT
+            || record.target != desired
+            || record.subject == subject
+            || !current(record, source)
+        {
+            continue;
+        }
+        for old in &records {
+            if old.subject == record.subject
+                && [
+                    LIVE_SLOT,
+                    crate::relations::WORKSPACE_PROJECT,
+                    "org.rsynapse.workspace.project-policy",
+                ]
+                .contains(&old.relation.as_str())
+            {
+                locus
+                    .unset(old.subject.clone(), &old.relation, old.target.clone())
+                    .await?;
+            }
+        }
+        if key(&record.subject, locus::keys::WORKSPACE_ID)
+            .is_some_and(|id| source.workspaces.contains_key(&id))
+        {
+            let mut meta = metadata(Some(source));
+            meta.insert("automatic".into(), "false".into());
+            locus
+                .set_one_with_persistence(
+                    record.subject.clone(),
+                    "org.rsynapse.workspace.project-policy",
+                    RelationEndpoint::stable_key("org.rsynapse.project-assignment", "unassigned"),
+                    meta,
+                    false,
+                )
+                .await?;
+        }
+    }
+    locus
+        .set_one_with_persistence(subject, LIVE_SLOT, desired, metadata(Some(source)), false)
+        .await
+}
 
 pub fn metadata(source: Option<&Snapshot>) -> HashMap<String, String> {
     let mut result = HashMap::from([("managed-by".into(), "rsynapse-steward".into())]);

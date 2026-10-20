@@ -48,6 +48,15 @@ pub struct Output {
 }
 #[interface(name = "org.rsynapse.Workspace.Output1")]
 impl Output {
+    #[zbus(property)]
+    async fn enabled(&self) -> bool {
+        self.state
+            .read()
+            .await
+            .outputs
+            .get(&self.id)
+            .is_some_and(|o| o.enabled)
+    }
     #[zbus(property(emits_changed_signal = "const"))]
     fn name(&self) -> &str {
         &self.id

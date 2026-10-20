@@ -81,6 +81,7 @@ fn live_links_are_scoped_to_source_owner_and_generation() {
     let mut source = observe::Snapshot {
         owner: ":1.1".into(),
         generation: 2,
+        outputs: Default::default(),
         workspaces: Default::default(),
         windows: Default::default(),
     };

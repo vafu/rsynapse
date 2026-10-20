@@ -16,6 +16,7 @@ pub struct Manager {
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Output {
+    pub enabled: bool,
     pub focused: bool,
     pub current_workspace: Vec<OwnedObjectPath>,
     pub workspaces: Vec<OwnedObjectPath>,

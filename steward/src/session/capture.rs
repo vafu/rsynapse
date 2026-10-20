@@ -24,6 +24,7 @@ impl Manager {
         .await?;
         tokio::time::timeout(std::time::Duration::from_secs(10), async {
             loop {
+                self.reconcile_topology().await?;
                 match self.capture_once(name, explicit).await {
                     Err(error) if error.is::<observe::Changed>() => {
                         tokio::select! {
@@ -43,12 +44,27 @@ impl Manager {
     async fn capture_once(&self, name: &str, explicit: bool) -> anyhow::Result<model::Session> {
         let source = observe::read(&self.connection).await?;
         let records = self.locus.list("").await?;
+        if self
+            .baseline
+            .lock()
+            .await
+            .as_ref()
+            .is_some_and(|base| super::topology::needs_reconciliation(base, &source, &records))
+        {
+            return Err(observe::Changed.into());
+        }
         let projects: Vec<goal_model::ProjectInfo> =
             self.projd().await?.call("ListProjects", &()).await?;
         let previous = self.store.lock().await.get("current").ok();
+        let old_scene = self.baseline.lock().await.clone();
         let home = std::env::var("HOME")?;
         let mut workspaces = Vec::new();
+        let mut slots = BTreeMap::new();
+        let mut identities = BTreeMap::new();
         for workspace in source.workspaces.values() {
+            if !source.outputs.contains(&workspace.output) {
+                continue;
+            }
             let binding = links::target(
                 &records,
                 crate::relations::WORKSPACE_PROJECT,
@@ -76,6 +92,33 @@ impl Manager {
                 locus::keys::WORKSPACE_ID,
                 &workspace.id,
                 links::SLOT,
+            )
+            .await?;
+            slots.insert(slot.clone(), workspace.id.clone());
+            let old_output = old_scene
+                .as_ref()
+                .and_then(|b| {
+                    b.slots
+                        .get(&slot)
+                        .and_then(|native| b.source.workspaces.get(native))
+                })
+                .map(|w| w.output.as_str());
+            let (preferred, position, fallback) = match links::preferred_output(&records, &slot) {
+                Some((preferred, position, true))
+                    if preferred != workspace.output
+                        && old_output.is_none_or(|old| old == workspace.output) =>
+                {
+                    (preferred, position, true)
+                }
+                _ => (workspace.output.clone(), workspace.index, false),
+            };
+            links::set_preferred_output(
+                &self.locus,
+                &records,
+                &slot,
+                &preferred,
+                position,
+                fallback,
             )
             .await?;
             let subject = RelationEndpoint::stable_key(links::SLOT, &slot);
@@ -143,6 +186,7 @@ impl Manager {
                     links::SAVED_WINDOW,
                 )
                 .await?;
+                identities.insert(id.clone(), window.id.clone());
                 // Keep captured recipes stable across daemon restarts and
                 // restored app IDs; refreshing a save can pick up rule changes.
                 let prior = previous
@@ -170,8 +214,8 @@ impl Manager {
             workspaces.push(model::Workspace {
                 id: slot,
                 binding: checkpoint,
-                output: workspace.output.clone(),
-                index: workspace.index,
+                output: preferred,
+                index: position,
                 name: workspace.name.clone(),
                 layout: workspace.layout,
                 windows,
@@ -218,6 +262,13 @@ impl Manager {
             }
         }
         drop(store);
+        *self.baseline.lock().await = Some(super::topology::Baseline {
+            source: source.clone(),
+            session: session.clone(),
+            slots,
+            windows: identities,
+            recovery_focus: None,
+        });
         if explicit || armed {
             links::arm(&self.locus, &source).await?;
         }

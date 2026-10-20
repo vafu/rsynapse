@@ -1,0 +1,6 @@
+# Only restore-specific application IDs opt into background opening.
+# Ordinary application launches keep their existing focus behavior.
+[[window_rule]]
+match.app_id = '[.]rsynapse[.]r[0-9a-f]{32}$'
+default_focused = false
+focus_on_activate = false

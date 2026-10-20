@@ -12,6 +12,7 @@ use zbus::proxy;
 pub trait Control {
     #[zbus(property)]
     fn capabilities(&self) -> zbus::Result<Vec<String>>;
+    async fn focus_window(&self, generation: u64, window: &str) -> zbus::Result<()>;
     /// Select a one-based position; dynamic inventories may return their last
     /// empty workspace instead. Returns the actual live identity, never a slot.
     async fn select_workspace(&self, generation: u64, output: &str, index: u32)

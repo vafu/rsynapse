@@ -78,6 +78,7 @@ async fn verify_contract() -> zbus::Result<()> {
     assert_eq!(manager.focused_window().await?, [window_path(WINDOW)]);
 
     assert_eq!(output.name().await?, OUTPUT);
+    assert!(output.enabled().await?);
     assert!(output.focused().await?);
     assert_eq!(
         output.current_workspace().await?,
@@ -154,6 +155,29 @@ async fn verify_contract() -> zbus::Result<()> {
         .await?;
     assert!(introspection.contains(MANAGER_INTERFACE));
     assert!(introspection.contains("org.freedesktop.DBus.ObjectManager"));
+
+    // Output objects can remain present while disabled, including retained
+    // empty workspaces. Topology consumers must observe enablement separately.
+    let output_ref = service
+        .object_server()
+        .interface::<_, support::Output>(output_path(OUTPUT))
+        .await?;
+    let mut enabled = output.receive_enabled_changed().await;
+    state.write().await.output_enabled = false;
+    output_ref
+        .get()
+        .await
+        .enabled_changed(output_ref.signal_context())
+        .await?;
+    assert!(!enabled.next().await.unwrap().get().await?);
+    assert_eq!(manager.outputs().await?, [output_path(OUTPUT)]);
+    state.write().await.output_enabled = true;
+    output_ref
+        .get()
+        .await
+        .enabled_changed(output_ref.signal_context())
+        .await?;
+    assert!(enabled.next().await.unwrap().get().await?);
 
     // Independent producer sends strings; typed clients decode all modes and
     // observe changes without relying on membership/focus notifications.

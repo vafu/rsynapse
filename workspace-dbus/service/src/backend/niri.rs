@@ -98,6 +98,7 @@ impl Niri {
             result.outputs.insert(
                 name.clone(),
                 model::Output {
+                    enabled: self.outputs[name].logical.is_some(),
                     focused: focused_output == Some(name.as_str()),
                     current_workspace: members
                         .iter()

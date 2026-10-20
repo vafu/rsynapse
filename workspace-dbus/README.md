@@ -24,8 +24,8 @@ Umbriel implementation ┘
   lifecycle and private `backend/niri` and `backend/umbriel` implementations.
   No Locus or projd dependency.
   Its optional `Control1` interface provides epoch-scoped workspace selection,
-  layout and window placement for Steward restoration. Umbriel supports these
-  controls; Niri currently exposes an empty capability list. No saved-session
+  layout, window placement and focus for Steward restoration. Umbriel supports
+  these controls; Niri currently exposes an empty capability list. No saved-session
   state or project policy enters this service.
 - `terminal-id/` (`workspace-terminal-id`): a client of the API only. Resolves a
   Ghostty terminal's opaque window ID with an OSC title challenge and typed
@@ -91,6 +91,13 @@ previous state. Bootstrap waits for the subscribed inventories and focus state,
 not keyboards or timers. Layers and overview normalize keyboard focus without
 adding backend-specific properties to the API. Native output membership is kept
 independent of workspace membership for scratchpads and pinned windows.
+
+On Umbriel revisions reporting workspace occupancy counts, the adapter holds
+the last coherent projection until the output/workspace/window families agree
+on membership and counts. It never publishes a cross-family evacuation merge
+as a completed topology. `Output.Enabled` distinguishes retained disabled output
+objects from valid placement destinations. Synchronization uses native events,
+without a timer/debounce consistency window.
 
 The installer builds `service/`, installs the neutral D-Bus activation file and
 `rsynapse-workspace-dbus.service`, and enables it under `graphical-session.target`.

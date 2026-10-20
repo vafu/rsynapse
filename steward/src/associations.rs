@@ -423,8 +423,11 @@ pub async fn run(locus: LocusClient) -> anyhow::Result<()> {
     // calls. An inline select future could hold the lock while a selected
     // binding branch waits for it, preventing that future from being polled.
     let mut cleanup = tokio::task::JoinSet::new();
-    cleanup.spawn(workspace_cleanup::run(locus.clone()));
     let session = crate::session::Manager::new(locus.clone()).await?;
+    cleanup.spawn(workspace_cleanup::run_with_sessions(
+        locus.clone(),
+        session.clone(),
+    ));
     let _conn = zbus::connection::Builder::session()?
         .serve_at(ROOT, crate::session::Sessions(session.clone()))?
         .serve_at(

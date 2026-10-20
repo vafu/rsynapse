@@ -69,6 +69,10 @@ impl Control {
     async fn select(&self, generation: u64, output: &str, index: u32) -> anyhow::Result<String> {
         anyhow::ensure!(index > 0 && index <= 64, "workspace position must be 1..64");
         let snapshot = self.snapshot(generation).await?;
+        anyhow::ensure!(
+            snapshot.outputs.get(output).is_some_and(|o| o.enabled),
+            "output is disabled or unavailable"
+        );
         let target = snapshot
             .workspaces
             .iter()
@@ -78,6 +82,11 @@ impl Control {
             .map(|(id, _)| id.clone())
             .ok_or_else(|| anyhow::anyhow!("output has no available workspace"))?;
         let position = snapshot.workspaces[&target].index;
+        // Selection is idempotent, unlike the compositor's optional
+        // back-and-forth shortcut for reselecting an active workspace.
+        if snapshot.outputs[output].current_workspace == vec![workspace_path(&target)] {
+            return Ok(target);
+        }
         self.action(generation, format!("workspace-switch:{position}/{output}"))
             .await?;
         self.wait(generation, |s| {
@@ -97,9 +106,12 @@ impl Control {
             .ok_or_else(|| anyhow::anyhow!("workspace no longer exists"))?;
         let output = snapshot
             .outputs
-            .keys()
-            .find(|id| target.output == vec![workspace_dbus_api::output_path(id)])
-            .ok_or_else(|| anyhow::anyhow!("workspace has no output"))?;
+            .iter()
+            .find(|(id, output)| {
+                output.enabled && target.output == vec![workspace_dbus_api::output_path(id)]
+            })
+            .map(|(id, _)| id)
+            .ok_or_else(|| anyhow::anyhow!("workspace has no enabled output"))?;
         let selected = self.select(generation, output, target.index).await?;
         anyhow::ensure!(selected == workspace, "workspace changed during selection");
         Ok(())
@@ -115,12 +127,39 @@ impl Control {
     #[zbus(property)]
     fn capabilities(&self) -> Vec<String> {
         if self.kind == BackendKind::Umbriel {
-            ["select-workspace", "set-layout", "place-window"]
-                .map(str::to_owned)
-                .to_vec()
+            [
+                "select-workspace",
+                "set-layout",
+                "place-window",
+                "focus-window",
+            ]
+            .map(str::to_owned)
+            .to_vec()
         } else {
             vec![]
         }
+    }
+
+    async fn focus_window(&self, generation: u64, window: String) -> fdo::Result<()> {
+        let _guard = self.lock.lock().await;
+        let result = async {
+            anyhow::ensure!(
+                self.snapshot(generation)
+                    .await?
+                    .windows
+                    .contains_key(&window),
+                "window no longer exists"
+            );
+            self.action(generation, format!("window-focus-warp:{window}"))
+                .await?;
+            self.wait(generation, |s| {
+                (s.manager.focused_window == vec![workspace_dbus_api::window_path(&window)])
+                    .then_some(())
+            })
+            .await
+        }
+        .await;
+        result.map_err(failed)
     }
 
     async fn select_workspace(
@@ -147,6 +186,40 @@ impl Control {
                 layout != Layout::Unknown,
                 "unknown layout cannot be restored"
             );
+            let snapshot = self.snapshot(generation).await?;
+            let target = snapshot
+                .workspaces
+                .get(&workspace)
+                .ok_or_else(|| anyhow::anyhow!("workspace no longer exists"))?;
+            anyhow::ensure!(
+                snapshot.outputs.iter().any(|(id, output)| output.enabled
+                    && target.output == vec![workspace_dbus_api::output_path(id)]),
+                "workspace has no enabled output"
+            );
+            if target.layout == layout {
+                return Ok(());
+            }
+            // Contextual native actions use the pointer-preferred output.
+            let anchor = snapshot
+                .windows
+                .iter()
+                .find(|(_, w)| w.workspace == vec![workspace_path(&workspace)])
+                .or_else(|| {
+                    snapshot
+                        .windows
+                        .iter()
+                        .find(|(_, w)| w.output == target.output && !w.workspace.is_empty())
+                })
+                .map(|(id, _)| id.clone());
+            if let Some(anchor) = anchor {
+                self.action(generation, format!("window-focus-warp:{anchor}"))
+                    .await?;
+                self.wait(generation, |s| {
+                    (s.manager.focused_window == vec![workspace_dbus_api::window_path(&anchor)])
+                        .then_some(())
+                })
+                .await?;
+            }
             self.focus_workspace(generation, &workspace).await?;
             anyhow::ensure!(
                 self.snapshot(generation).await?.manager.focused_workspace
@@ -188,7 +261,7 @@ impl Control {
                 .get(&window)
                 .ok_or_else(|| anyhow::anyhow!("window no longer exists"))?;
             if current.workspace != vec![workspace_path(&workspace)] {
-                self.action(generation, format!("window-focus:{window}"))
+                self.action(generation, format!("window-focus-warp:{window}"))
                     .await?;
                 self.wait(generation, |s| {
                     (s.manager.focused_window == vec![workspace_dbus_api::window_path(&window)])
@@ -207,12 +280,18 @@ impl Control {
                 );
                 let output = snapshot
                     .outputs
-                    .keys()
-                    .find(|id| target.output == vec![workspace_dbus_api::output_path(id)])
-                    .ok_or_else(|| anyhow::anyhow!("destination has no output"))?;
+                    .iter()
+                    .find(|(id, output)| {
+                        output.enabled && target.output == vec![workspace_dbus_api::output_path(id)]
+                    })
+                    .map(|(id, _)| id)
+                    .ok_or_else(|| anyhow::anyhow!("destination has no enabled output"))?;
+                // Following each move starts workspace slides and can postpone
+                // the dynamic trailing blank needed by the next placement.
+                // Global focus is a separate optional control.
                 self.action(
                     generation,
-                    format!("window-move-to-workspace:{}/{output}", target.index),
+                    format!("window-move-to-workspace-silent:{}/{output}", target.index),
                 )
                 .await?;
                 self.wait(generation, |s| {

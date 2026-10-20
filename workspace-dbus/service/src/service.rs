@@ -181,7 +181,7 @@ impl Host {
                 .await?;
             let iface = r.get().await;
             let ctx = r.signal_context();
-            changed!(b, a, iface, ctx, focused => focused_changed, current_workspace => current_workspace_changed, workspaces => workspaces_changed);
+            changed!(b, a, iface, ctx, enabled => enabled_changed, focused => focused_changed, current_workspace => current_workspace_changed, workspaces => workspaces_changed);
         }
         for (id, a) in &after.workspaces {
             let b = &before.workspaces[id];

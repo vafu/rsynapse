@@ -17,8 +17,13 @@ pub(super) enum Event {
 #[derive(Debug, Deserialize)]
 pub(super) struct Output {
     pub name: String,
+    #[serde(default = "enabled_by_default")]
+    pub enabled: bool,
     pub focused: bool,
     pub active_workspace: String,
+}
+fn enabled_by_default() -> bool {
+    true
 }
 
 #[derive(Debug, Deserialize)]
@@ -34,6 +39,8 @@ pub(super) struct Workspace {
     pub focused: bool,
     pub urgent: bool,
     pub focused_window: String,
+    #[serde(default)]
+    pub window_count: Option<usize>,
 }
 
 #[derive(Debug, Deserialize)]

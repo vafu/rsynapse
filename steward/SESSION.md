@@ -57,6 +57,8 @@ incoherent inventories retry on subscribed events with failure deadlines.
   anonymous edge placeholders without project intent.
 - `last`: automatic restore checkpoint for the armed source epoch.
 - `previous`: preceding automatic checkpoint.
+- `before-output-change`: protected automatic checkpoint taken before regrouping
+  windows after output loss; reserved against explicit overwrites.
 - Any other name: an explicit save, unaffected by automatic capture.
 
 On the first desktop without a saved `last`, automatic capture is armed. A new
@@ -77,6 +79,9 @@ Persistent Locus relations:
 - `org.rsynapse.session.checkpoint.project`: immutable checkpoint-workspace key
   -> stable project ID. A saved description references this key, so later project
   reassignment/unassignment does not change older named saves.
+- `org.rsynapse.session.workspace.preferred-output`: logical workspace -> output
+  connector name, with one-based `index` and `fallback` metadata. Capturing the
+  temporary fallback location does not replace the preferred monitor.
 
 Live, nonpersistent relations:
 
@@ -95,6 +100,32 @@ Descriptions are stored in
 `~/.local/state/rsynapse/steward/sessions.json`), with version validation,
 private file mode, atomic replacement and file/directory synchronization.
 `STEWARD_SESSION_STORE_PATH` overrides the path for isolated environments.
+
+## Monitor disconnect and reconnect
+
+Before capture or workspace-anchor cleanup accepts an output change, Steward
+preserves its logical-group baseline and `before-output-change` checkpoint.
+Only enabled outputs are placement destinations; a disabled laptop display can
+retain empty compositor workspace objects without being usable.
+
+If the compositor evacuates several workspaces into one, Steward separates the
+existing windows using their same-source-epoch logical anchors. Two workspaces
+with the same project remain two groups; unassigned groups remain unassigned.
+Unmatched windows and existing conflicting project bindings are preserved.
+This path contains no launch recipes and never reopens a closed application.
+
+Returning preferred monitors receive their groups again, in saved relative
+order. An additional output change during placement retains the original
+baseline for another signal-driven reconciliation, rather than accepting a new
+evacuation merge. A logical workspace has only one live location; stale empty
+fallback bindings are retired when its group returns. Prior window focus is
+restored when the backend supports it and the window still exists.
+
+Preferences survive Steward restart. Automatic recovery after that restart
+requires the current compositor epoch's Locus anchors and protected checkpoint;
+it never correlates IDs from a different projection owner/generation. Ordinary
+manual moves with unchanged output topology become current intent. A manual
+workspace move to another output updates its preference after capture.
 
 ## Launch recipes
 
@@ -132,6 +163,34 @@ is a fresh launch token; `{cwd}` expands to the project directory. Each argv
 element remains one argument, including paths with spaces. Rules load when
 Steward starts; save again to capture updated recipes.
 
+### Background opening on Umbriel
+
+Load [umbriel-session-rules.toml](umbriel-session-rules.toml) through Umbriel's
+`[include].files`, or add its rule to your Umbriel configuration:
+
+```toml
+[[window_rule]]
+match.app_id = '[.]rsynapse[.]r[0-9a-f]{32}$'
+default_focused = false
+focus_on_activate = false
+```
+
+The built-in Ghostty provider already assigns a matching, unique application
+ID. Configured launchers can opt in by using an app ID ending in
+`.rsynapse.r{restore_id}`, as in the example above. Ordinary application launches
+do not match this rule. Untagged desktop-entry launches retain the application's
+normal focus behavior; the existing compositor API has no generic silent-spawn
+request. Steward does not forward an inherited activation token/startup ID to
+restored processes.
+
+Window placement uses Umbriel's silent move action and does not preselect empty
+destinations. An unchanged restore does not visit already-correct workspaces.
+When supported by the backend, explicit restore returns focus to the window
+that was focused before it began, including after a partial restore, if that
+window still exists. Native moves still require focusing their source window,
+and changing a workspace layout can also require selection. This is best-effort
+background restoration using existing APIs, not a focus-free transaction.
+
 ## Compositor behavior and limits
 
 Umbriel currently supports restoration controls. Niri observation is unchanged;
@@ -145,9 +204,9 @@ The current output preference is its connector name, not an EDID identity.
 
 Workspace layout mode, window membership and floating state are restored.
 Saved scrolling column/row hints preserve launch order; exact tile trees,
-dimensions, floating coordinates, scratchpad/pinned placement and focus replay
-are not implemented. Umbriel controls can temporarily change focus while moving
-windows or selecting layouts.
+dimensions, floating coordinates, scratchpad/pinned placement and saved-checkpoint
+focus replay are not implemented. Umbriel controls can temporarily change focus
+while moving windows or selecting layouts.
 
 Umbriel prunes inactive anonymous empty workspaces and has no runtime persistent
 workspace-name operation in the targeted revision. Their logical identities and
@@ -176,3 +235,27 @@ Coverage includes disk reload across sessions, source loss preserving the last
 checkpoint, new live window identities, project bindings/CWDs, layout/floating
 state, output fallback, duplicate avoidance, stale generation rejection,
 immutable saved bindings after unassignment, and removed-project handling.
+
+The monitor lifecycle regression uses the same isolation harness:
+
+```sh
+python3 steward/tests/session_restore.py --hotplug \
+  --artifacts /tmp/rsynapse-session-hotplug-test
+```
+
+It verifies six distinct groups (including repeated projects and an unassigned
+group), output removal/recreation, a policy-daemon restart while on fallback,
+lid-style fallback disable/enable, preserved project bindings/checkpoints, manual
+moves, and live scratchpad updates. Existing application identities must remain
+unchanged throughout regrouping.
+
+```sh
+python3 steward/tests/session_restore.py --silent \
+  --artifacts /tmp/rsynapse-session-silent-test
+```
+
+The silent scenario uses the shipped Umbriel rule, verifies a restore-tagged
+terminal-class probe does not take focus on opening, checks silent destination
+moves and an unchanged restore without workspace traversal, and confirms that
+restoration corrects a real cross-workspace move and returns to an unrelated
+original window.

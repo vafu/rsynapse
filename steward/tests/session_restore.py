@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import socket
 
 from gi.repository import Gio, GLib
 
@@ -52,16 +53,18 @@ def worker(args):
         XDG_CONFIG_HOME=str(root / "config"), XDG_STATE_HOME=str(root / "state"),
         XDG_DATA_HOME=str(root / "data"), XDG_CACHE_HOME=str(root / "cache"),
         XDG_CURRENT_DESKTOP="umbriel", XDG_SESSION_DESKTOP="umbriel",
-        WLR_BACKENDS="headless", WLR_HEADLESS_OUTPUTS="2" if args.phase == "capture" else "1", WLR_LIBINPUT_NO_DEVICES="1",
+        WLR_BACKENDS="headless", WLR_HEADLESS_OUTPUTS="2" if args.phase in ("capture", "hotplug") else "1", WLR_LIBINPUT_NO_DEVICES="1",
         GTK_A11Y="none", NO_AT_BRIDGE="1", GTK_USE_PORTAL="0", GDK_BACKEND="wayland",
         GDK_DEBUG="no-portals", GIO_USE_VFS="local", CARBON_PORT="9",
         LOCUS_RELATIONS_PATH=str(root / "relations.json"), PROJD_STORE_PATH=str(root / "projects.sqlite3"),
         STEWARD_SESSION_STORE_PATH=str(root / "sessions.json"),
         STEWARD_SESSION_LAUNCHERS_PATH=str(root / "launchers.json"))
     config = directory / "umbriel.toml"
-    config.write_text("[general]\nautostart = []\nxwayland = false\n")
+    session_rules = ROOT / "steward/umbriel-session-rules.toml"
+    config.write_text("[include]\nfiles = [" + json.dumps(str(session_rules)) + "]\n"
+        "[general]\nautostart = []\nxwayland = false\n")
     bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
-    waiting = {"predicate": None, "loop": None}
+    waiting = {"predicate": None, "loop": None, "checking": False}
     ready = {"ipc": False}
     processes, logs, subscriptions = [], [], []
 
@@ -71,12 +74,15 @@ def worker(args):
         return result[0] if result else None
 
     def wake(*_):
-        if waiting["predicate"]:
+        if waiting["predicate"] and not waiting["checking"]:
+            waiting["checking"] = True
             try:
                 if waiting["predicate"]():
                     waiting["loop"].quit()
             except GLib.Error:
                 pass
+            finally:
+                waiting["checking"] = False
 
     def wait(predicate):
         def check():
@@ -87,7 +93,7 @@ def worker(args):
         if check():
             return
         waiting.update(predicate=predicate, loop=GLib.MainLoop())
-        timer = GLib.timeout_add_seconds(25, lambda: (waiting["loop"].quit(), False)[1])
+        timer = GLib.timeout_add_seconds(25, lambda: (waiting["loop"].quit(), False)[1], priority=GLib.PRIORITY_HIGH)
         waiting["loop"].run()
         waiting["predicate"] = None
         assert check(), "isolated transition not observed"
@@ -171,10 +177,24 @@ def worker(args):
             wait(lambda: call("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus",
                 "NameHasOwner", GLib.Variant("(s)", (service,))))
         wait(lambda: properties(PATH, MANAGER)["Connected"])
-        start("steward", [args.steward, "associations"])
+        steward = start("steward", [args.steward, "associations"])
         wait(lambda: call("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus",
             "NameHasOwner", GLib.Variant("(s)", ("org.rsynapse.Steward",))))
-        if args.phase == "capture":
+        if args.phase == "hotplug":
+            from session_hotplug import exercise
+            def restart_steward():
+                steward.terminate()
+                steward.wait(timeout=5)
+                wait(lambda: not call("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus",
+                    "NameHasOwner", GLib.Variant("(s)", ("org.rsynapse.Steward",))))
+                start("steward-restarted", [args.steward, "associations"])
+                wait(lambda: call("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus",
+                    "NameHasOwner", GLib.Variant("(s)", ("org.rsynapse.Steward",))))
+            exercise(root, start, wait, properties, windows, workspace, control, bind, cli, restart_steward)
+        elif args.phase == "silent":
+            from session_silent import exercise
+            exercise(root, start, wait, properties, windows, workspace, control, cli)
+        elif args.phase == "capture":
             try:
                 call(BUS, PATH, BUS + ".Control1", "SelectWorkspace",
                     GLib.Variant("(tsu)", (properties(PATH, MANAGER)["Generation"] + 1, "HEADLESS-1", 1)))
@@ -256,6 +276,25 @@ def worker(args):
                 "windows_relaunched": True, "project_cwds": True, "idempotent": True, "floating": True,
                 "missing_output_fallback": True, "immutable_checkpoint_bindings": True,
                 "removed_project_not_recreated": True, "stale_epoch_rejected": True}))
+    except Exception:
+        diagnostic = {}
+        for name, reader in (("manager", lambda: properties(PATH, MANAGER)), ("windows", windows),
+            ("relations", lambda: call("org.rsynapse.Locus", "/org/rsynapse/Locus", "org.rsynapse.Locus.Relations1", "List", GLib.Variant("(s)", ("",))))):
+            try:
+                diagnostic[name] = reader()
+            except Exception as error:
+                diagnostic[name] = str(error)
+        for name in ("workspaces", "windows", "outputs"):
+            try:
+                with socket.socket(socket.AF_UNIX) as stream:
+                    stream.settimeout(3)
+                    stream.connect(env["UMBRIEL_SOCKET"])
+                    stream.sendall(json.dumps({"cmd":name}).encode()+b"\n")
+                    diagnostic["native_"+name] = json.loads(stream.makefile().readline())
+            except Exception as error:
+                diagnostic["native_"+name] = str(error)
+        (directory / "failure.json").write_text(json.dumps(diagnostic, indent=2))
+        raise
     finally:
         for subscription in subscriptions:
             bus.signal_unsubscribe(subscription)
@@ -279,7 +318,9 @@ def main():
     parser.add_argument("--locusd", default=str(Path.home() / ".local/bin/rsynapse-locusd"))
     parser.add_argument("--projd", default=str(Path.home() / ".local/bin/rsynapse-projd"))
     parser.add_argument("--umbriel", default="umbriel")
-    parser.add_argument("--phase", choices=("capture", "restore"))
+    parser.add_argument("--phase", choices=("capture", "restore", "hotplug", "silent"))
+    parser.add_argument("--hotplug", action="store_true", help="test same-session output removal/group preservation")
+    parser.add_argument("--silent", action="store_true", help="test background launch rules, silent moves and final focus")
     parser.add_argument("--probe", action="store_true")
     parser.add_argument("--app-id", default=APP)
     parser.add_argument("--report-dir")
@@ -290,7 +331,7 @@ def main():
         return worker(args)
     root = Path(args.artifacts).resolve()
     root.mkdir(mode=0o700)
-    for name in ("home", "config", "state", "data", "cache", "reports", "project-a", "project-b"):
+    for name in ("home", "config", "state", "data", "cache", "reports", "project-a", "project-b", "project-c"):
         (root / name).mkdir(mode=0o700)
     app = APP + ".rsynapse.r{restore_id}"
     (root / "launchers.json").write_text(json.dumps({APP: {
@@ -303,7 +344,7 @@ def main():
         '<policy context="default"><allow send_destination="*" eavesdrop="true"/>'
         '<allow eavesdrop="true"/><allow own="*"/></policy></busconfig>')
     arguments = sys.argv[1:]
-    for phase in ("capture", "restore"):
+    for phase in (("hotplug",) if args.hotplug else ("capture", "silent") if args.silent else ("capture", "restore")):
         subprocess.run(["dbus-run-session", "--config-file=" + str(config), "--", sys.executable,
             str(Path(__file__).resolve()), *arguments, "--phase", phase], check=True)
 

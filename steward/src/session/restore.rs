@@ -13,6 +13,25 @@ const PENDING: &str = "org.rsynapse.session.window.launch";
 
 impl Manager {
     pub(super) async fn restore(&self, session: Session) -> anyhow::Result<RestoreReport> {
+        self.restore_inner(session, true).await
+    }
+
+    pub(super) async fn restore_existing_groups(
+        &self,
+        session: Session,
+    ) -> anyhow::Result<RestoreReport> {
+        anyhow::ensure!(
+            session
+                .workspaces
+                .iter()
+                .flat_map(|w| &w.windows)
+                .all(|w| w.recipe.is_empty()),
+            "hotplug regrouping must not contain launch recipes"
+        );
+        self.restore_inner(session, false).await
+    }
+
+    async fn restore_inner(&self, session: Session, arm: bool) -> anyhow::Result<RestoreReport> {
         session.validate()?;
         let source = observe::read(&self.connection).await?;
         let control = ControlProxy::builder(&self.connection)
@@ -26,6 +45,30 @@ impl Manager {
                 .all(|name| capabilities.iter().any(|c| c == name)),
             "compositor backend does not support session restoration"
         );
+        // Native silent moves still require focusing their source window. Keep
+        // the user's original window so explicit restoration returns there,
+        // including when only part of a session could be restored. Hotplug
+        // reconciliation preserves focus across its own retries separately.
+        let focused = if arm && capabilities.iter().any(|name| name == "focus-window") {
+            let manager = workspace_dbus_api::ManagerProxy::builder(&self.connection)
+                .destination(source.owner.as_str())?
+                .build()
+                .await?;
+            match manager.focused_window().await?.first() {
+                Some(path) => Some(
+                    workspace_dbus_api::WindowProxy::builder(&self.connection)
+                        .destination(source.owner.clone())?
+                        .path(path.clone())?
+                        .build()
+                        .await?
+                        .id()
+                        .await?,
+                ),
+                None => None,
+            }
+        } else {
+            None
+        };
         let projects: Vec<goal_model::ProjectInfo> =
             self.projd().await?.call("ListProjects", &()).await?;
         let mut report = RestoreReport::default();
@@ -56,9 +99,16 @@ impl Manager {
                 return Ok(report);
             }
         };
+        if let Some(focused) = focused.filter(|id| after.windows.contains_key(id)) {
+            if let Err(error) = control.focus_window(source.generation, &focused).await {
+                report.issues.push(format!(
+                    "could not return focus to the original window: {error}"
+                ));
+            }
+        }
         // A partial restore leaves the input checkpoint protected. Successfully
         // restored window anchors still make a repeated command idempotent.
-        if report.issues.is_empty() {
+        if arm && report.issues.is_empty() {
             links::arm(&self.locus, &after).await?;
         }
         Ok(report)
@@ -110,27 +160,23 @@ impl Manager {
             current.owner == source.owner && current.generation == source.generation,
             "source epoch changed"
         );
-        let output = if current
-            .workspaces
-            .values()
-            .any(|w| w.output == workspace.output)
-        {
+        let output = if current.outputs.contains(&workspace.output) {
             workspace.output.clone()
         } else {
             current
-                .workspaces
-                .values()
-                .map(|w| w.output.clone())
-                .min()
+                .outputs
+                .iter()
+                .next()
+                .cloned()
                 .ok_or_else(|| anyhow::anyhow!("no live output"))?
         };
         let existing = current.workspaces.values().find(|w| {
-            links::target(&records, links::LIVE_SLOT, locus::keys::WORKSPACE_ID, &w.id).is_some_and(
-                |r| {
-                    links::current(r, &current)
-                        && links::key(&r.target, links::SLOT).as_deref() == Some(&workspace.id)
-                },
-            )
+            w.output == output
+                && links::target(&records, links::LIVE_SLOT, locus::keys::WORKSPACE_ID, &w.id)
+                    .is_some_and(|r| {
+                        links::current(r, &current)
+                            && links::key(&r.target, links::SLOT).as_deref() == Some(&workspace.id)
+                    })
         });
         let named = current
             .workspaces
@@ -141,6 +187,7 @@ impl Manager {
             .values()
             .filter(|w| {
                 w.output == output
+                    && w.name.is_empty()
                     && !used.contains(&w.id)
                     && !current
                         .windows
@@ -154,19 +201,22 @@ impl Manager {
                     )
                     .is_none()
             })
-            .min_by_key(|w| w.index);
+            // Dynamic inventories retain the trailing blank. An interior
+            // anonymous blank may be pruned when focusing the source window.
+            .max_by_key(|w| w.index);
         let candidate = existing
             .or(named)
             .or(blank)
-            .ok_or_else(|| anyhow::anyhow!("no unassigned workspace available"))?;
+            .ok_or_else(|| anyhow::anyhow!("no unassigned workspace available on {output}"))?;
         if workspace.windows.is_empty() && existing.is_none() && named.is_none() {
             anyhow::bail!(
                 "empty logical workspace preserved; configure a persistent named/static workspace to materialize it on Umbriel"
             );
         }
-        let live = control
-            .select_workspace(source.generation, &output, candidate.index)
-            .await?;
+        // PlaceWindow addresses the opaque destination directly. Selecting an
+        // empty workspace first starts a native slide before it is populated,
+        // delaying creation of the next blank.
+        let live = candidate.id.clone();
         anyhow::ensure!(
             !used.contains(&live),
             "workspace already reserved by another saved workspace"
@@ -183,21 +233,8 @@ impl Manager {
             );
         }
         used.insert(live.clone());
-        self.locus
-            .set_one_with_persistence(
-                RelationEndpoint::stable_key(locus::keys::WORKSPACE_ID, &live),
-                links::LIVE_SLOT,
-                RelationEndpoint::stable_key(links::SLOT, &workspace.id),
-                links::metadata(Some(source)),
-                false,
-            )
-            .await?;
+        links::bind_slot(&self.locus, &current, &workspace.id, &live).await?;
         crate::associations::restore_workspace(&self.locus, &live, project.clone()).await?;
-        if workspace.layout != workspace_dbus_api::Layout::Unknown {
-            control
-                .set_layout(source.generation, &live, workspace.layout)
-                .await?;
-        }
         for saved in &workspace.windows {
             let mut window = saved.clone();
             if let Some(project) = &project {
@@ -213,6 +250,11 @@ impl Manager {
                     .issues
                     .push(format!("{} ({}): {error:#}", window.app_id, window.id));
             }
+        }
+        if workspace.layout != workspace_dbus_api::Layout::Unknown {
+            control
+                .set_layout(source.generation, &live, workspace.layout)
+                .await?;
         }
         Ok(())
     }
@@ -296,6 +338,10 @@ impl Manager {
         let child = tokio::process::Command::new(&argv[0])
             .args(&argv[1..])
             .current_dir(&recipe.cwd)
+            // A restore is not a continuation of whichever launcher originally
+            // started Steward. Do not forward an unrelated activation request.
+            .env_remove("XDG_ACTIVATION_TOKEN")
+            .env_remove("DESKTOP_STARTUP_ID")
             .env("RSYNAPSE_RESTORE_ID", &token)
             .stdin(Stdio::null())
             .stdout(Stdio::null())

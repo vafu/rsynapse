@@ -12,6 +12,7 @@ pub const WINDOW: &str = "opaque-window/α:007";
 
 pub struct State {
     pub connected: bool,
+    pub output_enabled: bool,
     pub generation: u64,
     pub window_present: bool,
     pub focused: bool,
@@ -24,6 +25,7 @@ pub type SharedState = Arc<RwLock<State>>;
 pub async fn serve() -> zbus::Result<(Connection, SharedState)> {
     let state = Arc::new(RwLock::new(State {
         connected: true,
+        output_enabled: true,
         generation: 1,
         window_present: true,
         focused: true,
@@ -123,6 +125,11 @@ pub struct Output(pub SharedState);
 
 #[interface(name = "org.rsynapse.Workspace.Output1")]
 impl Output {
+    #[zbus(property)]
+    async fn enabled(&self) -> bool {
+        self.0.read().await.output_enabled
+    }
+
     #[zbus(property(emits_changed_signal = "const"))]
     fn name(&self) -> &str {
         OUTPUT

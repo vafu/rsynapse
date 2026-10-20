@@ -2,6 +2,7 @@ use super::protocol::{Event, Layer, Output, Window, Workspace};
 use crate::model::{self, Projection};
 use std::collections::{BTreeMap, BTreeSet};
 use workspace_dbus_api::{output_path, window_path, workspace_path};
+mod coherence;
 
 #[derive(Default)]
 pub(super) struct State {
@@ -13,6 +14,7 @@ pub(super) struct State {
     workspace_ids: BTreeMap<String, String>,
     used_workspace_ids: BTreeSet<String>,
     next_workspace_id: u64,
+    counted_workspaces: bool,
 }
 
 impl State {
@@ -20,6 +22,7 @@ impl State {
         match event {
             Event::Outputs(values) => self.outputs = Some(keyed(values, |v| &v.name)?),
             Event::Workspaces(values) => {
+                self.counted_workspaces |= values.iter().any(|w| w.window_count.is_some());
                 anyhow::ensure!(
                     values.iter().all(|w| w.index > 0),
                     "Umbriel workspace indices must be one-based"
@@ -52,6 +55,9 @@ impl State {
         ) else {
             return Ok(None);
         };
+        if self.counted_workspaces && !coherence::consistent(outputs, workspaces, windows) {
+            return Ok(None);
+        }
         Ok(Some(project(
             outputs,
             workspaces,
@@ -147,6 +153,7 @@ fn project(
         result.outputs.insert(
             output.name.clone(),
             model::Output {
+                enabled: output.enabled,
                 focused: focused_output.is_some_and(|o| o.name == output.name),
                 current_workspace: active_workspace(output, workspaces)
                     .map(|w| workspace_path(&workspace_ids[&w.id]))

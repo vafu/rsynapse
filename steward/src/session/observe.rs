@@ -1,7 +1,7 @@
 //! Typed reads pinned to a unique owner. Watch connections are separate from
 //! request connections so bounded signal backpressure cannot block replies.
 use futures_util::StreamExt;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use workspace_dbus_api::{Layout, ManagerProxy, OutputProxy, WindowProxy, WorkspaceProxy};
 use zbus::{Connection, fdo::DBusProxy, zvariant::OwnedObjectPath};
 
@@ -27,6 +27,7 @@ pub struct Workspace {
 pub struct Snapshot {
     pub owner: String,
     pub generation: u64,
+    pub outputs: BTreeSet<String>,
     pub workspaces: BTreeMap<String, Workspace>,
     pub windows: BTreeMap<String, Window>,
 }
@@ -78,6 +79,21 @@ async fn read_once(connection: &Connection) -> anyhow::Result<Snapshot> {
     let generation = manager.generation().await?;
     let paths = manager.workspaces().await?;
     let window_paths = manager.windows().await?;
+    let output_paths = manager.outputs().await?;
+    let mut output_names = HashMap::new();
+    let mut outputs = BTreeSet::new();
+    for path in &output_paths {
+        let proxy = OutputProxy::builder(connection)
+            .destination(owner.clone())?
+            .path(path.clone())?
+            .build()
+            .await?;
+        let name = proxy.name().await?;
+        if proxy.enabled().await? {
+            outputs.insert(name.clone());
+        }
+        output_names.insert(path.clone(), name);
+    }
     let mut workspaces = BTreeMap::new();
     let mut identities = HashMap::<OwnedObjectPath, String>::new();
     for path in &paths {
@@ -87,15 +103,13 @@ async fn read_once(connection: &Connection) -> anyhow::Result<Snapshot> {
             .build()
             .await?;
         let id = proxy.id().await?;
-        let output = if let Some(output) = proxy.output().await?.first() {
-            OutputProxy::builder(connection)
-                .destination(owner.clone())?
-                .path(output.clone())?
-                .build()
-                .await?
-                .name()
-                .await?
-        } else {
+        let Some(output) = proxy
+            .output()
+            .await?
+            .first()
+            .and_then(|path| output_names.get(path))
+            .cloned()
+        else {
             continue;
         };
         identities.insert(path.clone(), id.clone());
@@ -117,15 +131,13 @@ async fn read_once(connection: &Connection) -> anyhow::Result<Snapshot> {
             .path(path.clone())?
             .build()
             .await?;
-        let Some(workspace) = proxy
+        let workspace = proxy
             .workspace()
             .await?
             .first()
             .and_then(|p| identities.get(p))
             .cloned()
-        else {
-            continue;
-        };
+            .unwrap_or_default();
         let id = proxy.id().await?;
         windows.insert(
             id.clone(),
@@ -152,12 +164,14 @@ async fn read_once(connection: &Connection) -> anyhow::Result<Snapshot> {
             && after_generation == generation
             && after_paths == paths
             && after_windows == window_paths
+            && manager.outputs().await? == output_paths
             && after_owner.as_str() == owner,
         "workspace inventory changed during capture: connected={connected}, generation={generation}->{after_generation}, workspaces={paths:?}->{after_paths:?}, windows={window_paths:?}->{after_windows:?}, owner={owner}->{after_owner}"
     );
     Ok(Snapshot {
         owner,
         generation,
+        outputs,
         workspaces,
         windows,
     })

@@ -4,7 +4,7 @@ use futures_util::StreamExt;
 use locus::RelationEndpoint;
 use std::collections::{HashMap, HashSet};
 use workspace_dbus_api::{
-    BUS_NAME, MANAGER_INTERFACE, ROOT_PATH, WINDOW_INTERFACE, WORKSPACE_INTERFACE,
+    BUS_NAME, MANAGER_INTERFACE, OUTPUT_INTERFACE, ROOT_PATH, WINDOW_INTERFACE, WORKSPACE_INTERFACE,
 };
 use zbus::{
     Connection, MatchRule, MessageStream,
@@ -28,9 +28,16 @@ fn source_changed(message: &zbus::Message) -> bool {
                 return true;
             };
             let names: &[&str] = match interface.as_str() {
-                MANAGER_INTERFACE => &["Connected", "Generation", "Workspaces", "Windows"],
+                MANAGER_INTERFACE => &[
+                    "Connected",
+                    "Generation",
+                    "Outputs",
+                    "Workspaces",
+                    "Windows",
+                ],
                 WINDOW_INTERFACE => &["Workspace"],
-                WORKSPACE_INTERFACE => &["Windows"],
+                WORKSPACE_INTERFACE => &["Windows", "Output"],
+                OUTPUT_INTERFACE => &["Enabled"],
                 _ => return false,
             };
             names.iter().any(|name| {
@@ -368,9 +375,30 @@ async fn reconcile(
 /// Reconcile old epochs first so background cleanup cannot erase a fresh bind.
 pub(super) async fn synchronize(locus: &LocusClient) -> anyhow::Result<(String, String)> {
     let connection = Connection::session().await?;
-    let snapshot = snapshot(&connection)
-        .await?
-        .ok_or_else(|| anyhow::anyhow!("Workspace inventory is changing"))?;
+    let watch = Connection::session().await?;
+    let mut changes = MessageStream::for_match_rule(
+        MatchRule::builder()
+            .msg_type(Type::Signal)
+            .sender(BUS_NAME)?
+            .path_namespace(ROOT_PATH)?
+            .build(),
+        &watch,
+        Some(128),
+    )
+    .await?;
+    let snapshot = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            if let Some(snapshot) = snapshot(&connection).await? {
+                return Ok::<_, anyhow::Error>(snapshot);
+            }
+            changes
+                .next()
+                .await
+                .ok_or_else(|| anyhow::anyhow!("workspace inventory stream ended"))??;
+        }
+    })
+    .await
+    .map_err(|_| anyhow::anyhow!("Workspace inventory is still changing"))??;
     anyhow::ensure!(snapshot.connected, "Workspace source is disconnected");
     let epoch = (snapshot.owner.clone(), snapshot.generation.to_string());
     reconcile(locus, &mut Reconciler::default(), snapshot).await?;
@@ -385,7 +413,22 @@ pub(super) fn stamp(
     metadata.insert(GENERATION.into(), epoch.1);
 }
 
+#[cfg(test)]
 pub(super) async fn run(locus: LocusClient) -> anyhow::Result<()> {
+    run_impl(locus, None).await
+}
+
+pub(super) async fn run_with_sessions(
+    locus: LocusClient,
+    session: std::sync::Arc<crate::session::Manager>,
+) -> anyhow::Result<()> {
+    run_impl(locus, Some(session)).await
+}
+
+async fn run_impl(
+    locus: LocusClient,
+    session: Option<std::sync::Arc<crate::session::Manager>>,
+) -> anyhow::Result<()> {
     let connection = Connection::session().await?;
     // A hotplug burst can fill a bounded signal queue while reconciliation is
     // awaiting replies. Keep snapshot requests off the subscribed connection so
@@ -415,7 +458,24 @@ pub(super) async fn run(locus: LocusClient) -> anyhow::Result<()> {
     .await?;
     let mut tracker = Reconciler::default();
     loop {
-        {
+        // Regroup before taking BIND_LOCK or refreshing any window anchors.
+        // Session capture uses the same operation gate, so neither path can
+        // accept a compositor's temporary evacuation merge as user intent.
+        let mut reconciled = true;
+        if let Some(session) = &session {
+            if snapshot(&reads)
+                .await?
+                .is_some_and(|source| source.connected)
+            {
+                if let Err(error) = session.handle_topology().await {
+                    eprintln!(
+                        "[steward/hotplug] preserving checkpoint, reconciliation deferred: {error:#}"
+                    );
+                    reconciled = false;
+                }
+            }
+        }
+        if reconciled {
             let _lock = super::BIND_LOCK.lock().await;
             if let Some(snapshot) = snapshot(&reads).await? {
                 reconcile(&locus, &mut tracker, snapshot.clone()).await?;

@@ -89,9 +89,16 @@ All are read-only and emit changes.
 | Property | Signature | Meaning |
 | --- | --- | --- |
 | `Name` | `s` | Connector name; immutable for this object |
+| `Enabled` | `b` | Output is enabled for desktop placement; disabled objects may remain in the inventory |
 | `Focused` | `b` | This is `Manager.FocusedOutput` |
 | `CurrentWorkspace` | `ao` | Zero or one active workspace on this output |
 | `Workspaces` | `ao` | Workspace membership, ordered by display index |
+
+`Manager.Outputs` is an object inventory, not a list of placement destinations.
+Disabling an output can retain its object and empty workspace objects. Clients
+observe `Enabled` changes independently of object removal. This describes desktop
+enablement, not temporary DPMS power state. Umbriel reports native enablement;
+Niri reports whether the output has a logical desktop configuration.
 
 ## Workspace properties
 
@@ -163,7 +170,8 @@ into global application-focus fields.
 
 `org.rsynapse.Workspace.Control1` is an additive interface on the root. It owns
 no saved sessions or project policy. `Capabilities: as` lists supported controls;
-currently Umbriel advertises `select-workspace`, `set-layout`, `place-window`.
+currently Umbriel advertises `select-workspace`, `set-layout`, `place-window`,
+and `focus-window`.
 Niri continues projecting state and advertises an empty list.
 
 Clients bind the control proxy to the source's **unique bus owner** and pass its
@@ -171,17 +179,27 @@ observed `Generation` (`t`) on each call. Disconnected/stale generations fail.
 Completion waits for projected state changes; timeouts bound failure only.
 
 - `SelectWorkspace(generation: t, output: s, index: u) -> id: s`: selects a
-  one-based position on an existing output and returns the actual opaque live
+  one-based position on an enabled output and returns the actual opaque live
   ID. A dynamic output may clamp to its trailing empty workspace. It does not
   promise persistent empty workspaces or create named configuration entries.
+  Selecting the already-active workspace is idempotent, regardless of native
+  back-and-forth shortcut settings.
 - `SetLayout(generation: t, workspace: s, layout: s)`: selects the identified
   workspace and sets a supported layout (`scrolling`, `master`, `dwindle`).
 - `PlaceWindow(generation: t, window: s, workspace: s, floating: b)`: places a
-  live window on the identified workspace and sets its floating state.
+  live window on the identified workspace and sets its floating state. It does
+  not select an empty destination before populating it or promise to focus the
+  moved window afterward.
+- `FocusWindow(generation: t, window: s)`: focuses an existing window and waits
+  for its projected global keyboard-focus acknowledgment. Umbriel also warps
+  the pointer so subsequent contextual actions address that output.
 
-Commands are serialized. Umbriel actions may temporarily change focus. Native
-selectors are resolved from current backend-owned projection properties, never
-by parsing public IDs. A destination that expires during placement fails rather
+Commands are serialized. Umbriel actions may temporarily change focus. Silent
+moves avoid following the moved window to its destination, but their
+source window still needs focus under the current native action API. Callers
+can use `FocusWindow` to return to their original window when the operation ends.
+Native selectors are resolved from current backend-owned projection properties,
+never by parsing public IDs. A destination that expires during placement fails rather
 than silently selecting a different workspace. Exact geometry/tiling restoration
 and application launching are outside these methods.
 
