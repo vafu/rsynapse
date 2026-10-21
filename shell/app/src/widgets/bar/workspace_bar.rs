@@ -1,4 +1,5 @@
 use relm4::prelude::*;
+use crate::widgets::button_group::ButtonGroup;
 use shell_core::{
     gtk::{self, prelude::*},
     gtk4_layer_shell::LayerShell,
@@ -7,8 +8,8 @@ use shell_core::{
 };
 
 use super::{
-    WORKSPACE_RAIL_WIDTH, WorkspaceNode, context_zone::ContextZone, project_label::ProjectLabel,
-    workspaces::workspaces,
+    WORKSPACE_RAIL_WIDTH, WorkspaceNode, context_zone::ContextZone, github_status::GitHubStatus,
+    project_label::ProjectLabel, workspaces::workspaces,
 };
 
 #[derive(Clone)]
@@ -20,6 +21,7 @@ pub(super) struct WorkspaceBarInit {
 
 #[shell_macros::model(module = workspace_bar_sources)]
 pub(super) struct WorkspaceBar {
+    _github_status: Controller<GitHubStatus>,
     _context_zone: Controller<ContextZone>,
     output_name: Option<String>,
 
@@ -57,8 +59,12 @@ impl SimpleComponent for WorkspaceBar {
                     set_orientation: gtk::Orientation::Vertical,
 
                     #[local_ref]
-                    context_zone_root -> gtk::Revealer {},
+                    github_status_root -> ButtonGroup {},
                 },
+
+                #[wrap(Some)]
+                #[local_ref]
+                set_center_widget = &context_zone_root -> gtk::Revealer {},
 
                 #[wrap(Some)]
                 set_end_widget = &gtk::Box {
@@ -94,7 +100,10 @@ impl SimpleComponent for WorkspaceBar {
         let context_zone_builder = ContextZone::builder();
         let context_zone_root = context_zone_builder.root.clone();
         let context_zone = context_zone_builder.launch(()).detach();
-        let model = WorkspaceBar::new(context_zone, init.output_name);
+        let github_status_builder = GitHubStatus::builder();
+        let github_status_root = github_status_builder.root.clone();
+        let github_status = github_status_builder.launch(()).detach();
+        let model = WorkspaceBar::new(github_status, context_zone, init.output_name);
         let widgets = view_output!();
         ComponentParts { model, widgets }
     }

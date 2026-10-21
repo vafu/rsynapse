@@ -7,6 +7,7 @@ use rxrust::prelude::{
 };
 
 pub mod dbus;
+pub mod github;
 pub mod proj;
 pub mod session;
 mod state;

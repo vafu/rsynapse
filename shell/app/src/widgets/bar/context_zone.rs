@@ -38,12 +38,12 @@ impl SimpleComponent for ContextZone {
             set_transition_type: gtk::RevealerTransitionType::FadeSlideDown,
             set_transition_duration: 140,
             set_halign: gtk::Align::Center,
-            set_valign: gtk::Align::Start,
+            set_valign: gtk::Align::Center,
 
             gtk::Box {
                 add_css_class: "context-zone",
                 set_halign: gtk::Align::Center,
-                set_valign: gtk::Align::Start,
+                set_valign: gtk::Align::Center,
                 set_orientation: gtk::Orientation::Vertical,
 
                 #[bind_list(items, row = ContextZoneItem)]
@@ -51,7 +51,7 @@ impl SimpleComponent for ContextZone {
                     add_css_class: "bar-indicator-list-vertical",
                     add_css_class: "context-zone-list",
                     set_halign: gtk::Align::Center,
-                    set_valign: gtk::Align::Start,
+                    set_valign: gtk::Align::Center,
                     set_orientation: gtk::Orientation::Vertical,
                 }
             }

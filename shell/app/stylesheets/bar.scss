@@ -90,6 +90,53 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
   color: color-mix(in srgb, #{$accent_color} 70%, #{$fg});
 }
 
+.button-group-pill {
+  background-color: #{$panel-surface-hover};
+  border-radius: 999px;
+  padding: 0 4px;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, #{$fg} 8%, transparent);
+
+  > .button-group-owner {
+    padding: 0 2px;
+  }
+
+  &.vertical {
+    padding: 4px 0;
+
+    > .button-group-owner {
+      padding: 2px 0;
+    }
+  }
+}
+
+.github-status {
+  margin-top: 4px;
+
+  .github-merging { color: #{$accent_color}; }
+  .github-failed { color: #{$sys_danger}; }
+  .github-pending { color: #{$panel-muted}; }
+  .github-approved,
+  .github-merged { color: #{$sys_ok}; }
+  .github-to-address,
+  .github-changes-requested,
+  .github-conflicts { color: #{$sys_danger}; }
+  .github-needs-review { color: #{$accent_color}; }
+  .github-draft { color: #{$panel-muted}; }
+}
+
+.github-pr-popover contents {
+  min-width: 360px;
+}
+
+.github-pr-row {
+  padding: 8px;
+  border-radius: 6px;
+
+  &:hover {
+    background-color: #{$panel-surface-hover};
+  }
+}
+
 .bar-corner-icon,
 .selected-project-icon,
 .bar-indicator-icon {
@@ -349,10 +396,6 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
   }
 }
 
-.context-zone-revealer {
-  margin-top: 6px;
-}
-
 .context-zone-list .context-zone-item.context-zone-build {
   min-width: #{$panel-item-size};
   min-height: #{$panel-item-size};
@@ -439,7 +482,8 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
   font-weight: 700;
 }
 
-.bar-badge.workspace-number-badge {
+.bar-badge.workspace-number-badge,
+.bar-badge.bar-count-badge {
   background-color: color-mix(in srgb, #{$fg} 16%, #{$panel-bg});
   color: color-mix(in srgb, #{$fg} 72%, transparent);
 }

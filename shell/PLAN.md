@@ -91,9 +91,23 @@ Framework crates under `core/` own:
   control. Notification-center commands route to the `rsynapse-notifications`
   socket; command names and product policy stay out of `shell-core` unless
   another consumer needs the same transport contract.
+- Completed: the vertical rail's top slot shows nonzero GitHub status items
+  with independent clickable PR-list popovers and persistent unseen badges.
+  It includes To address, conflicts, requested changes, review and draft
+  categories alongside merge/CI/approval status. Buckets are mutually exclusive,
+  and Needs review consolidates general and OWNERS approval requirements.
+  Unresolved feedback outranks waiting/ready states; lifecycle and explicit
+  blockers retain priority. A recently merged
+  inbox dismisses entries when acknowledged. PR popovers use natural content
+  width. Build indicators use its
+  CenterBox center slot; workspace controls stay at the bottom. github-dbus owns
+  the overview rollups; the widget owns presentation and status colors.
 - Shared product bootstrap such as rsynapse stylesheet/theme setup lives in the
   `app/` library. Only generic app lifecycle setup, including Relm4
   worker-thread configuration, belongs in `shell-core`.
+- Completed: GitHub and Bluetooth share one configurable GTK button-group
+  widget, including directional owner/content layout, always-open or hover
+  reveal policies, and signal-driven popup visibility holds.
 
 ### 4. D-Bus Source Integration
 

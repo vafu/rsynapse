@@ -29,3 +29,16 @@ pub(super) fn container(extra: &[&'static str]) -> gtk::Box {
     widget.set_valign(gtk::Align::Center);
     widget
 }
+
+/// Shared decorative marker used by workspace/agent and GitHub badges.
+/// Retains the existing marker geometry and theme classes in one place.
+pub(super) fn unseen_badge() -> gtk::Box {
+    let badge = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+    badge.set_css_classes(&["bar-badge", "agent-unseen-badge"]);
+    badge.set_can_target(false);
+    badge.set_width_request(8);
+    badge.set_height_request(8);
+    badge.set_halign(gtk::Align::End);
+    badge.set_valign(gtk::Align::Start);
+    badge
+}

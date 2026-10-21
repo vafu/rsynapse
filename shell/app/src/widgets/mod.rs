@@ -1,4 +1,5 @@
 mod bar;
+pub mod button_group;
 pub(crate) mod level_indicator;
 mod nerd_icon;
 pub mod notifications;

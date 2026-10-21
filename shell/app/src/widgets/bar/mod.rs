@@ -6,6 +6,7 @@ mod bluetooth;
 mod brightness;
 mod context_zone;
 mod goals;
+mod github_status;
 mod icon_resolver;
 mod layout_indicator;
 // Build status icon rendering is paused while the status is moved to a new surface.
@@ -29,7 +30,7 @@ mod workspace_bar;
 mod workspaces;
 
 use std::{
-    cell::{Cell, RefCell},
+    cell::RefCell,
     process::Command,
     rc::Rc,
     thread,
@@ -47,6 +48,7 @@ use shell_core::{
 
 use crate::widgets::nerd_icon::{NerdIcon, NerdIconLabelExt};
 use crate::widgets::nerd_icon::{fa, md};
+use crate::widgets::button_group::{ButtonGroup, Config as ButtonGroupConfig, Direction, RevealMode};
 
 use self::audio::{AudioRoutePopover, AudioView, audio_status};
 use self::battery::BatteryView;
@@ -742,19 +744,14 @@ impl SimpleAsyncComponent for MainBar {
                         // cleaned up; the inline view preserves source macro
                         // binding for now but makes this file too large.
                         #[name = "bluetooth_group"]
-                        gtk::Box {
-                            add_css_class: "button-subgroup-expand-left",
+                        ButtonGroup {
                             add_css_class: "bt-widget",
-                            set_orientation: gtk::Orientation::Horizontal,
+                            set_config: ButtonGroupConfig {
+                                direction: Direction::Left,
+                                reveal_mode: RevealMode::Hover,
+                            },
 
-                            #[name = "bluetooth_revealer"]
-                            gtk::Revealer {
-                                set_reveal_child: false,
-                                set_transition_type: gtk::RevealerTransitionType::SlideLeft,
-
-                                gtk::Box {
-                                    add_css_class: "button-subgroup",
-                                    set_orientation: gtk::Orientation::Horizontal,
+                            set_content = &gtk::Box {
 
                                     gtk::Box {
                                         #[watch]
@@ -911,10 +908,9 @@ impl SimpleAsyncComponent for MainBar {
                                         }
                                     }
                                     }
-                                }
                             },
 
-                            gtk::Box {
+                            set_owner = &gtk::Box {
                                 set_css_classes: &bar_item::classes(&[
                                     bar_item::SQUARE_CLASS,
                                     "bt-power-item",
@@ -923,7 +919,6 @@ impl SimpleAsyncComponent for MainBar {
                                 #[name = "bluetooth_power_button"]
                                 gtk::Button {
                                     set_css_classes: &bar_item::action_classes(&[
-                                        "button-subgroup-main",
                                         "bt-power-button",
                                     ]),
                                 #[watch]
@@ -1296,46 +1291,8 @@ impl SimpleAsyncComponent for MainBar {
         mount_bluetooth_group_popover(&audio_popover, BluetoothDeviceGroup::Audio);
         mount_bluetooth_group_popover(&pointer_popover, BluetoothDeviceGroup::Pointer);
 
-        let bluetooth_hovered = Rc::new(Cell::new(false));
-        let update_bluetooth_revealed = Rc::new({
-            let bluetooth_hovered = bluetooth_hovered.clone();
-            let bluetooth_revealer = widgets.bluetooth_revealer.clone();
-            let bluetooth_power_button = widgets.bluetooth_power_button.clone();
-            let keyboard_popover = keyboard_popover.clone();
-            let audio_popover = audio_popover.clone();
-            let pointer_popover = pointer_popover.clone();
-
-            move || {
-                let revealed = bluetooth_hovered.get()
-                    || keyboard_popover.is_visible()
-                    || audio_popover.is_visible()
-                    || pointer_popover.is_visible();
-                bluetooth_revealer.set_reveal_child(revealed);
-                if revealed {
-                    bluetooth_power_button.add_css_class("opened");
-                } else {
-                    bluetooth_power_button.remove_css_class("opened");
-                }
-            }
-        });
-
-        let bluetooth_motion = gtk::EventControllerMotion::new();
-        let update_revealed = update_bluetooth_revealed.clone();
-        let hovered = bluetooth_hovered.clone();
-        bluetooth_motion.connect_enter(move |_, _, _| {
-            hovered.set(true);
-            update_revealed();
-        });
-        let update_revealed = update_bluetooth_revealed.clone();
-        let hovered = bluetooth_hovered.clone();
-        bluetooth_motion.connect_leave(move |_| {
-            hovered.set(false);
-            update_revealed();
-        });
-        widgets.bluetooth_group.add_controller(bluetooth_motion);
         for popover in [keyboard_popover, audio_popover, pointer_popover] {
-            let update_revealed = update_bluetooth_revealed.clone();
-            popover.connect_visible_notify(move |_| update_revealed());
+            widgets.bluetooth_group.hold_while_visible(&popover);
         }
 
         AsyncComponentParts { model, widgets }

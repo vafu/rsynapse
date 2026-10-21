@@ -154,19 +154,13 @@ impl SimpleComponent for ProjectLabel {
                     }
                 },
 
-                add_overlay = &gtk::Box {
-                    add_css_class: "bar-badge",
-                    add_css_class: "agent-unseen-badge",
+                #[local_ref]
+                add_overlay = &unseen_badge -> gtk::Box {
                     add_css_class: "workspace-agent-unseen-badge",
-                    set_can_target: false,
-                    set_width_request: 8,
-                    set_height_request: 8,
 
                     #[watch]
                     set_visible: workspace_agent_unseen_visible(&model.vm),
 
-                    set_halign: gtk::Align::End,
-                    set_valign: gtk::Align::Start,
                 }
             }
         }
@@ -179,6 +173,7 @@ impl SimpleComponent for ProjectLabel {
     ) -> ComponentParts<Self> {
         let icon_picker = NerdIconPicker::new();
         let icon_picker_root = icon_picker.widget().clone();
+        let unseen_badge = super::bar_item::unseen_badge();
         let model = ProjectLabel::new(
             init,
             icon_picker,

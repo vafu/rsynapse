@@ -15,6 +15,9 @@ use super::{
     support::{from_stream_result, log_errors, record_source_error},
 };
 
+mod owner;
+pub use owner::service_owner;
+
 const DBUS_PROPERTIES: &str = "org.freedesktop.DBus.Properties";
 const DBUS_OBJECT_MANAGER: &str = "org.freedesktop.DBus.ObjectManager";
 

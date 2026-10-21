@@ -15,7 +15,9 @@ wayland-client = "0.31"
 wayland-protocols = { version = "0.32", features = ["client", "staging"] }
 zbus = { version = "4.4.0", default-features = false, features = ["tokio"] }
 proj-model = { package = "rsynapse-projd-model", path = "../../../projd/model" }
+github-dbus-api = { path = "/home/vfuchedzhy/Snapchat/Dev/github-dbus/crates/api" }
 serde = "1"
+serde_json = "1"
 
 [dev-dependencies]
 tempfile = "3"

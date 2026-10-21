@@ -141,6 +141,23 @@ Subscriptions are shared by threshold and cancel their connection on drop.
 - `property(PropertyDescriptor)` for typed property values.
 - `signal(SignalDescriptor)` for typed signal payloads.
 - `object_manager(ObjectManagerDescriptor)` for managed object snapshots.
+- `service_owner(Bus, destination)` for an initial/current unique owner,
+  including absence, loss and replacement. Use `switch_map` to scope dependent
+  sources to the current owner and clear stale values while a service is absent.
+
+`shell_source::github` exposes typed `pull_requests()`, `summary()`, `overview()`
+and notification observables over github-dbus. `activity()` exposes typed
+`PullRequestActivity` records containing the PR, an opaque revision and its
+persistent unseen flag; `None` includes the period before a successful load.
+`overview()` uses `PrOverview`
+with explicit open/merging/failed/pending/approved and detailed status counters;
+open excludes the recently merged inventory. Property descriptors switch with
+the service owner, share by descriptor, and replay current data to multiple
+rails. `pull_requests()` also shares the decoded typed list so per-status panel
+items reuse one upstream snapshot. `activity()` shares the decoded activity
+snapshot too; the panel derives each count, filtered PR list and unseen marker
+together from it. Browser launching and revision acknowledgment are widget-local
+actions. View models, filtering and formatting stay beside the GitHub widget.
 
 Consumer crates should wrap these primitives in typed service helpers. Widget
 code should call semantic functions such as `selected_workspace_windows()` or

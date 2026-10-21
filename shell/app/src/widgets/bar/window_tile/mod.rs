@@ -64,15 +64,8 @@ impl SimpleComponent for WindowTile {
                     set_nerd_icon: window_icon(&model.vm),
                 },
 
-                add_overlay = &gtk::Box {
-                    add_css_class: "bar-badge",
-                    add_css_class: "agent-unseen-badge",
-                    set_can_target: false,
-                    set_width_request: 8,
-                    set_height_request: 8,
-                    set_halign: gtk::Align::End,
-                    set_valign: gtk::Align::Start,
-
+                #[local_ref]
+                add_overlay = &unseen_badge -> gtk::Box {
                     #[watch]
                     set_visible: agent_unseen_visible(&model.vm),
                 },
@@ -98,6 +91,7 @@ impl SimpleComponent for WindowTile {
         _sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
         let model = WindowTile::new(init);
+        let unseen_badge = super::bar_item::unseen_badge();
         let widgets = view_output!();
 
         ComponentParts { model, widgets }

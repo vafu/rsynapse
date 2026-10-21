@@ -19,7 +19,11 @@ impl Drop for Daemon {
 #[ignore = "requires PROJD_BIN and dbus-run-session"]
 fn project_icons_seed_follow_changes_and_switch_projects() {
     if std::env::var_os("PROJD_ICON_TEST_CHILD").is_none() {
+        let fixture = tempfile::tempdir().unwrap();
+        let config = fixture.path().join("bus.conf");
+        std::fs::write(&config, r#"<busconfig><type>session</type><listen>unix:tmpdir=/tmp</listen><auth>EXTERNAL</auth><policy context="default"><allow send_destination="*" eavesdrop="true"/><allow eavesdrop="true"/><allow own="*"/></policy></busconfig>"#).unwrap();
         let result = Command::new("dbus-run-session")
+            .arg(format!("--config-file={}", config.display()))
             .arg("--")
             .arg(std::env::current_exe().unwrap())
             .args([
@@ -43,7 +47,7 @@ fn project_icons_seed_follow_changes_and_switch_projects() {
         let connection = zbus::Connection::session().await.unwrap();
         let bus = zbus::fdo::DBusProxy::new(&connection).await.unwrap();
         let mut owners = bus.receive_name_owner_changed().await.unwrap();
-        let _daemon = Daemon(
+        let mut daemon = Daemon(
             Command::new(std::env::var_os("PROJD_BIN").expect("set PROJD_BIN"))
                 .env("PROJD_STORE_PATH", temp.path().join("store.sqlite3"))
                 .spawn()
@@ -140,5 +144,20 @@ fn project_icons_seed_follow_changes_and_switch_projects() {
                 .await
                 .is_err()
         );
+        // A shell survives projd upgrades. Existing subscriptions must follow
+        // the new unique owner rather than silently retaining the old icon.
+        daemon.0.kill().unwrap();
+        daemon.0.wait().unwrap();
+        daemon.0 = Command::new(std::env::var_os("PROJD_BIN").unwrap())
+            .env("PROJD_STORE_PATH", temp.path().join("store.sqlite3"))
+            .spawn().unwrap();
+        tokio::time::timeout(Duration::from_secs(10), async {
+            while let Some(event) = owners.next().await {
+                let args = event.args().unwrap();
+                if args.name().as_str() == BUS_NAME && args.new_owner().is_some() { break; }
+            }
+        }).await.unwrap();
+        let _: ProjectInfo = manager.call("SetProjectIcon", &(&b.id, "AFTER_RESTART")).await.unwrap();
+        expect(&mut icons, "AFTER_RESTART").await;
     });
 }
