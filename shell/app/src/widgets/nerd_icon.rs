@@ -7,6 +7,7 @@ pub(crate) mod cod {
     pub(crate) const COD_DIFF_MODIFIED: &str = "\u{eade}";
     pub(crate) const COD_DIFF_ADDED: &str = "\u{eadc}";
     pub(crate) const COD_GIT_MERGE: &str = "\u{eafe}";
+    pub(crate) const COD_GIT_PULL_REQUEST: &str = "\u{ea64}";
     pub(crate) const COD_SYNC: &str = "\u{ea77}";
     pub(crate) const COD_GITHUB: &str = "\u{ea84}";
 }
@@ -23,6 +24,7 @@ pub(crate) mod fa {
     pub(crate) const FA_CHECK_DOUBLE: &str = "\u{f560}";
     pub(crate) const FA_COMMENT: &str = "\u{f075}";
     pub(crate) const FA_USERS: &str = "\u{f0c0}";
+    pub(crate) const FA_USER_CHECK: &str = "\u{f4fc}";
     pub(crate) const FA_CODE_FORK: &str = "\u{f126}";
     pub(crate) const FA_PENCIL: &str = "\u{f040}";
     pub(crate) const FA_EYE: &str = "\u{f06e}";

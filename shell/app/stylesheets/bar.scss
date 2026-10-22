@@ -112,6 +112,10 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
 .github-status {
   margin-top: 4px;
 
+  .github-activity-block {
+    margin-top: 8px;
+  }
+
   .github-merging { color: #{$accent_color}; }
   .github-failed { color: #{$sys_danger}; }
   .github-pending { color: #{$panel-muted}; }
@@ -120,7 +124,10 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
   .github-to-address,
   .github-changes-requested,
   .github-conflicts { color: #{$sys_danger}; }
-  .github-needs-review { color: #{$accent_color}; }
+  .github-needs-review,
+  .github-initial-review,
+  .github-re-review { color: #{$accent_color}; }
+  .github-my-changes-requested { color: #{$sys_danger}; }
   .github-draft { color: #{$panel-muted}; }
 }
 

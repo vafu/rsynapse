@@ -112,6 +112,16 @@ Framework crates under `core/` own:
   GitHub filtering from the existing selected-project context. Membership follows
   owned github-dbus Listeners; singleton listeners preserve any-label semantics.
   No project/no labels uses a global listener. Workspace occupancy is irrelevant.
+- Completed: incoming review-request discovery in github-dbus and a distinct
+  Review requested from you bucket in the shell. Requests retain underlying
+  status details, existing project-label scope and persistent unseen revisions.
+  Authored status and GitHub activity use separate icon-only pill blocks with
+  pull-request and GitHub headers respectively.
+- Completed: GitHub activity distinguishes initial reviews, explicit re-reviews
+  and outstanding changes requested by the viewer. Inactive approvals are hidden;
+  renewed requests after approval reappear. Submitted review history, not local
+  seen state, drives these phases.
+  Archived repositories are excluded from all backend PR discovery sources.
 
 ### 4. D-Bus Source Integration
 

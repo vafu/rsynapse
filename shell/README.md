@@ -125,16 +125,20 @@ than falling back to other monitors' workspace targets.
 
 The left vertical rail is a vertical CenterBox: GitHub PR status at the top,
 ongoing build indicators in the center, and workspace controls at the bottom.
-GitHub controls form a lighter themed pill with a GitHub owner/header icon and
-an always-expanded vertical revealer. The group does not collapse on hover or
-owner clicks; individual status buttons retain their own PR popovers.
+GitHub controls form two distinct lighter themed pills with icon-only headers:
+a **pull-request icon** for your PR status and the **GitHub icon** for GitHub
+activity (review requests and your outstanding changes requests). Both use always-expanded vertical
+revealers; the activity block is hidden when it has no items. Header names are
+available as tooltips rather than visible text.
+The groups do not collapse on hover or owner clicks; individual status buttons
+retain their own PR popovers.
 GitHub and Bluetooth use the same `widgets::button_group::ButtonGroup` GTK
 widget. Its configuration derives orientation and owner/content ordering from
 the expansion direction (left/right/up/down), with always-open or hover reveal
 policies. Bluetooth expands left on hover and stays open while any registered
 device popover is visible. Owners fill the cross axis; pill styling is an
 optional CSS class rather than a separate container implementation.
-The GitHub section contains independent merging, recently merged, failed CI/merge, CI-pending,
+The GitHub section contains independent review-requested, merging, recently merged, failed CI/merge, CI-pending,
 approved/ready, To address, conflict, changes-requested, needs-review and draft
 items. Zero-count items are hidden. Each item has its own popover listing
 matching PR titles, repositories, numbers and statuses. Every PR belongs to
@@ -146,6 +150,25 @@ including OWNERS, without a separate owner-approval segment. Secondary thread
 details remain in each row. Counts are PR counts, not totals of review threads.
 Failed check rollups (`FAILURE`/`ERROR`) also outrank waiting/ready states, even
 when the service's primary status still indicates an approval requirement.
+
+The GitHub activity block has three exclusive review-workflow items:
+
+- **Needs your initial review**: pending request, no submitted review by you.
+- **Needs your re-review**: pending request after a previous submitted review,
+  including a previous approval or changes request.
+- **Changes requested by you**: your outstanding changes request, waiting for
+  the author, even without a pending request for your review.
+
+github-dbus reads viewer-filtered submitted review history; opening a PR or
+marking it seen never moves it between workflow items. Approved reviews without
+a new request and comment-only inactive reviews are excluded. A new explicit
+request after approval reappears as re-review. A comment-only follow-up does
+not clear an outstanding changes decision; approval or dismissal does.
+Underlying CI/thread details stay in each row. The authored block's awaiting
+approval/changes-requested states are separate from your reviewer workflow.
+The current project's label scope applies through the same Listener memberships.
+Archived repositories are excluded by github-dbus before publication, for both
+authored PRs and review activity, so neither block displays them.
 
 PR popovers measure their content's natural width instead of using a fixed
 minimum or a narrow title-width hint. Text can still wrap when available space

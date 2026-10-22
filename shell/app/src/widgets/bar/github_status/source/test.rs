@@ -2,10 +2,13 @@ use super::*;
 use github::{PrStatus, PullRequest, PullRequestActivity};
 
 mod checks;
+mod review_requests;
 
 fn pr(number: u64, status: PrStatus) -> PullRequestActivity {
     PullRequestActivity {
         pr: PullRequest {
+            review_activity: None,
+            review_requested: false,
             title: format!("Title <{number}> & details"),
             url: format!("https://example.test/repo/pull/{number}"),
             number,
@@ -42,12 +45,23 @@ fn each_counter_matches_its_filtered_link_list() {
         pr(10, PrStatus::NeedsReview),
         pr(11, PrStatus::Draft),
         pr(12, PrStatus::OwnersRequired),
+        pr(13, PrStatus::CiFailed),
+        pr(14, PrStatus::CiPending),
+        pr(15, PrStatus::CiPending),
     ];
+    prs[12].pr.review_requested = true;
+    prs[12].pr.review_activity = Some(github::ReviewActivity::InitialReview);
+    prs[13].pr.review_requested = true;
+    prs[13].pr.review_activity = Some(github::ReviewActivity::ReReview);
+    prs[14].pr.review_activity = Some(github::ReviewActivity::ChangesRequested);
     prs[0].pr.unresolved_threads = 5; // merged PRs must not enter To address
     prs[4].pr.unresolved_threads = 2;
     prs[7].pr.unresolved_threads = 1;
     prs[8].pr.unresolved_threads = 3;
     for (category, numbers) in [
+        (Category::InitialReview, vec![13]),
+        (Category::ReReview, vec![14]),
+        (Category::MyChangesRequested, vec![15]),
         (Category::Merging, vec![2]),
         (Category::RecentlyMerged, vec![1]),
         (Category::Failed, vec![3, 4]),

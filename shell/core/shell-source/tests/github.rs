@@ -31,6 +31,8 @@ impl Service {
 
 fn pr(number: u64, status: github::PrStatus) -> github::PullRequest {
     github::PullRequest {
+        review_requested: false,
+        review_activity: None,
         title: format!("PR {number}"),
         url: format!("https://example.test/repo/pull/{number}"),
         number,
@@ -144,10 +146,12 @@ fn overview_seeds_updates_and_survives_owner_restart() {
             ..Default::default()
         };
         *current.write().await = next.clone();
-        let next_prs = vec![
+        let mut next_prs = vec![
             pr(1, github::PrStatus::CiFailed),
             pr(2, github::PrStatus::Approved),
         ];
+        next_prs[1].review_requested = true;
+        next_prs[1].review_activity = Some(github::ReviewActivity::ReReview);
         *prs.write().await = next_prs.clone();
         let mut next_activity: Vec<_> = next_prs
             .iter()

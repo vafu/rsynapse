@@ -14,7 +14,7 @@ use crate::{
     rx::Observable as _,
 };
 pub use github_dbus_api::{
-    NotificationEvent, PrOverview, PrStatus, PrSummary, PullRequest, PullRequestActivity,
+    NotificationEvent, PrOverview, PrStatus, PrSummary, PullRequest, PullRequestActivity, ReviewActivity,
 };
 
 pub const BUS_NAME: &str = "io.github.vfuchedzhy.GithubPr";

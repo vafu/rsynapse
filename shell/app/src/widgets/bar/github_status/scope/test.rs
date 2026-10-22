@@ -10,6 +10,8 @@ mod reactive;
 fn pr(number: u64, status: PrStatus, labels: &[&str]) -> PullRequestActivity {
     PullRequestActivity {
         pr: PullRequest {
+            review_activity: None,
+            review_requested: false,
             title: format!("PR {number}"),
             url: format!("https://example.test/repo/pull/{number}"),
             number,
@@ -85,14 +87,21 @@ fn filtered_categories_conserve_inventory_and_preserve_failure_guard() {
         pr(8, PrStatus::CiPending, &["b"]),
         pr(9, PrStatus::NeedsReview, &["a"]),
         pr(10, PrStatus::Approved, &["a"]),
-        pr(11, PrStatus::CiFailed, &["unrelated"]),
+        pr(11, PrStatus::CiFailed, &["a"]),
+        pr(12, PrStatus::CiPending, &["a"]),
+        pr(13, PrStatus::CiPending, &["a"]),
+        pr(14, PrStatus::CiFailed, &["unrelated"]),
     ];
+    prs[10].pr.review_requested = true;
+    prs[11].pr.review_requested = true;
+    prs[11].pr.review_activity = Some(github::ReviewActivity::ReReview);
+    prs[12].pr.review_activity = Some(github::ReviewActivity::ChangesRequested);
     prs[2].pr.checks = Some("FAILURE".into());
     prs[2].pr.unresolved_threads = 2;
     prs[5].pr.unresolved_threads = 1;
     prs[8].unseen = false;
-    let filtered = filter_inventory(Some(prs.clone()), urls(&prs[..10]));
-    assert_eq!(filtered, Some(prs[..10].to_vec()));
+    let filtered = filter_inventory(Some(prs.clone()), urls(&prs[..13]));
+    assert_eq!(filtered, Some(prs[..13].to_vec()));
     let mut all_rows = Vec::new();
     let mut unseen = 0;
     for category in Category::ALL {
@@ -102,9 +111,9 @@ fn filtered_categories_conserve_inventory_and_preserve_failure_guard() {
         unseen += bucket.unseen_count();
         all_rows.extend(bucket.rows);
     }
-    assert_eq!(all_rows.len(), 10);
-    assert_eq!(unseen, 9);
-    for original in &prs[..10] {
+    assert_eq!(all_rows.len(), 13);
+    assert_eq!(unseen, 12);
+    for original in &prs[..13] {
         let rows: Vec<_> = all_rows
             .iter()
             .filter(|row| row.url == original.pr.url)

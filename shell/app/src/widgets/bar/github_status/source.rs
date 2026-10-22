@@ -69,8 +69,12 @@ pub(super) fn view(
                 "{} #{} · {}",
                 item.pr.repo,
                 item.pr.number,
-                status_name(category, item.pr.status)
+                status_name(category, &item.pr)
             );
+            if category.is_activity() {
+                detail.push_str(" · ");
+                detail.push_str(category.title());
+            }
             if item.pr.unresolved_threads > 0 {
                 detail.push_str(&format!(
                     " · {} unresolved review {}",
@@ -97,16 +101,18 @@ pub(super) fn view(
     }
 }
 
-fn status_name(category: Category, status: github::PrStatus) -> &'static str {
+fn status_name(category: Category, pr: &github::PullRequest) -> &'static str {
     use github::PrStatus::*;
-    if category == Category::Failed {
-        return if status == MergeFailed {
+    if category == Category::Failed
+        || (category.is_activity() && matches!(pr.checks.as_deref(), Some("FAILURE" | "ERROR")))
+    {
+        return if pr.status == MergeFailed {
             "Merge pipeline failed"
         } else {
             "CI failed"
         };
     }
-    match status {
+    match pr.status {
         Merged => "Merged",
         Merging => "Merging",
         MergeFailed => "Merge pipeline failed",

@@ -1,4 +1,3 @@
-use crate::widgets::button_group::ButtonGroup;
 use relm4::prelude::*;
 use shell_core::{
     gtk::{self, prelude::*},
@@ -62,7 +61,7 @@ impl SimpleComponent for WorkspaceBar {
                     set_orientation: gtk::Orientation::Vertical,
 
                     #[local_ref]
-                    github_status_root -> ButtonGroup {},
+                    github_status_root -> gtk::Box {},
                 },
 
                 #[wrap(Some)]

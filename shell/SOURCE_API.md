@@ -170,6 +170,15 @@ The source retains its creator connection, watches initial/live Properties,
 closes on teardown and recreates after unique-owner changes. `None` is loading/
 unavailable; `Some([])` is a real empty result. The app composes singleton
 listeners into an ANY-label union and joins membership URLs to `activity()`.
+PR DTOs also carry the backward-compatible `review_requested` boolean: the
+authenticated user's review is requested on an open PR. It is independent of
+the primary build/review status. Incoming requests join the same Activity and
+Listener inventory; the widget assigns them to one distinct incoming-review
+workflow and retains raw status details. `review_activity: Option<ReviewActivity>`
+adds `InitialReview`, `ReReview`, and `ChangesRequested` phases computed from the
+authenticated viewer's submitted and opinionated reviews. It includes waiting
+changes requests without an active request and excludes inactive approvals.
+The API enum is metadata, not local seen state; no additional shell polling is needed.
 
 Consumer crates should wrap these primitives in typed service helpers. Widget
 code should call semantic functions such as `selected_workspace_windows()` or
