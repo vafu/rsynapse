@@ -3,6 +3,7 @@ mod category;
 mod item;
 mod launch;
 mod row;
+mod scope;
 mod source;
 
 use relm4::prelude::*;
@@ -15,13 +16,18 @@ use crate::widgets::nerd_icon::{NerdIcon, NerdIconLabelExt, cod};
 use category::Category;
 use item::GitHubItem;
 
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub(super) struct Scope {
+    pub(super) output_name: Option<String>,
+}
+
 pub(super) struct GitHubStatus {
     _items: [Controller<GitHubItem>; Category::ALL.len()],
 }
 
 #[relm4::component(pub(crate))]
 impl SimpleComponent for GitHubStatus {
-    type Init = ();
+    type Init = Scope;
     type Input = ();
     type Output = ();
 
@@ -75,11 +81,15 @@ impl SimpleComponent for GitHubStatus {
     }
 
     fn init(
-        _init: Self::Init,
+        scope: Self::Init,
         root: Self::Root,
         _sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let items = Category::ALL.map(|category| GitHubItem::builder().launch(category).detach());
+        let items = Category::ALL.map(|category| {
+            GitHubItem::builder()
+                .launch((scope.clone(), category))
+                .detach()
+        });
         let [
             merging_root,
             merged_root,

@@ -14,6 +14,8 @@ niri, locus, steward, AgentDBus, Graphite or Grafana.
   and icons, even when their repositories share a Git common directory.
 - Project1 exposes `Id`, `Name`, absolute `Cwd`, `Icon`, `IconOrigin` and `Checkout`.
   The checkout reference is a D-Bus object path (`o`); `/` means no checkout.
+- Project1 also exposes read-only `Labels` (`as`), a generic project-owned set.
+  Labels have no workspace, shell, or GitHub semantics in projd.
 - Checkout1 exposes `Id`, `RootPath`, `Branch`, `GitStatus` and `Project`.
   The reverse project reference is derived from project ownership, not duplicated
   in the checkout record. Project/checkout paths use compact `p<ID>`/`c<ID>` segments.
@@ -47,6 +49,9 @@ proj remove PROJECT_ID
 proj checkout list --json
 proj root
 proj metadata --json
+proj project labels get --json
+proj project labels add bug 'team name' --project /absolute/project --json
+proj project labels remove bug --project-id PROJECT_ID
 proj update
 proj goal list --json
 proj goal add --title 'Ship the release' --description 'Publish a tested artifact' --active
@@ -68,6 +73,38 @@ Use `--date YYYY-MM-DD` for dated goals or `goal list --all` for the full catalo
 `goal import FILE.json` is idempotent and preserves existing projd records.
 Agents follow `skills/project-management/SKILL.md`; completion is explicit and
 requires evidence, never an inference from an idle agent.
+
+## Project labels
+
+`proj project labels get|add|remove` defaults to the existing project resolved from
+the current directory. `--project PATH` and `--project-id ID` are mutually exclusive;
+none of these commands registers a directory. Add/remove accept one or more label
+operands and return the resulting set, one label per line or a JSON array with
+`--json`. Quote labels containing spaces; use `--` before operands beginning with
+`-`. `proj metadata --json` includes `labels` as a JSON array.
+
+Manager1 adds `AddProjectLabels(project_id: s, labels: as) -> as` and
+`RemoveProjectLabels(id: s, labels: as) -> as`. Both normalize and validate the
+whole batch before mutation: leading/trailing Unicode whitespace is trimmed,
+empty strings and control characters are rejected (`InvalidArgs`), and spelling,
+case and internal spaces are preserved. Deduplication and sorting use exact,
+case-sensitive strings, without locale rules or Unicode normalization. Unknown
+project IDs return `FileNotFound`, just as rename does. Empty API batches are
+valid no-ops; the CLI requires operands for add/remove.
+
+Labels are stored as `project-labels` records keyed by project UUID in the same
+SQLite `records` table. Existing projects default to `[]` without a schema
+backfill. Project deletion removes its labels transactionally; re-registration
+gets a new identity with no labels. Atomic server-side batch edits share the
+domain mutation lock with rename/icon/removal, preserve unrelated edits, and
+never recreate missing projects. A changed batch commits before emitting
+`Project1.Labels` PropertiesChanged and root `Changed("project", id)`. No-op label
+methods write no records and emit neither signal. ObjectManager includes labels
+in initial object state, including after restart. There is no label setter.
+
+`ProjectInfo` and every existing D-Bus struct/method signature remain unchanged;
+clients read labels from the additive Project1 property. Labels are not copied
+into project registration, rename, icon, or list DTOs.
 
 ## Persistent checklists and notes
 
@@ -229,6 +266,8 @@ The service executable and unit are `rsynapse-projd` and
 ```sh
 bash projd/build.sh --locked
 python3 projd/tests/integration.py
+PROJD_BIN="$PWD/steward/target/debug/rsynapse-projd" \
+  PROJ_BIN="$PWD/steward/target/debug/proj" python3 projd/tests/labels.py
 python3 projd/tests/checklist.py
 python3 projd/tests/metrics.py
 python3 projd/tests/model_migration.py
@@ -247,8 +286,12 @@ PROJD_BIN="$PWD/steward/target/release/rsynapse-projd" \
 
 The integration test runs on a private bus without any desktop or other service.
 It checks CLI/API parity, separate worktree projects, stored CWD, git notifications,
-ObjectManager references, icons, goals and restart persistence. The icon source
-test checks initial values, live property updates, late subscription replay,
+ObjectManager references, icons, goals and restart persistence.
+The label test uses its own temporary SQLite store and private bus; it verifies
+old-store defaults, unchanged wire signatures, property changes/no-op silence,
+atomic batch validation, CLI targeting/JSON, races with rename/icon/removal,
+project independence and restart persistence. It requires Python PyGObject (Gio).
+The icon source test checks initial values, live property updates, late subscription replay,
 association switching and manual/automatic precedence on a private bus.
 See `install/migrate-projd.py` for backed-up imports from intentional legacy
 workspace bindings; metadata-cache entries alone do not register projects.

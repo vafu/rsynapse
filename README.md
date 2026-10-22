@@ -41,7 +41,7 @@ than one top-level Cargo workspace.
 - `projd/`
   Pure project-management D-Bus service and persistent SQLite store, with the
   `proj` CLI. Projects, optional Git checkouts and goals are reactive objects.
-  Each checkout/worktree is its own project, with a stored name, CWD and icon.
+  Each checkout/worktree is its own project, with a stored name, CWD, icon and labels.
   Goals are persistent nested checklists with per-project active selection and
   Markdown context notes, managed by the agent-facing `proj goal` CLI.
 

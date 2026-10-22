@@ -5,6 +5,8 @@ use proj_model::{BUS_NAME, MANAGER_INTERFACE, ROOT_PATH, object_path};
 pub use proj_model::{CheckoutInfo, GoalIdentityInfo, GoalInfo, ProjectInfo, RemovedProjectInfo};
 mod tracking;
 pub use tracking::goal_tracking;
+mod labels;
+pub use labels::project_labels;
 use zbus::Proxy;
 
 fn snapshots<T>(method: &'static str, goal_list: bool) -> Observable<Vec<T>>

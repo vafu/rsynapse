@@ -104,6 +104,11 @@ Missing properties do not masquerade as empty icons. Sidebar composition uses
 `switch_map` to subscribe to the newly associated project and drop the old source.
 Shell auto-selection calls `SetProjectIconIfUnset` only for a loaded empty icon;
 manual edits use the project captured when the picker opened.
+`project_labels(id)` exposes `Observable<Option<Vec<String>>>` from
+`Project1.Labels`: `None` means loading/unavailable, while `Some([])` is a loaded
+empty set. Owner-bound subscriptions clear immediately on owner loss/replacement,
+share/replay per project and follow property changes. Atomic label mutations stay
+in the consumer's projd client; there is no label mirror in Locus.
 `active_goal(project_id)` observes `Project1.ActiveGoal`. `goal_title(key)`,
 `goal_description(key)` and `goal_status(key)` observe individual Goal1 properties.
 The bar switches the active task's property subscriptions with project/goal
@@ -158,6 +163,13 @@ items reuse one upstream snapshot. `activity()` shares the decoded activity
 snapshot too; the panel derives each count, filtered PR list and unseen marker
 together from it. Browser launching and revision acknowledgment are widget-local
 actions. View models, filtering and formatting stay beside the GitHub widget.
+`github::listener(labels)` observes a leased factory-created Listener and emits
+its `PullRequests` URL array. It preserves the service's ALL-label semantics;
+an empty set matches every PR. Equivalent sets share a lease until final drop.
+The source retains its creator connection, watches initial/live Properties,
+closes on teardown and recreates after unique-owner changes. `None` is loading/
+unavailable; `Some([])` is a real empty result. The app composes singleton
+listeners into an ANY-label union and joins membership URLs to `activity()`.
 
 Consumer crates should wrap these primitives in typed service helpers. Widget
 code should call semantic functions such as `selected_workspace_windows()` or

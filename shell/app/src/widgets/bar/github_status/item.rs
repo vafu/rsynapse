@@ -6,6 +6,7 @@ use shell_core::{
 
 use super::super::bar_item;
 use super::{
+    Scope,
     category::Category,
     row::PullRequestRow,
     source::{self, GitHubView},
@@ -14,15 +15,16 @@ use crate::widgets::nerd_icon::NerdIconLabelExt;
 
 #[shell_macros::model(module = github_item_sources)]
 pub(super) struct GitHubItem {
+    scope: Scope,
     category: Category,
-    #[source(source::status(*category))]
+    #[source(source::status(scope.clone(), *category))]
     status: GitHubView,
 }
 
 #[shell_macros::component(module = github_item_sources, model = GitHubItem)]
 #[relm4::component(pub(crate))]
 impl SimpleComponent for GitHubItem {
-    type Init = Category;
+    type Init = (Scope, Category);
     type Input = github_item_sources::Msg;
     type Output = ();
 
@@ -105,11 +107,11 @@ impl SimpleComponent for GitHubItem {
     }
 
     fn init(
-        category: Self::Init,
+        (scope, category): Self::Init,
         root: Self::Root,
         _sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let model = GitHubItem::new(category);
+        let model = GitHubItem::new(scope, category);
         let unseen_badge = bar_item::unseen_badge();
         let widgets = view_output!();
         ComponentParts { model, widgets }

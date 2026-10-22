@@ -1,6 +1,6 @@
 use shell_core::source::{Observable, github, rx::Observable as _};
 
-use super::category::Category;
+use super::{Scope, category::Category, scope};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct PrEntry {
@@ -54,7 +54,10 @@ impl GitHubView {
     }
 }
 
-fn view(category: Category, prs: Option<Vec<github::PullRequestActivity>>) -> GitHubView {
+pub(super) fn view(
+    category: Category,
+    prs: Option<Vec<github::PullRequestActivity>>,
+) -> GitHubView {
     let Some(prs) = prs else {
         return GitHubView::default();
     };
@@ -118,10 +121,10 @@ fn status_name(category: Category, status: github::PrStatus) -> &'static str {
     }
 }
 
-pub(super) fn status(category: Category) -> Observable<GitHubView> {
+pub(super) fn status(scope: Scope, category: Category) -> Observable<GitHubView> {
     // Count and rows come from the same snapshot, so separate Summary/PR signals
     // cannot temporarily put a different count on the button than in its list.
-    github::activity()
+    scope::inventory(scope)
         .map(move |prs| view(category, prs))
         .distinct_until_changed()
         .box_it()

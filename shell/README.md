@@ -164,8 +164,32 @@ PR inventory property. Persisted dismissal IDs prevent refreshes/restarts from
 bringing them back.
 
 Counts, lists and unseen flags use one live `PullRequestActivity` snapshot
-through typed shell-source observables, with owner-replacement recovery. The
-panel remains global; the total/open item is omitted.
+through typed shell-source observables, with owner-replacement recovery. Each
+rail reuses its output's selected-project context. A project with labels shows
+PRs matching **any** label; no project or no labels shows all PRs. A labeled
+project keeps its filter even on a workspace with no windows. A configured
+filter with no matches stays empty; unavailable labels are not an empty filter.
+
+Membership comes from github-dbus Listener objects, not shell-side label
+matching. The factory matches all requested labels, so the shell unions one
+singleton-label listener per project label (deduplicating URLs). An empty-label
+listener provides global membership. Counts, rows and unseen badges join those
+URLs to the shared activity snapshot before exclusive category classification.
+Property changes update membership without Refresh calls or polling. Equivalent
+filters share listener leases across rails, and final unsubscribe closes the
+listener on its creator connection. Service replacement recreates listeners.
+The total/open item is omitted.
+
+The Project popover has a live **Labels** section with Add/Enter and individual
+remove actions. CLI/agent changes appear there immediately. Labels are generic
+projd metadata; the editor uses atomic add/remove methods and captures its target
+project so reassociation cannot redirect an in-flight edit. From a project CWD:
+
+```sh
+proj project labels get --json
+proj project labels add "feature-label" "team-label"
+proj project labels remove "team-label"
+```
 
 The workspace rail hides only unselected, anonymous empty edge placeholders
 without project/icon evidence. Empty interior workspaces and named workspaces

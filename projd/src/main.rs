@@ -1,6 +1,7 @@
 mod git;
 mod goals;
 mod icon;
+mod labels;
 mod metrics;
 mod migrate;
 mod notes;
@@ -60,6 +61,10 @@ impl ProjectObject {
     #[zbus(property)]
     fn icon_origin(&self) -> &str {
         &self.0.icon_origin
+    }
+    #[zbus(property)]
+    fn labels(&self) -> zbus::fdo::Result<Vec<String>> {
+        self.1.project_labels(&self.0.id).map_err(error)
     }
     #[zbus(property)]
     fn active_goal(&self) -> zbus::fdo::Result<OwnedObjectPath> {
@@ -463,6 +468,24 @@ impl Manager {
 }
 #[interface(name = "org.rsynapse.Proj.Manager1")]
 impl Manager {
+    async fn add_project_labels(
+        &self,
+        project_id: String,
+        labels: Vec<String>,
+        #[zbus(connection)] conn: &Connection,
+        #[zbus(signal_context)] e: SignalContext<'_>,
+    ) -> zbus::fdo::Result<Vec<String>> {
+        self.edit_labels(&project_id, labels, true, conn, &e).await
+    }
+    async fn remove_project_labels(
+        &self,
+        id: String,
+        labels: Vec<String>,
+        #[zbus(connection)] conn: &Connection,
+        #[zbus(signal_context)] e: SignalContext<'_>,
+    ) -> zbus::fdo::Result<Vec<String>> {
+        self.edit_labels(&id, labels, false, conn, &e).await
+    }
     async fn remove_project(
         &self,
         id: String,

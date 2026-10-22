@@ -1,5 +1,5 @@
-use relm4::prelude::*;
 use crate::widgets::button_group::ButtonGroup;
+use relm4::prelude::*;
 use shell_core::{
     gtk::{self, prelude::*},
     gtk4_layer_shell::LayerShell,
@@ -8,8 +8,11 @@ use shell_core::{
 };
 
 use super::{
-    WORKSPACE_RAIL_WIDTH, WorkspaceNode, context_zone::ContextZone, github_status::GitHubStatus,
-    project_label::ProjectLabel, workspaces::workspaces,
+    WORKSPACE_RAIL_WIDTH, WorkspaceNode,
+    context_zone::ContextZone,
+    github_status::{GitHubStatus, Scope},
+    project_label::ProjectLabel,
+    workspaces::workspaces,
 };
 
 #[derive(Clone)]
@@ -102,7 +105,11 @@ impl SimpleComponent for WorkspaceBar {
         let context_zone = context_zone_builder.launch(()).detach();
         let github_status_builder = GitHubStatus::builder();
         let github_status_root = github_status_builder.root.clone();
-        let github_status = github_status_builder.launch(()).detach();
+        let github_status = github_status_builder
+            .launch(Scope {
+                output_name: init.output_name.clone(),
+            })
+            .detach();
         let model = WorkspaceBar::new(github_status, context_zone, init.output_name);
         let widgets = view_output!();
         ComponentParts { model, widgets }

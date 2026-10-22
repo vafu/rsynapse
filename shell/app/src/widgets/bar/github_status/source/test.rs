@@ -10,6 +10,7 @@ fn pr(number: u64, status: PrStatus) -> PullRequestActivity {
             url: format!("https://example.test/repo/pull/{number}"),
             number,
             repo: "example/repo".into(),
+            labels: Vec::new(),
             status,
             cool_status: None,
             merged_at: None,

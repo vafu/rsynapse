@@ -4,6 +4,7 @@ use std::{cell::RefCell, rc::Rc};
 mod actions;
 mod choices;
 mod current;
+mod labels;
 mod rows;
 use actions::{Action, Actions};
 pub(in crate::widgets::bar) use choices::{ProjectCatalog, project_catalog};
@@ -20,6 +21,7 @@ struct PickerState {
     content: gtk::Box,
     summary: gtk::Box,
     no_project: gtk::Label,
+    labels: labels::LabelEditor,
     chooser_popover: gtk::Popover,
     search: gtk::SearchEntry,
     results: gtk::ListBox,
@@ -39,6 +41,9 @@ impl ProjectPicker {
         let no_project = gtk::Label::new(Some("No project assigned"));
         no_project.add_css_class("dim-label");
         content.append(&no_project);
+        let actions = Actions::new(overlay);
+        let labels = labels::LabelEditor::new(&actions);
+        content.append(labels.widget());
         let choose_row = gtk::Box::new(gtk::Orientation::Horizontal, 4);
         let chooser = gtk::MenuButton::new();
         chooser.set_hexpand(true);
@@ -91,11 +96,12 @@ impl ProjectPicker {
             content,
             summary,
             no_project,
+            labels,
             chooser_popover: chooser_popover.clone(),
             search,
             results,
             empty,
-            actions: Actions::new(overlay),
+            actions,
         });
         let weak = Rc::downgrade(&state);
         state.search.connect_changed(move |_| {
@@ -157,6 +163,7 @@ impl ProjectPicker {
         }
     }
     pub(super) fn set_target(&self, view: &SelectedWorkspaceView) {
+        self.state.labels.set_target(view);
         *self.state.target.borrow_mut() = view.clone();
         self.state.rebuild_current();
     }

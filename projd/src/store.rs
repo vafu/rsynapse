@@ -6,6 +6,7 @@ use std::{
     sync::Mutex,
 };
 mod history;
+mod labels;
 mod work;
 pub struct Store {
     db: Mutex<Connection>,
@@ -161,6 +162,7 @@ impl Store {
             )?;
         }
         tx.execute("DELETE FROM records WHERE kind='project' AND id=?", [id])?;
+        tx.execute("DELETE FROM records WHERE kind='project-labels' AND id=?", [id])?;
         tx.execute(
             "DELETE FROM records WHERE kind='active-goal' AND id=?",
             [id],

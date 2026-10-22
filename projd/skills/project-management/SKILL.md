@@ -59,3 +59,19 @@ Read recorded history/effort through `proj goal history ID`, `goal timeline ID`,
 work unless `--direct` is set. Keep focused active/idle effort separate from
 status elapsed time and completion lead time. Legacy timestamps can be unknown;
 `goal instances ID --json` provides immutable IDs for deleted/recreated keys.
+
+Manage generic project-owned labels through the same public CLI:
+
+```sh
+proj project labels get --json
+proj project labels add bug 'team name' --project /absolute/project --json
+proj project labels remove bug --project-id PROJECT_ID --json
+```
+
+Without a target flag, labels resolve the current directory's existing project;
+they never register it. `--project PATH` and `--project-id ID` are mutually
+exclusive. Add/remove take multiple operands atomically and return the resulting
+set. Labels trim outer whitespace, reject empty/control strings, and preserve
+case and internal spaces; matching is exact. `proj metadata --json` also includes
+`labels`. Do not implement client-side read/replace or put labels in locus,
+workspace state, goal descriptions, or integration-specific stores.

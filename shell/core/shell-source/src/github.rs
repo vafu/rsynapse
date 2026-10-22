@@ -23,6 +23,9 @@ pub const NOTIFICATIONS_PATH: &str = "/io/github/vfuchedzhy/GithubNotifications"
 const PR_INTERFACE: &str = "io.github.vfuchedzhy.GithubPr";
 const NOTIFICATIONS_INTERFACE: &str = "io.github.vfuchedzhy.GithubNotifications";
 
+mod listener;
+pub use listener::listener;
+
 fn pr_object() -> ObjectDescriptor {
     ObjectDescriptor::parse(Bus::Session, BUS_NAME, PR_PATH, PR_INTERFACE)
         .expect("static PR descriptor is valid")
@@ -58,6 +61,7 @@ where
                 .expect("D-Bus returned a valid unique owner");
             property::<String>(descriptor)
                 .map(|value| value.and_then(|json| serde_json::from_str(&json).ok()))
+                .start_with(vec![None])
                 .box_it()
         },
     )

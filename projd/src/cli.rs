@@ -7,6 +7,8 @@ use zbus::Proxy;
 mod goal_cli;
 #[path = "cli/metrics.rs"]
 mod metrics_cli;
+#[path = "cli/labels.rs"]
+mod labels_cli;
 use goal_cli::GoalCommand;
 
 #[derive(Parser)]
@@ -65,6 +67,11 @@ enum Command {
 }
 #[derive(Subcommand)]
 enum ProjectCommand {
+    /// Read or atomically edit project-owned labels.
+    Labels {
+        #[command(subcommand)]
+        command: labels_cli::LabelsCommand,
+    },
     Add {
         path: PathBuf,
         #[arg(long)]
@@ -111,10 +118,11 @@ async fn add(proxy: &Proxy<'_>, path: PathBuf, name: Option<String>) -> anyhow::
 }
 async fn metadata(proxy: &Proxy<'_>, path: PathBuf) -> anyhow::Result<serde_json::Value> {
     let p = resolve(proxy, path).await?;
+    let labels = labels_cli::get(proxy, &p.id).await?;
     let checkouts: Vec<CheckoutInfo> = proxy.call("ListCheckouts", &()).await?;
     let c = checkouts.into_iter().find(|c| c.id == p.checkout_id);
     Ok(
-        serde_json::json!({"id":p.id,"name":p.name,"cwd":p.cwd,"icon":p.icon,"icon-origin":p.icon_origin,"path":c.as_ref().map(|c|c.root_path.as_str()).unwrap_or(&p.cwd),"checkout-id":p.checkout_id,"branch":c.as_ref().map(|c|c.branch.as_str()).unwrap_or(""),"checkout":c}),
+        serde_json::json!({"id":p.id,"name":p.name,"cwd":p.cwd,"icon":p.icon,"icon-origin":p.icon_origin,"labels":labels,"path":c.as_ref().map(|c|c.root_path.as_str()).unwrap_or(&p.cwd),"checkout-id":p.checkout_id,"branch":c.as_ref().map(|c|c.branch.as_str()).unwrap_or(""),"checkout":c}),
     )
 }
 #[tokio::main]
@@ -161,6 +169,7 @@ async fn main() -> anyhow::Result<()> {
             }
         }
         Command::Project { command } => match command {
+            ProjectCommand::Labels { command } => labels_cli::run(&proxy, command).await?,
             ProjectCommand::Add { path, name } => {
                 add(&proxy, path, name).await?;
             }

@@ -1,6 +1,9 @@
 use shell_core::gtk::{self, prelude::*};
 use std::{cell::Cell, rc::Rc};
 
+mod scoped;
+pub(super) use scoped::ScopedAction;
+
 #[zbus::proxy(
     interface = "org.rsynapse.Proj.Manager1",
     default_service = "org.rsynapse.Proj",
@@ -13,6 +16,12 @@ trait Projects {
         id: &str,
         name: &str,
     ) -> zbus::Result<shell_core::source::proj::ProjectInfo>;
+    fn add_project_labels(&self, project_id: &str, labels: &[String]) -> zbus::Result<Vec<String>>;
+    fn remove_project_labels(
+        &self,
+        project_id: &str,
+        labels: &[String],
+    ) -> zbus::Result<Vec<String>>;
 }
 #[derive(Clone)]
 pub(super) enum Action {
@@ -20,6 +29,8 @@ pub(super) enum Action {
     Unassign(String),
     Remove { id: String, name: String },
     Rename { id: String, name: String },
+    AddLabel { id: String, label: String },
+    RemoveLabel { id: String, label: String },
 }
 pub(super) struct Actions {
     busy: Cell<bool>,
@@ -40,66 +51,54 @@ impl Actions {
         action: Action,
         complete: impl FnOnce(bool) + 'static,
     ) {
-        if self.busy.replace(true) {
-            complete(false);
-            return;
+        if let Some(task) = self.run_scoped(action, move |success| {
+            complete(success);
+            true
+        }) {
+            task.detach();
         }
-        // Keep the chooser anchor sensitive: disabling it closes its popover.
-        // The in-flight guard above serializes actions without collapsing it.
-        let (sender, receiver) = async_channel::bounded(1);
-        let command = action.clone();
-        relm4::spawn(async move {
-            let result = async {
-                match command {
-                    Action::Assign { workspace, path } => {
-                        super::super::init::bind_workspace(workspace, &path, false).await?;
-                    }
-                    Action::Unassign(workspace) => {
-                        super::super::init::unassign_workspace(workspace).await?
-                    }
-                    other => {
-                        let conn = zbus::Connection::session().await?;
-                        let proxy = ProjectsProxy::new(&conn).await?;
-                        match other {
-                            Action::Remove { id, .. } => {
-                                proxy.remove_project(&id).await?;
-                            }
-                            Action::Rename { id, name } => {
-                                proxy.rename_project(&id, &name).await?;
-                            }
-                            _ => unreachable!(),
-                        }
-                    }
-                }
-                Ok::<_, zbus::Error>(())
+    }
+}
+
+impl Action {
+    async fn execute(self) -> zbus::Result<()> {
+        match self {
+            Self::Assign { workspace, path } => {
+                super::super::init::bind_workspace(workspace, &path, false).await?;
             }
-            .await;
-            let _ = sender.send(result.map_err(|e| e.to_string())).await;
-        });
-        let current = self.clone();
-        gtk::glib::MainContext::default().spawn_local(async move {
-            let result = receiver.recv().await;
-            current.busy.set(false);
-            complete(matches!(&result, Ok(Ok(()))));
-            let Some(overlay) = current.overlay.upgrade() else {
-                return;
-            };
-            let toast = match result {
-                Ok(Ok(())) => {
-                    let text = match &action {
-                        Action::Assign { .. } => "Project assigned".to_owned(),
-                        Action::Unassign(_) => "Project unassigned".to_owned(),
-                        Action::Remove { name, .. } => format!("Removed project “{name}”"),
-                        Action::Rename { name, .. } => format!("Renamed project to “{name}”"),
-                    };
-                    adw::Toast::new(&text)
+            Self::Unassign(workspace) => super::super::init::unassign_workspace(workspace).await?,
+            other => {
+                let conn = zbus::Connection::session().await?;
+                let proxy = ProjectsProxy::new(&conn).await?;
+                match other {
+                    Self::Remove { id, .. } => {
+                        proxy.remove_project(&id).await?;
+                    }
+                    Self::Rename { id, name } => {
+                        proxy.rename_project(&id, &name).await?;
+                    }
+                    Self::AddLabel { id, label } => {
+                        proxy.add_project_labels(&id, &[label]).await?;
+                    }
+                    Self::RemoveLabel { id, label } => {
+                        proxy.remove_project_labels(&id, &[label]).await?;
+                    }
+                    _ => unreachable!(),
                 }
-                Ok(Err(error)) => adw::Toast::new(&error),
-                Err(_) => return,
-            };
-            toast.set_use_markup(false);
-            overlay.add_toast(toast);
-        });
+            }
+        }
+        Ok(())
+    }
+
+    fn success_text(&self) -> String {
+        match self {
+            Self::Assign { .. } => "Project assigned".to_owned(),
+            Self::Unassign(_) => "Project unassigned".to_owned(),
+            Self::Remove { name, .. } => format!("Removed project “{name}”"),
+            Self::Rename { name, .. } => format!("Renamed project to “{name}”"),
+            Self::AddLabel { label, .. } => format!("Added label “{label}”"),
+            Self::RemoveLabel { label, .. } => format!("Removed label “{label}”"),
+        }
     }
 }
 

@@ -7,7 +7,10 @@ locus, AgentDBus, Graphite or Grafana. Agents use the public CLI/API as clients.
 Own project identities, optional Git checkouts/worktrees, metadata, goals and
 project-management workflows here. Each checkout/worktree is its own project;
 non-Git projects have no checkout. Projects own their stored name, absolute CWD
-and icon. Automatic resolution must not overwrite CWD or name with the focused
+and icon, plus generic labels keyed by project UUID in the same SQLite store.
+Labels are project metadata independent of external integrations; preserve the
+ProjectInfo wire DTO and use Project1.Labels plus atomic Manager1 add/remove
+batches. Automatic resolution must not overwrite CWD or name with the focused
 window's state. There are no Context objects or relative-CWD descriptors.
 Checkout.Project is a derived reverse object-path reference, not stored ownership.
 Expose ObjectManager and reactive object properties. Keep stable IDs in storage.

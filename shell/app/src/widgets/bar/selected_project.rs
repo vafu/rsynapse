@@ -1,25 +1,20 @@
-use shell_core::source::{self, Observable, rx::Observable as _};
-use shell_rx_macros::combine_latest;
-
 use crate::widgets::nerd_icon::NerdIcon;
 
-use super::{
-    project::{ProjectDetails, project_details},
-    workspace::{WorkspaceObject, current_workspace},
-};
+use super::project::ProjectDetails;
 
 mod git;
 mod init;
 mod picker;
 mod popup;
 mod rename;
+mod source;
 mod workspace;
 pub(super) use init::ProjectInitializer;
 pub(super) use picker::{ProjectCatalog, project_catalog};
 pub(super) use popup::WorkspacePopup;
+pub(super) use source::{selected_project_context, selected_project_status};
 
-use git::{GitStatus, git_status, summary as git_summary};
-use workspace::workspace_display_name;
+use git::{GitStatus, summary as git_summary};
 
 /// Workspace-level view: always carries the workspace display name when
 /// known, plus project details only when the workspace has a project.
@@ -41,59 +36,6 @@ pub(super) struct ProjectView {
     pub(super) branch: Option<String>,
     pub(super) branch_full: Option<String>,
     pub(super) git: Option<GitStatus>,
-}
-
-pub(super) fn selected_project_status(
-    output_name: Option<String>,
-) -> Observable<SelectedWorkspaceView> {
-    source::switch_map(current_workspace(output_name), |workspace| {
-        let Some(selected) = workspace else {
-            return source::once(SelectedWorkspaceView::default());
-        };
-        let names = source::switch_map(selected.id(), |id| {
-            workspace_display_name(Some(id.clone()))
-                .map(move |name| (id.clone(), name))
-                .box_it()
-        });
-        combine_latest!(
-            names,
-            workspace_project_status(selected)
-            => move |((id, name), project)| {
-                let project = project.visible.then_some(project);
-                SelectedWorkspaceView {
-                    workspace_id: Some(id),
-                    visible: true,
-                    name,
-                    project,
-                }
-            },
-        )
-        .distinct_until_changed()
-        .box_it()
-    })
-    .distinct_until_changed()
-    .box_it()
-}
-
-fn workspace_project_status(workspace: WorkspaceObject) -> Observable<ProjectView> {
-    source::switch_map(project_details(workspace), |project| {
-        match project.path.clone() {
-            // Paint the locus-derived view immediately; git metadata
-            // resolves off-thread and fills in when ready instead of
-            // holding the title and branch hostage.
-            Some(path) => {
-                let immediate = project_view(project.clone(), None);
-                git_status(path)
-                    .map(move |git| project_view(project.clone(), Some(git)))
-                    .start_with(vec![immediate])
-                    .distinct_until_changed()
-                    .box_it()
-            }
-            None => source::once(project_view(project, None)),
-        }
-    })
-    .distinct_until_changed()
-    .box_it()
 }
 
 fn project_view(project: ProjectDetails, git: Option<GitStatus>) -> ProjectView {

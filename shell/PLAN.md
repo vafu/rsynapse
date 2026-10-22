@@ -108,6 +108,10 @@ Framework crates under `core/` own:
 - Completed: GitHub and Bluetooth share one configurable GTK button-group
   widget, including directional owner/content layout, always-open or hover
   reveal policies, and signal-driven popup visibility holds.
+- Completed: project-owned label editing in the Project popover and per-output
+  GitHub filtering from the existing selected-project context. Membership follows
+  owned github-dbus Listeners; singleton listeners preserve any-label semantics.
+  No project/no labels uses a global listener. Workspace occupancy is irrelevant.
 
 ### 4. D-Bus Source Integration
 
