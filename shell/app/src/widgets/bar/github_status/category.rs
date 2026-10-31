@@ -59,7 +59,7 @@ impl Category {
             Self::InitialReview => fa::FA_USER_CHECK,
             Self::ReReview => cod::COD_SYNC,
             Self::MyChangesRequested => fa::FA_PENCIL,
-            Self::Merging => cod::COD_GIT_MERGE,
+            Self::Merging => cod::COD_GIT_PULL_REQUEST_GO_TO_CHANGES,
             Self::RecentlyMerged => fa::FA_CHECK_DOUBLE,
             Self::Failed => md::MD_ALERT,
             Self::Pending => cod::COD_SYNC,

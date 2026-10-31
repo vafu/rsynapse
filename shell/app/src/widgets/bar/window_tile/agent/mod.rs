@@ -12,6 +12,7 @@ pub(in crate::widgets::bar) struct Agent {
     pub(in crate::widgets::bar) state: State,
     pub(in crate::widgets::bar) unseen: bool,
     pub(in crate::widgets::bar) subagents: usize,
+    pub(in crate::widgets::bar) context_pct: Option<u8>,
 }
 
 #[allow(dead_code)]

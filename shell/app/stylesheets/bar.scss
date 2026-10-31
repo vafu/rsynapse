@@ -808,6 +808,12 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
   padding: 0;
 }
 
+.levelindicator.agent-context-level {
+  min-width: 4px;
+  margin: 5px 0 5px 2px;
+  padding: 0;
+}
+
 .clock-widget {
   .clock-label {
     font-weight: 700;

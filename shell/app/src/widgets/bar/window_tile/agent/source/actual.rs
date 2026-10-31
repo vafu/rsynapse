@@ -1,26 +1,16 @@
 use futures_util::StreamExt;
 use shell_core::source::{
     self, Observable,
-    dbus::{
-        self, Bus, DbusInterface, DbusObject, ObjectDescriptor, ObjectManagerDescriptor,
-        PropertyDescriptor,
-    },
+    dbus::{self, Bus, DbusInterface, DbusObject, ObjectManagerDescriptor},
     rx::Observable as _,
 };
 use shell_rx_macros::combine_latest;
-use zbus::zvariant::OwnedObjectPath;
 
 use super::super::{Agent, State};
+use super::{
+    AGENT_DBUS_BUS, AGENT_DBUS_ROOT_PATH, AGENT_SESSION_INTERFACE, properties::AgentSession,
+};
 use crate::widgets::bar::WindowNode;
-
-const AGENT_DBUS_BUS: &str = "io.github.AgentDBus";
-const AGENT_DBUS_ROOT_PATH: &str = "/io/github/AgentDBus";
-const AGENT_SESSION_INTERFACE: &str = "io.github.AgentDBus1.Session";
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) struct AgentSession {
-    pub(super) path: OwnedObjectPath,
-}
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub(super) struct AgentSeenState {
@@ -53,7 +43,7 @@ fn agent_for_window_status(window_id: String, window: WindowNode) -> Observable<
     .box_it()
 }
 
-fn raw_agent_for_window(window_id: String) -> Observable<Option<Agent>> {
+pub(super) fn raw_agent_for_window(window_id: String) -> Observable<Option<Agent>> {
     source::switch_map(agent_session_for_window_id(window_id), |session| {
         session
             .map(agent_session)
@@ -204,6 +194,7 @@ fn interface<'a>(object: &'a DbusObject, interface_name: &str) -> Option<&'a Dbu
 }
 
 fn agent_session(session: AgentSession) -> Observable<Option<Agent>> {
+    let context_pct = session.context_pct();
     let base = combine_latest!(
         session.agent_name(),
         session.agent_nickname(),
@@ -224,6 +215,7 @@ fn agent_session(session: AgentSession) -> Observable<Option<Agent>> {
                         state: session_state(&state),
                         unseen: false,
                         subagents: 0,
+                        context_pct: None,
                     },
                     session_id,
                 ))
@@ -242,59 +234,14 @@ fn agent_session(session: AgentSession) -> Observable<Option<Agent>> {
             .box_it(),
         None => source::once(None),
     })
+    .combine_latest(context_pct, |agent, context_pct| {
+        agent.map(|mut agent| {
+            agent.context_pct = context_pct;
+            agent
+        })
+    })
     .distinct_until_changed()
     .box_it()
-}
-
-impl AgentSession {
-    fn agent_name(&self) -> Observable<String> {
-        required(self.property("AgentName"), String::new())
-    }
-
-    fn agent_nickname(&self) -> Observable<String> {
-        required(self.property("AgentNickname"), String::new())
-    }
-
-    fn agent_role(&self) -> Observable<String> {
-        required(self.property("AgentRole"), String::new())
-    }
-
-    fn state(&self) -> Observable<String> {
-        required(self.property("State"), String::new())
-    }
-
-    fn requires_attention(&self) -> Observable<bool> {
-        required(self.property("RequiresAttention"), false)
-    }
-
-    fn cwd(&self) -> Observable<String> {
-        required(self.property("Cwd"), String::new())
-    }
-
-    fn session_title(&self) -> Observable<String> {
-        required(self.property("SessionTitle"), String::new())
-    }
-
-    fn session_id(&self) -> Observable<String> {
-        required(self.property("SessionId"), String::new())
-    }
-
-    fn property(&self, name: &'static str) -> PropertyDescriptor {
-        PropertyDescriptor::new(agent_session_object(self.path.as_str()), name)
-    }
-}
-
-fn agent_session_object(path: &str) -> ObjectDescriptor {
-    ObjectDescriptor::parse(Bus::Session, AGENT_DBUS_BUS, path, AGENT_SESSION_INTERFACE)
-        .expect("static AgentDBus descriptor should be valid")
-}
-
-fn required<T>(descriptor: PropertyDescriptor, default: T) -> Observable<T>
-where
-    T: TryFrom<zbus::zvariant::OwnedValue> + Clone + PartialEq + Send + 'static,
-    T::Error: std::fmt::Display,
-{
-    dbus::property_or(descriptor, default)
 }
 
 pub(super) fn agent_icon(_agent_name: &str, _nickname: &str, _role: &str) -> String {

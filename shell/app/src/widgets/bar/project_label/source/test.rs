@@ -211,6 +211,7 @@ fn agent(state: State, attention: bool, unseen: bool) -> Agent {
         state,
         unseen,
         subagents: 0,
+        context_pct: None,
     }
 }
 

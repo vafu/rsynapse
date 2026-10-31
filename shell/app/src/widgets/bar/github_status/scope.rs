@@ -1,7 +1,7 @@
 use shell_core::source::{self, Observable, github, rx::Observable as _};
 use std::collections::BTreeSet;
 
-use super::Scope;
+use super::{Scope, category::Category};
 use crate::widgets::bar::selected_project::{SelectedWorkspaceView, selected_project_context};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -20,7 +20,31 @@ enum LabelFilter {
 
 type Inventory = Option<Vec<github::PullRequestActivity>>;
 
-pub(super) fn inventory(scope: Scope) -> Observable<Inventory> {
+pub(super) fn for_category(scope: Scope, category: Category) -> Observable<Inventory> {
+    select_inventory(category, || project_inventory(scope), review_inventory)
+}
+
+fn select_inventory(
+    category: Category,
+    project: impl FnOnce() -> Observable<Inventory>,
+    reviews: impl FnOnce() -> Observable<Inventory>,
+) -> Observable<Inventory> {
+    if category.is_activity() {
+        reviews()
+    } else {
+        project()
+    }
+}
+
+fn review_inventory() -> Observable<Inventory> {
+    // Viewer review work is global, independent even of project/Locus availability.
+    // The lease is shared across all review categories and every monitor.
+    source::shared_by_key("rsynapse.github-review-activity", "tagless", || {
+        scoped_activity(github::activity(), github::listener(Vec::new()))
+    })
+}
+
+fn project_inventory(scope: Scope) -> Observable<Inventory> {
     source::shared_by_key(
         "rsynapse.github-project-activity",
         format!("{scope:?}"),

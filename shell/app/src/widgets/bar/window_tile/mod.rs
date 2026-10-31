@@ -1,5 +1,6 @@
 pub(in crate::widgets::bar) mod agent;
 mod app_instance;
+mod context_level;
 mod source;
 
 use relm4::prelude::*;
@@ -57,11 +58,38 @@ impl SimpleComponent for WindowTile {
                 #[watch]
                 set_tooltip_text: model.vm.as_ref().map(|vm| vm.tooltip.as_str()),
 
-                gtk::Label {
-                    set_css_classes: &["bar-indicator-icon", "nerdicon"],
+                gtk::Box {
+                    set_orientation: gtk::Orientation::Horizontal,
+                    set_halign: gtk::Align::Center,
 
-                    #[watch]
-                    set_nerd_icon: window_icon(&model.vm),
+                    gtk::Label {
+                        set_css_classes: &["bar-indicator-icon", "nerdicon"],
+
+                        #[watch]
+                        set_nerd_icon: window_icon(&model.vm),
+                    },
+
+                    gtk::Overlay {
+                        set_css_classes: &context_level::root_classes(),
+                        set_can_target: false,
+                        #[watch]
+                        set_visible: context_level::percent(&model.vm).is_some(),
+
+                        gtk::DrawingArea {
+                            set_css_classes: crate::widgets::level_indicator::TRACK_CLASSES,
+                            set_can_target: false,
+                            set_vexpand: true,
+                            set_draw_func: context_level::track_draw_func(),
+                        },
+
+                        add_overlay = &gtk::DrawingArea {
+                            set_can_target: false,
+                            #[watch]
+                            set_css_classes: &context_level::level_classes(&model.vm),
+                            #[watch]
+                            set_draw_func: context_level::level_draw_func(&model.vm),
+                        }
+                    }
                 },
 
                 #[local_ref]

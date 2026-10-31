@@ -5,6 +5,7 @@ use crate::widgets::bar::{
 };
 use github::{PrStatus, PullRequest, PullRequestActivity};
 
+mod audience;
 mod reactive;
 
 fn pr(number: u64, status: PrStatus, labels: &[&str]) -> PullRequestActivity {

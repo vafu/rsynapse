@@ -12,6 +12,8 @@ use super::actual::{
     find_agent_session_by_window_id, session_state,
 };
 
+mod context;
+
 #[test]
 fn maps_agent_name_to_renderable_icon() {
     assert_eq!(agent_icon("codex", "", ""), "cognition");
@@ -128,6 +130,7 @@ fn make_agent(state: State) -> Agent {
         state,
         unseen: false,
         subagents: 0,
+        context_pct: None,
     }
 }
 

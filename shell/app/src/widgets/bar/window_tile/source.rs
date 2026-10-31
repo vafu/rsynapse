@@ -167,6 +167,10 @@ fn window_tooltip(app_id: &str, agent: Option<&Agent>) -> String {
     let label = if app_id.is_empty() { "Window" } else { app_id };
     if let Some(agent) = agent {
         let mut tooltip = [label.to_owned(), format!("Agent: {:?}", agent.state)].join("\n");
+        match agent.context_pct {
+            Some(percent) => tooltip.push_str(&format!("\nContext: {percent}%")),
+            None => tooltip.push_str("\nContext usage unavailable"),
+        }
         if agent.subagents > 0 {
             tooltip.push_str(&format!("\nSubagents: {}", agent.subagents));
         }

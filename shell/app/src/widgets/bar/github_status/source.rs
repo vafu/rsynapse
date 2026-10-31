@@ -130,7 +130,7 @@ fn status_name(category: Category, pr: &github::PullRequest) -> &'static str {
 pub(super) fn status(scope: Scope, category: Category) -> Observable<GitHubView> {
     // Count and rows come from the same snapshot, so separate Summary/PR signals
     // cannot temporarily put a different count on the button than in its list.
-    scope::inventory(scope)
+    scope::for_category(scope, category)
         .map(move |prs| view(category, prs))
         .distinct_until_changed()
         .box_it()

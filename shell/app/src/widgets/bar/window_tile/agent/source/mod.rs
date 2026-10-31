@@ -1,4 +1,9 @@
 mod actual;
+mod properties;
+
+const AGENT_DBUS_BUS: &str = "io.github.AgentDBus";
+const AGENT_DBUS_ROOT_PATH: &str = "/io/github/AgentDBus";
+const AGENT_SESSION_INTERFACE: &str = "io.github.AgentDBus1.Session";
 
 #[cfg(test)]
 mod test;

@@ -8,6 +8,7 @@ pub(crate) mod cod {
     pub(crate) const COD_DIFF_ADDED: &str = "\u{eadc}";
     pub(crate) const COD_GIT_MERGE: &str = "\u{eafe}";
     pub(crate) const COD_GIT_PULL_REQUEST: &str = "\u{ea64}";
+    pub(crate) const COD_GIT_PULL_REQUEST_GO_TO_CHANGES: &str = "\u{ec0b}";
     pub(crate) const COD_SYNC: &str = "\u{ea77}";
     pub(crate) const COD_GITHUB: &str = "\u{ea84}";
 }
