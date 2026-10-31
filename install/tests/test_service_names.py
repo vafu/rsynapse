@@ -4,8 +4,10 @@ import importlib.util
 import os
 from pathlib import Path
 import subprocess
+import shutil
 import tempfile
 import unittest
+from unittest.mock import patch
 
 SCRIPT = Path(__file__).resolve().parents[1] / "session-services.py"
 spec = importlib.util.spec_from_file_location("session_services", SCRIPT)
@@ -94,6 +96,28 @@ class NamingMigration(unittest.TestCase):
                 self.assertEqual(old.read(), b"old binary bytes\n")
             self.assertFalse(canonical.is_symlink())
             self.assertEqual((binary / "steward").resolve(), canonical)
+
+    def test_built_install_uses_project_targets_or_the_caller_override(self):
+        for shared in (False, True):
+            with self.subTest(shared=shared), tempfile.TemporaryDirectory(prefix="rsynapse-artifacts-") as temporary:
+                root = Path(temporary)
+                prefix, config = self.fixture(root)
+                repo = root / "checkout"
+                shutil.copytree(installer.REPO / "install", repo / "install")
+                env = dict(os.environ)
+                env.pop("CARGO_TARGET_DIR", None)
+                if shared:
+                    env["CARGO_TARGET_DIR"] = str(root / "shared target")
+                for project, name in (("projd", "rsynapse-projd"), ("projd", "proj"), ("steward", "rsynapse-steward")):
+                    target = Path(env.get("CARGO_TARGET_DIR", repo / project / "target")) / "release"
+                    target.mkdir(parents=True, exist_ok=True)
+                    (target / name).write_text(f"built {name}\n")
+                with patch.object(installer, "REPO", repo), patch.dict(os.environ, env, clear=True):
+                    installer.install(prefix, config, built=True, reload=False)
+                for name in ("rsynapse-projd", "proj", "rsynapse-steward"):
+                    binary = prefix / "bin" / name
+                    self.assertEqual(binary.read_text(), f"built {name}\n")
+                    self.assertTrue(os.access(binary, os.X_OK))
 
 
 if __name__ == "__main__":

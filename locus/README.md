@@ -148,17 +148,17 @@ python3 locus/tests/persistence.py /path/to/target/debug
 
 ## Build And Coordinated Deployment
 
-Run builds from `/tmp/opencode` with the workspace's public-crates Cargo home:
+Normally, build from the repository root with your configured Cargo environment:
 
 ```sh
-env CARGO_HOME=/home/vfuchedzhy/proj/rsynapse/steward/.cargo-home \
-  CARGO_TARGET_DIR=/tmp/opencode/locus-persistence-release-target \
-  cargo build --release --locked \
-  --manifest-path /home/vfuchedzhy/proj/rsynapse/locus/Cargo.toml --bins
+cargo build --release --locked --manifest-path locus/Cargo.toml --bins
 ```
 
-Outputs are `locus-persistence-release-target/release/rsynapse-locusd` and
-`locus-persistence-release-target/release/locus` beneath `/tmp/opencode`.
+Outputs are `locus/target/release/rsynapse-locusd` and
+`locus/target/release/locus`, or under `$CARGO_TARGET_DIR/release` when set.
+If your local Cargo configuration requires a separate public-registry cache,
+set `CARGO_HOME` explicitly and invoke Cargo from outside that configuration's
+directory tree, using an absolute `--manifest-path` for this checkout.
 `cargo install --path .../locus` also installs both explicitly declared bins;
 the workspace's `install/local.sh` renders their activation/unit templates.
 

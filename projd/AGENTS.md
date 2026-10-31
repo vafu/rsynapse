@@ -33,5 +33,5 @@ Grafana belongs to shared observability deployment. Its HTTP adapter is a client
 of this D-Bus API, with no project-management persistence or business ownership.
 Metrics and side-effect handlers belong to steward. No composite score is set.
 
-Use public crates.io builds from a neutral CWD and the existing isolated Cargo
-cache. Test persistence, stable identity, property changes and CLI/API parity.
+Use normal Cargo builds and respect the caller's Cargo configuration and target
+directory. Test persistence, stable identity, property changes and CLI/API parity.

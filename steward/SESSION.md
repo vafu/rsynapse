@@ -1,9 +1,13 @@
 # Project-aware desktop sessions
 
-Session capture and restoration belong to Steward. This adds no daemon and no
+User-requested session capture and restoration belong to Steward. This adds no daemon and no
 project CRUD. Projd remains authoritative for projects and their current CWDs;
 Locus owns cross-service links; workspace-dbus owns compositor observation and
 optional controls. Application-content restoration is follow-up work.
+
+Automatic capture only records observations. Monitor detach/attach, native
+workspace lifetimes and window grouping belong to the compositor. Only an
+explicit `Restore` request may move/focus windows or launch applications.
 
 ## Commands
 
@@ -57,9 +61,10 @@ incoherent inventories retry on subscribed events with failure deadlines.
   anonymous edge placeholders without project intent.
 - `last`: automatic restore checkpoint for the armed source epoch.
 - `previous`: preceding automatic checkpoint.
-- `before-output-change`: protected automatic checkpoint taken before regrouping
-  windows after output loss; reserved against explicit overwrites.
 - Any other name: an explicit save, unaffected by automatic capture.
+
+Older `before-output-change` snapshots remain readable as ordinary saved
+descriptions; Steward no longer creates or reserves that checkpoint.
 
 On the first desktop without a saved `last`, automatic capture is armed. A new
 compositor session with an existing checkpoint records `current` independently
@@ -79,9 +84,6 @@ Persistent Locus relations:
 - `org.rsynapse.session.checkpoint.project`: immutable checkpoint-workspace key
   -> stable project ID. A saved description references this key, so later project
   reassignment/unassignment does not change older named saves.
-- `org.rsynapse.session.workspace.preferred-output`: logical workspace -> output
-  connector name, with one-based `index` and `fallback` metadata. Capturing the
-  temporary fallback location does not replace the preferred monitor.
 
 Live, nonpersistent relations:
 
@@ -103,29 +105,20 @@ private file mode, atomic replacement and file/directory synchronization.
 
 ## Monitor disconnect and reconnect
 
-Before capture or workspace-anchor cleanup accepts an output change, Steward
-preserves its logical-group baseline and `before-output-change` checkpoint.
-Only enabled outputs are placement destinations; a disabled laptop display can
-retain empty compositor workspace objects without being usable.
+The compositor owns evacuation and return placement. Steward records the
+observed arrangement, including the actual output/index, without a preferred-
+output recovery baseline. Capturing an output change never moves or focuses
+windows and does not copy project assignments onto replacement workspace IDs.
 
-If the compositor evacuates several workspaces into one, Steward separates the
-existing windows using their same-source-epoch logical anchors. Two workspaces
-with the same project remain two groups; unassigned groups remain unassigned.
-Unmatched windows and existing conflicting project bindings are preserved.
-This path contains no launch recipes and never reopens a closed application.
+An existing workspace identity keeps its associations when its output changes.
+If the compositor deletes that identity, lifecycle cleanup expires its live
+bindings. Surviving windows retain their independent agent/window attribution,
+but do not establish the project of a new workspace. Native identity continuity
+must be provided by the compositor.
 
-Returning preferred monitors receive their groups again, in saved relative
-order. An additional output change during placement retains the original
-baseline for another signal-driven reconciliation, rather than accepting a new
-evacuation merge. A logical workspace has only one live location; stale empty
-fallback bindings are retired when its group returns. Prior window focus is
-restored when the backend supports it and the window still exists.
-
-Preferences survive Steward restart. Automatic recovery after that restart
-requires the current compositor epoch's Locus anchors and protected checkpoint;
-it never correlates IDs from a different projection owner/generation. Ordinary
-manual moves with unchanged output topology become current intent. A manual
-workspace move to another output updates its preference after capture.
+Named session saves retain their captured placement until the user saves them
+again. An explicit restore uses the saved output where available, otherwise an
+enabled fallback. Later monitor attachment does not trigger another restore.
 
 ## Launch recipes
 
@@ -198,9 +191,9 @@ Niri reports no restore-control capabilities and restoration reports unsupported
 
 Restore reuses known logical workspace bindings or matching named workspaces,
 otherwise selects unassigned empty workspaces. It preserves existing conflicting
-project bindings. Preferred available outputs are used; missing outputs fall
+project bindings. Saved available outputs are used; missing outputs fall
 back deterministically to a live output, preserving saved relative slot order.
-The current output preference is its connector name, not an EDID identity.
+Saved output references are connector names, not EDID identities.
 
 Workspace layout mode, window membership and floating state are restored.
 Saved scrolling column/row hints preserve launch order; exact tile trees,
@@ -236,18 +229,19 @@ checkpoint, new live window identities, project bindings/CWDs, layout/floating
 state, output fallback, duplicate avoidance, stale generation rejection,
 immutable saved bindings after unassignment, and removed-project handling.
 
-The monitor lifecycle regression uses the same isolation harness:
+The passive monitor lifecycle regression uses isolated services and headless
+Umbriel:
 
 ```sh
-python3 steward/tests/session_restore.py --hotplug \
-  --artifacts /tmp/rsynapse-session-hotplug-test
+python3 steward/tests/umbriel_hotplug.py \
+  --steward "$PWD/steward/target/debug/rsynapse-steward" \
+  --producer "$PWD/workspace-dbus/target/debug/rsynapse-workspace-dbus" \
+  --artifacts /tmp/rsynapse-workspace-lifecycle-test
 ```
 
-It verifies six distinct groups (including repeated projects and an unassigned
-group), output removal/recreation, a policy-daemon restart while on fallback,
-lid-style fallback disable/enable, preserved project bindings/checkpoints, manual
-moves, and live scratchpad updates. Existing application identities must remain
-unchanged throughout regrouping.
+It verifies expiry on output removal, fresh workspace lifetimes on connector
+reuse, explicit assignment to replacements, and capture without inferred
+rebinding or changes to the compositor's placement.
 
 ```sh
 python3 steward/tests/session_restore.py --silent \

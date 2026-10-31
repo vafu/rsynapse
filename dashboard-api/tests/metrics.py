@@ -1,7 +1,9 @@
 """HTTP/SSE -> real Metrics1 on a private bus; no production state or UI actions."""
 import json,os,pathlib,socket,subprocess,sys,tempfile,time,urllib.error,urllib.request
 from gi.repository import Gio,GLib
-ROOT=pathlib.Path(__file__).resolve().parents[2];BIN=ROOT/'steward/target/release'
+ROOT=pathlib.Path(__file__).resolve().parents[2]
+BIN=pathlib.Path(os.environ.get('CARGO_TARGET_DIR',ROOT/'projd/target'))/'release'
+API=os.environ.get('RSYNAPSE_API_BIN',str(pathlib.Path(os.environ.get('CARGO_TARGET_DIR',ROOT/'dashboard-api/target'))/'release/rsynapse-dashboard-api'))
 if '--child' not in sys.argv:
     with tempfile.TemporaryDirectory(prefix='goal-dashboard-metrics-') as temp:
         env=dict(os.environ,TEST_ROOT=temp,PROJD_STORE_PATH=temp+'/store.sqlite3',LOCUS_RELATIONS_PATH=temp+'/relations.json',XDG_DATA_HOME=temp,XDG_DATA_DIRS=temp)
@@ -36,7 +38,7 @@ try:
     cli('goal','add','root','--project',str(first),'--title','Objective');cli('goal','status','root','in-progress')
     cli('goal','add','child','--parent','root','--title','Concrete step');cli('goal','start','child')
     identities=json.loads(cli('goal','instances','--json'));root=next(g['instance_id'] for g in identities if g['key']=='root');child=next(g['instance_id'] for g in identities if g['key']=='child')
-    processes.append(subprocess.Popen([str(BIN/'rsynapse-dashboard-api')],env=dict(os.environ,RSYNAPSE_DASHBOARD_PORT=str(port))))
+    processes.append(subprocess.Popen([API],env=dict(os.environ,RSYNAPSE_DASHBOARD_PORT=str(port))))
     wait(lambda:get('/health'))
     stream=urllib.request.urlopen(url+'/api/events',timeout=5)
     assert b'connected' in stream.readline();stream.readline();stream.readline()

@@ -1,0 +1,21 @@
+version = 1
+default_server = "rust-analyzer"
+
+[[routes]]
+extensions = [".rs"]
+language_id = "rust"
+server = "rust-analyzer"
+
+[servers.rust-analyzer]
+executable = "rust-analyzer"
+
+[servers.rust-analyzer.initialization_options]
+linkedProjects = [
+  "locus/Cargo.toml",
+  "workspace-dbus/Cargo.toml",
+  "projd/Cargo.toml",
+  "steward/Cargo.toml",
+  "dashboard-api/Cargo.toml",
+  "shell/Cargo.toml",
+  "shell/launcher/Cargo.toml",
+]

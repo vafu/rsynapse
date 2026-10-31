@@ -13,8 +13,10 @@ use crate::{
     },
     rx::Observable as _,
 };
-pub use github_dbus_api::{
-    NotificationEvent, PrOverview, PrStatus, PrSummary, PullRequest, PullRequestActivity, ReviewActivity,
+mod schema;
+pub use schema::{
+    NotificationEvent, PrOverview, PrStatus, PrSummary, PullRequest, PullRequestActivity,
+    ReviewActivity, ReviewInfo,
 };
 
 pub const BUS_NAME: &str = "io.github.vfuchedzhy.GithubPr";

@@ -151,7 +151,10 @@ Subscriptions are shared by threshold and cancel their connection on drop.
   sources to the current owner and clear stale values while a service is absent.
 
 `shell_source::github` exposes typed `pull_requests()`, `summary()`, `overview()`
-and notification observables over github-dbus. `activity()` exposes typed
+and notification observables over github-dbus. Its JSON wire records and enums
+are defined locally in `github/schema.rs`, independently of the producer's Rust
+crates. Field names, enum spellings and defaults follow the existing service
+contract; no private checkout is needed to build the client. `activity()` exposes typed
 `PullRequestActivity` records containing the PR, an opaque revision and its
 persistent unseen flag; `None` includes the period before a successful load.
 `overview()` uses `PrOverview`
@@ -179,6 +182,10 @@ adds `InitialReview`, `ReReview`, and `ChangesRequested` phases computed from th
 authenticated viewer's submitted and opinionated reviews. It includes waiting
 changes requests without an active request and excludes inactive approvals.
 The API enum is metadata, not local seen state; no additional shell polling is needed.
+The app uses separate inventory paths: project-scoped label Listener membership
+for authored categories, and an independent tagless Listener for every review
+workflow category. Reviews have no dependency on selected-project or label
+availability; both paths reuse the globally shared activity source and leases.
 
 Consumer crates should wrap these primitives in typed service helpers. Widget
 code should call semantic functions such as `selected_workspace_windows()` or

@@ -8,9 +8,7 @@ dbus_dir="$prefix/share/dbus-1/services"
 applications_dir="$prefix/share/applications"
 script_dir="$HOME/.config/scripts"
 plugin_dir="$prefix/lib/rsynapse/plugins"
-git_hooks_dir="$prefix/share/rsynapse/git-hooks"
 systemd_user_dir="$HOME/.config/systemd/user"
-zsh_dir="$HOME/.config/zsh"
 
 cargo_install() {
     local path="$1"
@@ -35,15 +33,14 @@ echo "Installing release binaries to $local_bin"
 cargo_install "$repo_root/locus"
 cargo_install "$repo_root/workspace-dbus/service"
 cargo_install "$repo_root/workspace-dbus/terminal-id"
-bash "$repo_root/projd/build.sh" --locked
+cargo_install "$repo_root/projd"
 install -d "$local_bin"
 cargo_install "$repo_root/shell/app"
 cargo_install "$repo_root/shell/launcher/rsynapse-daemon"
 cargo_install "$repo_root/shell/launcher/rsynapse-cli"
 cargo_install "$repo_root/shell/launcher/rsynapse-ui"
 
-echo "Building steward against public crates.io"
-"$repo_root/steward/build.sh"
+cargo_install "$repo_root/steward"
 
 echo "Installing helper scripts to $local_bin"
 install -d "$local_bin" "$script_dir"
@@ -53,23 +50,6 @@ install -m 0755 "$repo_root/install/bin/ghostty-project-window" "$script_dir/gho
 ln -sfn "$script_dir/ghostty-project-window" "$local_bin/ghostty-project-window"
 install -m 0755 "$repo_root/install/bin/umbriel-workspace-new" "$script_dir/umbriel-workspace-new"
 ln -sfn "$script_dir/umbriel-workspace-new" "$local_bin/umbriel-workspace-new"
-
-echo "Installing optional Zsh agent-lane integration to $zsh_dir"
-install -d "$zsh_dir"
-install -m 0644 "$repo_root/install/zsh/codex-lanes.zsh" "$zsh_dir/codex-lanes.zsh"
-
-echo "Installing Rsynapse git hooks to $git_hooks_dir"
-install -d "$git_hooks_dir"
-find "$repo_root/install/git-hooks" -maxdepth 1 -type f \
-    -exec install -m 0755 {} "$git_hooks_dir/" \;
-if command -v git >/dev/null 2>&1; then
-    existing_hooks_path="$(git config --global --get core.hooksPath 2>/dev/null || true)"
-    if [[ -z "$existing_hooks_path" || "$existing_hooks_path" == "$git_hooks_dir" ]]; then
-        git config --global core.hooksPath "$git_hooks_dir"
-    else
-        echo "Global core.hooksPath is already set to $existing_hooks_path; skipped Rsynapse git hook activation"
-    fi
-fi
 
 echo "Building and installing launcher plugins to $plugin_dir"
 cargo build \
@@ -96,7 +76,7 @@ fi
 
 echo "Installing namespaced daemons, systemd units and D-Bus activation files"
 python3 "$repo_root/install/session-services.py" --prefix "$prefix" \
-    --config-home "$HOME/.config" --install-built
+    --config-home "$HOME/.config"
 
 echo "Removing deprecated Rsynapse service definitions"
 rm -f \

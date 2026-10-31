@@ -10,7 +10,7 @@ import tempfile
 import time
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-BIN = ROOT / 'steward/target/release'
+BIN = pathlib.Path(os.environ.get('CARGO_TARGET_DIR', ROOT / 'projd/target')) / 'release'
 if '--child' not in sys.argv:
     with tempfile.TemporaryDirectory(prefix='projd-checklist-') as temp:
         env = dict(os.environ, PROJD_STORE_PATH=temp+'/store.sqlite3', PROJD_GOALS_DIR=temp+'/notes with spaces', TEST_ROOT=temp, XDG_DATA_HOME=temp, XDG_DATA_DIRS=temp)

@@ -10,7 +10,6 @@ fn ready(owner: &str, generation: u64, ids: &[&str]) -> Snapshot {
         generation,
         connected: true,
         ids: ids.iter().map(|id| (*id).into()).collect(),
-        windows: HashMap::new(),
     }
 }
 
@@ -176,7 +175,7 @@ fn subject(id: &str) -> RelationEndpoint {
 }
 
 #[test]
-fn current_epoch_project_edits_still_refresh_recovery_anchors() {
+fn only_unreconciled_workspace_relations_trigger_lifecycle_cleanup() {
     let mut tracker = Reconciler::default();
     tracker.commit(ready(":1.1", 1, &["live"]));
     let mut changed = record(subject("live"), crate::relations::WORKSPACE_PROJECT);
@@ -184,7 +183,7 @@ fn current_epoch_project_edits_still_refresh_recovery_anchors() {
     changed.metadata.insert(GENERATION.into(), "1".into());
     for relation in [
         crate::relations::WORKSPACE_PROJECT,
-        super::super::WORKSPACE_PROJECT_POLICY,
+        crate::relations::WORKSPACE_NAME,
     ] {
         changed.relation = relation.into();
         let message = zbus::Message::signal(
@@ -195,9 +194,9 @@ fn current_epoch_project_edits_still_refresh_recovery_anchors() {
         .unwrap()
         .build(&changed)
         .unwrap();
-        assert!(relation_changed(&message, &tracker));
+        assert!(!relation_changed(&message, &tracker));
     }
-    changed.relation = crate::relations::WORKSPACE_NAME.into();
+    changed.metadata.remove(OWNER);
     let message = zbus::Message::signal(
         locus::OBJECT_PATH,
         locus::RELATIONS_INTERFACE,
@@ -206,7 +205,47 @@ fn current_epoch_project_edits_still_refresh_recovery_anchors() {
     .unwrap()
     .build(&changed)
     .unwrap();
-    assert!(!relation_changed(&message, &tracker));
+    assert!(relation_changed(&message, &tracker));
+}
+
+#[test]
+fn window_moves_and_monitor_changes_are_not_workspace_lifetime_events() {
+    for (interface, name) in [
+        (workspace_dbus_api::WINDOW_INTERFACE, "Workspace"),
+        (workspace_dbus_api::WORKSPACE_INTERFACE, "Output"),
+        (workspace_dbus_api::OUTPUT_INTERFACE, "Enabled"),
+        (MANAGER_INTERFACE, "Windows"),
+        (MANAGER_INTERFACE, "Outputs"),
+    ] {
+        let message = zbus::Message::signal(
+            ROOT_PATH,
+            "org.freedesktop.DBus.Properties",
+            "PropertiesChanged",
+        )
+        .unwrap()
+        .build(&(
+            interface,
+            HashMap::from([(name, zbus::zvariant::Value::from(false))]),
+            Vec::<String>::new(),
+        ))
+        .unwrap();
+        assert!(!source_changed(&message), "{interface}.{name}");
+    }
+    for name in ["Connected", "Generation", "Workspaces"] {
+        let message = zbus::Message::signal(
+            ROOT_PATH,
+            "org.freedesktop.DBus.Properties",
+            "PropertiesChanged",
+        )
+        .unwrap()
+        .build(&(
+            MANAGER_INTERFACE,
+            HashMap::from([(name, zbus::zvariant::Value::from(false))]),
+            Vec::<String>::new(),
+        ))
+        .unwrap();
+        assert!(source_changed(&message), "{name}");
+    }
 }
 
 #[test]
@@ -377,5 +416,37 @@ async fn exercise() -> anyhow::Result<()> {
         .cloned()
         .collect();
     assert_eq!(same, [fresh]);
+
+    // A surviving window's project is independent of workspace intent. A new
+    // workspace does not inherit a removed workspace's project through it.
+    let window = record(
+        RelationEndpoint::stable_key(locus::keys::WINDOW_ID, "surviving-window"),
+        super::super::WINDOW_PROJECT,
+    );
+    store.lock().await.records.extend([
+        record(
+            subject("removed-workspace"),
+            crate::relations::WORKSPACE_PROJECT,
+        ),
+        window.clone(),
+    ]);
+    reconcile(
+        &client,
+        &mut Reconciler::default(),
+        ready(":1.new", 2, &["replacement-workspace"]),
+    )
+    .await?;
+    let records = &store.lock().await.records;
+    assert!(records.contains(&window));
+    assert!(
+        !records
+            .iter()
+            .any(|r| r.subject == subject("replacement-workspace"))
+    );
+    assert!(
+        !records
+            .iter()
+            .any(|r| r.subject == subject("removed-workspace"))
+    );
     Ok(())
 }

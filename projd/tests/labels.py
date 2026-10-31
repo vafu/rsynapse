@@ -12,8 +12,9 @@ import xml.etree.ElementTree as ET
 from gi.repository import Gio, GLib
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-PROJD = os.environ.get('PROJD_BIN', str(ROOT / 'steward/target/debug/rsynapse-projd'))
-PROJ = os.environ.get('PROJ_BIN', str(ROOT / 'steward/target/debug/proj'))
+BIN = pathlib.Path(os.environ.get('CARGO_TARGET_DIR', ROOT / 'projd/target')) / 'release'
+PROJD = os.environ.get('PROJD_BIN', str(BIN / 'rsynapse-projd'))
+PROJ = os.environ.get('PROJ_BIN', str(BIN / 'proj'))
 BUS = 'org.rsynapse.Proj'
 PATH = '/org/rsynapse/Proj'
 MANAGER = BUS + '.Manager1'

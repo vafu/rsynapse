@@ -9,8 +9,39 @@ docker compose -f observability/docker-compose.yml up -d
 ```
 
 The Compose project remains `metrics`, preserving its named storage volumes.
-Dashboard files, color registry and Graphite retention aggregation live here,
-outside steward and projd. Projd has no dependency on this deployment.
+Generic dashboards and Graphite retention aggregation live here, outside steward
+and projd. Projd has no dependency on this deployment. Tracked dashboards contain
+no discovered project, workspace, or application inventory; Grafana's normal
+palette and query-backed selectors work on a new installation.
+
+## Optional local color assignments
+
+To give project/workspace names consistent colors across panels, render local
+dashboards from Graphite discovery:
+
+```sh
+python3 observability/grafana/refresh-focus-colors.py
+RSYNAPSE_GRAFANA_DASHBOARDS=./grafana/generated/dashboards \
+  docker compose -f observability/docker-compose.yml up -d grafana
+```
+
+The renderer writes all dashboards under the ignored
+`observability/grafana/generated/dashboards/` directory. Stable color assignments
+live at `$XDG_STATE_HOME/rsynapse/grafana/focus-colors.json` (default
+`~/.local/state/rsynapse/grafana/focus-colors.json`). `--output-dir`, `--registry`,
+and `--graphite-url` override these locations. `--check` verifies the rendered
+files without writing. Runtime discovery never updates the tracked dashboards.
+
+The offline `--generic` mode removes discovered mappings/overrides and needs no
+Graphite or registry. To regenerate/check the committed baseline:
+
+```sh
+python3 observability/grafana/refresh-focus-colors.py --generic \
+  --output-dir observability/grafana/dashboards
+python3 observability/grafana/refresh-focus-colors.py --generic --check \
+  --output-dir observability/grafana/dashboards
+python3 observability/grafana/test_refresh_focus_colors.py
+```
 
 The **Rsynapse goal work metrics** dashboard is provisioned at
 http://localhost:3000/d/rsynapse-goals/rsynapse-goals. Its local panel reads

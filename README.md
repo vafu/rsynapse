@@ -83,6 +83,28 @@ env CARGO_TARGET_DIR=/tmp/rsynapse-shell-target \
   cargo test --manifest-path shell/Cargo.toml --workspace
 ```
 
+Builds use normal Cargo configuration, including any explicit `CARGO_HOME` and
+`CARGO_TARGET_DIR`. Without a target override, each Cargo workspace owns its
+`target/` directory.
+
+For Nix-provided Rust/GTK development dependencies, use the root flake:
+
+```sh
+nix develop
+cargo test --manifest-path locus/Cargo.toml
+```
+
+`flake.lock` pins the development environment. No build script scans the Nix
+store or overrides Cargo registries. Native builds can use system-provided
+dependencies instead (GTK 4.22+, libadwaita and gtk4-layer-shell for the shell).
+
+`.lspctl.toml` registers rust-analyzer and links all seven Cargo workspaces.
+Install rust-analyzer on `PATH`, validate with `lspctl config validate --workspace .`,
+and authorize the project declaration through lspctl's trust workflow before use.
+
+See [the repository review](docs/repository-review.md) for ownership and
+portability findings, applied cleanups and remaining module boundaries.
+
 ## Local Install
 
 The local installer installs release binaries, launcher plugins, D-Bus

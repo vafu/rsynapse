@@ -9,7 +9,8 @@ import tempfile
 import time
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-BIN = ROOT / "steward/target/release"
+BIN = pathlib.Path(os.environ.get("CARGO_TARGET_DIR", ROOT / "projd/target")) / "release"
+STEWARD = os.environ.get("STEWARD_BIN", str(pathlib.Path(os.environ.get("CARGO_TARGET_DIR", ROOT / "steward/target")) / "release/rsynapse-steward"))
 LOCUS = os.environ.get("LOCUS_BIN", str(pathlib.Path.home() / ".local/bin/rsynapse-locusd"))
 
 if "--child" not in sys.argv:
@@ -96,7 +97,7 @@ try:
                      path="/org/rsynapse/Proj/Projects/n70", interface="org.rsynapse.Proj.Project1")
     bind(old_agent, "org.rsynapse.project.agent", key("org.rsynapse.agent.session.id", "codex/session"))
     before_goals = subprocess.check_output([str(BIN / "proj"), "goal", "list", "--all", "--json"])
-    daemons.append(subprocess.Popen([str(BIN / "rsynapse-steward"), "associations"]))
+    daemons.append(subprocess.Popen([STEWARD, "associations"]))
     wait(lambda: all(p["icon"] for p in projects() if p["checkout_id"]))
     migrated = projects()
     primary = next(p for p in migrated if p["id"] == "p")

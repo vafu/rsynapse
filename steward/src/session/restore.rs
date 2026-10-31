@@ -13,25 +13,6 @@ const PENDING: &str = "org.rsynapse.session.window.launch";
 
 impl Manager {
     pub(super) async fn restore(&self, session: Session) -> anyhow::Result<RestoreReport> {
-        self.restore_inner(session, true).await
-    }
-
-    pub(super) async fn restore_existing_groups(
-        &self,
-        session: Session,
-    ) -> anyhow::Result<RestoreReport> {
-        anyhow::ensure!(
-            session
-                .workspaces
-                .iter()
-                .flat_map(|w| &w.windows)
-                .all(|w| w.recipe.is_empty()),
-            "hotplug regrouping must not contain launch recipes"
-        );
-        self.restore_inner(session, false).await
-    }
-
-    async fn restore_inner(&self, session: Session, arm: bool) -> anyhow::Result<RestoreReport> {
         session.validate()?;
         let source = observe::read(&self.connection).await?;
         let control = ControlProxy::builder(&self.connection)
@@ -47,9 +28,8 @@ impl Manager {
         );
         // Native silent moves still require focusing their source window. Keep
         // the user's original window so explicit restoration returns there,
-        // including when only part of a session could be restored. Hotplug
-        // reconciliation preserves focus across its own retries separately.
-        let focused = if arm && capabilities.iter().any(|name| name == "focus-window") {
+        // including when only part of a session could be restored.
+        let focused = if capabilities.iter().any(|name| name == "focus-window") {
             let manager = workspace_dbus_api::ManagerProxy::builder(&self.connection)
                 .destination(source.owner.as_str())?
                 .build()
@@ -108,7 +88,7 @@ impl Manager {
         }
         // A partial restore leaves the input checkpoint protected. Successfully
         // restored window anchors still make a repeated command idempotent.
-        if arm && report.issues.is_empty() {
+        if report.issues.is_empty() {
             links::arm(&self.locus, &after).await?;
         }
         Ok(report)

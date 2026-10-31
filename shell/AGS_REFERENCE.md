@@ -1,6 +1,6 @@
 # Historical AGS Shell Reference
 
-This document summarizes `/home/v47/.config/ags` as a product reference for
+This document summarizes the former AGS shell as a product reference for
 Rust shell widgets. It is not an implementation template. The AGS code uses
 JavaScript/TypeScript, Astal, RxJS-style streams, and imperative GTK updates;
 Rsynapse should preserve useful product behavior while keeping the Rust/Relm4

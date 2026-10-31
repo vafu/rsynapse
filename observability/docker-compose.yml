@@ -29,7 +29,7 @@ services:
     volumes:
       - grafana-storage:/var/lib/grafana
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./grafana/dashboards:/etc/grafana/dashboards:ro
+      - ${RSYNAPSE_GRAFANA_DASHBOARDS:-./grafana/dashboards}:/etc/grafana/dashboards:ro
       - ../dashboard-api/grafana-plugin/dist-targets:/var/lib/grafana/plugins/rsynapse-workday-targets-panel:ro
       - ../dashboard-api/grafana-plugin/dist-workday:/var/lib/grafana/plugins/rsynapse-workday-panel:ro
       - ../dashboard-api/grafana-plugin/dist-metrics:/var/lib/grafana/plugins/rsynapse-goal-metrics-panel:ro

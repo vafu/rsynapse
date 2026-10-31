@@ -29,7 +29,6 @@ The installer writes only user-local paths by default:
 - D-Bus activation files: `~/.local/share/dbus-1/services`
 - Desktop entries: `~/.local/share/applications`
 - systemd user units: `~/.config/systemd/user`
-- git hooks: `~/.local/share/rsynapse/git-hooks`
 
 Installed binaries currently include:
 
@@ -117,19 +116,8 @@ Verify the launch helper without opening desktop windows:
 python3 install/tests/test_ghostty_project_window.py
 ```
 
-The installer also provides `~/.config/zsh/codex-lanes.zsh`. Source it after
-llm-router-pilot's lane definitions and the Locus shell integration to make
-`codexdk` and `codexdkc` use the same terminal association wrapper as `codex`:
-
-```zsh
-source "$HOME/.config/zsh/codex-lanes.zsh"
-```
-
-Codex's AgentDBus hooks must also be active in the lane's own `CODEX_HOME`.
-Hook trust keys include the hooks file's absolute path: trust for
-`~/.codex/hooks.json` does not cover `~/.codex-databricks/hooks.json`. This lane
-refreshes its config from `~/.codex/config.toml` on launch, so persist matching
-lane hook state in that source config. Do not edit only the generated lane copy.
+Agent-provider aliases, router lanes, and their hook configuration belong in
+the user's dotfiles or the owning agent integration project.
 
 The URL helper is also linked from the local binary directory. It detects Niri
 or Umbriel from desktop identity (or an unambiguous socket); set
@@ -137,17 +125,15 @@ or Umbriel from desktop identity (or an unambiguous socket); set
 MRU browser selection. Umbriel prefers an active matching browser, otherwise a
 stable matching window on the workspace, since it exposes no focus history.
 
-Installed git hooks currently include:
+The installer does not install Git hooks or change Git configuration. Projd
+watches Git metadata for registered checkouts directly; `proj update` is also
+available for explicit refresh. Desktop association is `steward bind-current PATH`.
 
-- `post-checkout`
-- `post-merge`
-- `post-rewrite`
-
-When no global `core.hooksPath` is configured, the installer points it at the
-Rsynapse hook directory so branch changes from any process refresh project
-metadata through `proj update`, a D-Bus client of projd. Desktop workspace
-association is now `steward bind-current PATH`. If another global hook path is already set, the
-installer leaves it alone.
+Older installations may have configured a global `core.hooksPath`. Inspect it
+with `git config --global --get core.hooksPath`; if it is the former Rsynapse
+directory (`~/.local/share/rsynapse/git-hooks`, or under an old `PREFIX`), remove
+that setting with `git config --global --unset core.hooksPath`. Existing machine
+configuration is not changed by this repository cleanup.
 
 Installed D-Bus activation files currently include:
 
@@ -174,6 +160,12 @@ Installed systemd user units currently include:
 Set `PREFIX=/path` to install binaries, plugins, and D-Bus activation files
 under a different prefix. systemd user units are always installed under
 `~/.config/systemd/user`.
+
+Rust binaries are installed through normal `cargo install` calls. The caller's
+Cargo configuration and `CARGO_TARGET_DIR` apply; projects do not share an
+implicit cache or target under Steward. The optional `session-services.py
+--install-built` mode reads release artifacts from each project's `target/`, or
+from the caller's shared `CARGO_TARGET_DIR` when set.
 
 Steward D-Bus activation delegates to `rsynapse-steward.service`; the fallback
 Exec starts the same `rsynapse-steward` binary without systemd. Both its Associations1

@@ -1,10 +1,12 @@
 """Real HTTP -> session D-Bus -> locus integration in an isolated test bus."""
 import json, os, pathlib, socket, subprocess, sys, tempfile, time, urllib.error, urllib.request
 ROOT=pathlib.Path(__file__).resolve().parents[2]
-API=os.environ.get("RSYNAPSE_API_BIN",str(ROOT/"steward/target/release/rsynapse-dashboard-api"))
+def binary(project,name):return str(pathlib.Path(os.environ.get("CARGO_TARGET_DIR",ROOT/project/"target"))/"release"/name)
+API=os.environ.get("RSYNAPSE_API_BIN",binary("dashboard-api","rsynapse-dashboard-api"))
 LOCUS=os.environ.get("LOCUS_BIN",str(pathlib.Path.home()/".local/bin/rsynapse-locusd"))
-PROJD=os.environ.get("PROJD_BIN",str(ROOT/"steward/target/release/rsynapse-projd"))
-STEWARD=os.environ.get("STEWARD_BIN",str(ROOT/"steward/target/release/rsynapse-steward"))
+PROJD=os.environ.get("PROJD_BIN",binary("projd","rsynapse-projd"))
+PROJ=os.environ.get("PROJ_BIN",binary("projd","proj"))
+STEWARD=os.environ.get("STEWARD_BIN",binary("steward","rsynapse-steward"))
 
 if "--child" not in sys.argv:
     with tempfile.TemporaryDirectory(prefix="rsynapse-goal-api-") as temp:
@@ -52,10 +54,10 @@ try:
     assert len(bindings)==1 and bindings[0][0][0]["id"]=="77" and bindings[0][1] is False
     assert bindings[0][0][3]["project-id"]==context[0] and "context-id" not in bindings[0][0][3]
     other=pathlib.Path(os.environ["RSYNAPSE_TEST_DIR"])/"other";other.mkdir()
-    before_projects=subprocess.check_output([str(ROOT/"steward/target/release/proj"),"project","list","--json"])
+    before_projects=subprocess.check_output([PROJ,"project","list","--json"])
     blocked=init_workspace(77,str(other),check=False)
     assert blocked.returncode!=0 and "already has a project" in blocked.stderr
-    assert subprocess.check_output([str(ROOT/"steward/target/release/proj"),"project","list","--json"])==before_projects
+    assert subprocess.check_output([PROJ,"project","list","--json"])==before_projects
     unchanged=json.loads(subprocess.check_output(["busctl","--user","--json=short","call","org.rsynapse.Locus","/org/rsynapse/Locus","org.rsynapse.Locus.Relations1","ListWithPersistence","s","org.rsynapse.workspace.project"],text=True))["data"][0]
     assert unchanged==bindings
     rebound=subprocess.check_output(["busctl","--user","--json=short","call","org.rsynapse.Steward","/org/rsynapse/Steward","org.rsynapse.Steward.Associations1","BindWorkspaceProject","ts","77",str(other)],text=True)
@@ -68,19 +70,19 @@ try:
         return json.loads(subprocess.check_output(["busctl","--user","--json=short","call","org.rsynapse.Locus","/org/rsynapse/Locus","org.rsynapse.Locus.Relations1","ListWithPersistence","s",relation],text=True))["data"][0]
     names=relation_rows("org.rsynapse.workspace.name")
     init_workspace(78,os.environ["RSYNAPSE_TEST_DIR"])
-    projects=subprocess.check_output([str(ROOT/"steward/target/release/proj"),"project","list","--json"])
+    projects=subprocess.check_output([PROJ,"project","list","--json"])
     subprocess.run(["busctl","--user","call","org.rsynapse.Steward","/org/rsynapse/Steward","org.rsynapse.Steward.Associations1","UnassignWorkspaceProject","t","77"],check=True)
     left=relation_rows("org.rsynapse.workspace.project")
     assert len(left)==1 and left[0][0][0]["id"]=="78"
     assert relation_rows("org.rsynapse.workspace.name")==names
-    assert subprocess.check_output([str(ROOT/"steward/target/release/proj"),"project","list","--json"])==projects
+    assert subprocess.check_output([PROJ,"project","list","--json"])==projects
     policies=relation_rows("org.rsynapse.workspace.project-policy")
     assert len(policies)==1 and policies[0][0][0]["id"]=="77" and policies[0][0][3]["automatic"]=="false" and policies[0][1] is False
     init_workspace(77,os.environ["RSYNAPSE_TEST_DIR"])
     assert relation_rows("org.rsynapse.workspace.project-policy")==[]
     assert relation_rows("org.rsynapse.workspace.name")==names
     project_id=context[0]
-    proj_bin=str(ROOT/"steward/target/release/proj")
+    proj_bin=PROJ
     subprocess.run([proj_bin,"remove",project_id],check=True)
     wait(lambda: relation_rows("org.rsynapse.workspace.project")==[])
     assert relation_rows("org.rsynapse.workspace.name")==names

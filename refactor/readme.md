@@ -1,7 +1,11 @@
-# Rsynapse Review Session
+# Historical Rsynapse Review Session
 
-This directory records the interactive review over every project in the
-workspace. Keep observations durable here as each unit is reviewed.
+This directory records an earlier interactive review over the workspace. Its
+findings and verification commands are historical: `niri-dbus` has since been
+replaced by `workspace-dbus`, and some findings have already been addressed.
+See the [workspace overview](../README.md) for current ownership and the
+[repository review](../docs/repository-review.md) for the latest portability
+and extraction findings. Current task progress belongs in `proj`.
 
 ## Global Constraints
 

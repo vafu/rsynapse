@@ -53,7 +53,7 @@ def worker(args):
         XDG_CONFIG_HOME=str(root / "config"), XDG_STATE_HOME=str(root / "state"),
         XDG_DATA_HOME=str(root / "data"), XDG_CACHE_HOME=str(root / "cache"),
         XDG_CURRENT_DESKTOP="umbriel", XDG_SESSION_DESKTOP="umbriel",
-        WLR_BACKENDS="headless", WLR_HEADLESS_OUTPUTS="2" if args.phase in ("capture", "hotplug") else "1", WLR_LIBINPUT_NO_DEVICES="1",
+        WLR_BACKENDS="headless", WLR_HEADLESS_OUTPUTS="2" if args.phase == "capture" else "1", WLR_LIBINPUT_NO_DEVICES="1",
         GTK_A11Y="none", NO_AT_BRIDGE="1", GTK_USE_PORTAL="0", GDK_BACKEND="wayland",
         GDK_DEBUG="no-portals", GIO_USE_VFS="local", CARBON_PORT="9",
         LOCUS_RELATIONS_PATH=str(root / "relations.json"), PROJD_STORE_PATH=str(root / "projects.sqlite3"),
@@ -180,18 +180,7 @@ def worker(args):
         steward = start("steward", [args.steward, "associations"])
         wait(lambda: call("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus",
             "NameHasOwner", GLib.Variant("(s)", ("org.rsynapse.Steward",))))
-        if args.phase == "hotplug":
-            from session_hotplug import exercise
-            def restart_steward():
-                steward.terminate()
-                steward.wait(timeout=5)
-                wait(lambda: not call("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus",
-                    "NameHasOwner", GLib.Variant("(s)", ("org.rsynapse.Steward",))))
-                start("steward-restarted", [args.steward, "associations"])
-                wait(lambda: call("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus",
-                    "NameHasOwner", GLib.Variant("(s)", ("org.rsynapse.Steward",))))
-            exercise(root, start, wait, properties, windows, workspace, control, bind, cli, restart_steward)
-        elif args.phase == "silent":
+        if args.phase == "silent":
             from session_silent import exercise
             exercise(root, start, wait, properties, windows, workspace, control, cli)
         elif args.phase == "capture":
@@ -318,8 +307,7 @@ def main():
     parser.add_argument("--locusd", default=str(Path.home() / ".local/bin/rsynapse-locusd"))
     parser.add_argument("--projd", default=str(Path.home() / ".local/bin/rsynapse-projd"))
     parser.add_argument("--umbriel", default="umbriel")
-    parser.add_argument("--phase", choices=("capture", "restore", "hotplug", "silent"))
-    parser.add_argument("--hotplug", action="store_true", help="test same-session output removal/group preservation")
+    parser.add_argument("--phase", choices=("capture", "restore", "silent"))
     parser.add_argument("--silent", action="store_true", help="test background launch rules, silent moves and final focus")
     parser.add_argument("--probe", action="store_true")
     parser.add_argument("--app-id", default=APP)
@@ -344,7 +332,7 @@ def main():
         '<policy context="default"><allow send_destination="*" eavesdrop="true"/>'
         '<allow eavesdrop="true"/><allow own="*"/></policy></busconfig>')
     arguments = sys.argv[1:]
-    for phase in (("hotplug",) if args.hotplug else ("capture", "silent") if args.silent else ("capture", "restore")):
+    for phase in (("capture", "silent") if args.silent else ("capture", "restore")):
         subprocess.run(["dbus-run-session", "--config-file=" + str(config), "--", sys.executable,
             str(Path(__file__).resolve()), *arguments, "--phase", phase], check=True)
 

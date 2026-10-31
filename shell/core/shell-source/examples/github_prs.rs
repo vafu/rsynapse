@@ -32,18 +32,20 @@ async fn main() {
     let _summary = github::summary().subscribe_with(Print(|summary| {
         println!("summary: {summary:?}");
     }));
-    let _prs = github::pull_requests().subscribe_with(Print(|prs: Option<Vec<github_dbus_api::PullRequest>>| {
-        let prs = prs.unwrap_or_default();
-        let merging: Vec<_> = prs
-            .iter()
-            .filter(|pr| pr.status == github_dbus_api::PrStatus::Merging)
-            .map(|pr| pr.number)
-            .collect();
-        println!("prs: {} total, merging: {merging:?}", prs.len());
-    }));
-    let _notifications = github::notifications().subscribe_with(Print(|event: github_dbus_api::NotificationEvent| {
-        println!("notification: [{}] {}", event.repo, event.title);
-    }));
+    let _prs =
+        github::pull_requests().subscribe_with(Print(|prs: Option<Vec<github::PullRequest>>| {
+            let prs = prs.unwrap_or_default();
+            let merging: Vec<_> = prs
+                .iter()
+                .filter(|pr| pr.status == github::PrStatus::Merging)
+                .map(|pr| pr.number)
+                .collect();
+            println!("prs: {} total, merging: {merging:?}", prs.len());
+        }));
+    let _notifications =
+        github::notifications().subscribe_with(Print(|event: github::NotificationEvent| {
+            println!("notification: [{}] {}", event.repo, event.title);
+        }));
 
     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
 }

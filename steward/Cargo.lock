@@ -1489,6 +1489,7 @@ dependencies = [
  "rsynapse-projd-model",
  "rxrust",
  "serde",
+ "serde_json",
  "tokio",
  "tracing",
  "wayland-client",

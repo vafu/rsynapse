@@ -73,12 +73,14 @@ From the repository root:
 bash install/dashboard-api.sh
 ```
 
-This builds Rust against public crates.io using the steward's isolated Cargo
-cache/target directory, builds the panel from pinned npm dependencies, installs
+This builds Rust with the caller's Cargo configuration, builds the panel from
+pinned npm dependencies using the caller's npm registry configuration, installs
 the API binary and user service, and recreates Grafana with the panel mounted.
 It preserves the Grafana storage volume and enables only the three local panels'
 unsigned-plugin IDs. `PREFIX` overrides the default `~/.local` binary prefix.
 The GTK shell installer remains separate.
+Standalone builds use `dashboard-api/target` unless `CARGO_TARGET_DIR` is set;
+projd and Steward use their own target directories by default.
 
 API defaults:
 

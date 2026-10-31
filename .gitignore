@@ -1,3 +1,15 @@
 target/
-steward/.cargo-home/*
-!steward/.cargo-home/config.toml
+# Legacy local Cargo cache; no build script requires or creates it.
+steward/.cargo-home/
+.direnv/
+result
+
+# Local agent permissions and legacy per-checkout desktop metadata.
+.claude/settings.local.json
+.project.json
+
+# Generated verification artifacts.
+/output/
+__pycache__/
+*.py[cod]
+/observability/grafana/generated/

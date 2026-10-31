@@ -33,6 +33,7 @@ def exercise():
         runtime.mkdir(mode=0o700)
         config = directory / "config.toml"
         config.write_text('[general]\nautostart = []\nxwayland = false\n'
+            '[animation]\nenabled = false\n'
             '[output.HEADLESS-1]\nfocus_at_startup = true\n')
         environment = dict(os.environ, XDG_RUNTIME_DIR=str(runtime), WLR_BACKENDS="headless",
             WLR_HEADLESS_OUTPUTS="2", WLR_LIBINPUT_NO_DEVICES="1", GTK_A11Y="none",
@@ -61,12 +62,12 @@ def exercise():
                 assert "err" not in result, result
                 return result["ok"]
 
-            def action(value):
-                return request("msg", arg=value)
+            def action(value, **fields):
+                return request("action", action=value, **fields)
 
             def select(identity):
                 workspace = next(w for w in request("workspaces") if w["id"] == identity)
-                action(f'workspace-switch:{workspace["index"]}/{workspace["output"]}')
+                action("workspace-switch", workspace=workspace["index"], output=workspace["output"])
 
             # Wait for actual client map events, without readiness sleeps/polling.
             with socket.socket(socket.AF_UNIX) as subscription:
@@ -86,9 +87,8 @@ def exercise():
             first = next(w for w in windows if w["title"] == "Insertion A")
             second = next(w for w in windows if w["title"] == "Insertion B")
             output = first["output"]
-            action("window-focus:" + second["id"])
-            action(f"window-move-to-workspace:2/{output}")
-            subprocess.run(["umbriel", "settle"], env=environment, check=True)
+            action("window-focus", window=second["id"])
+            action("window-move-to-workspace", workspace=2, output=output)
             anchors = {w["id"]: w["workspace"] for w in request("windows")}
             other_ids = {w["id"] for w in request("workspaces") if w["output"] != output}
             checks = []
@@ -115,7 +115,6 @@ def exercise():
                 # normal pruning, while preserving required edge sentinels.
                 interior = blank["index"] < max(w["index"] for w in snapshot if w["output"] == output)
                 action("workspace-focus-last")
-                subprocess.run(["umbriel", "settle"], env=environment, check=True)
                 closed = request("workspaces")
                 assert next(w for w in closed if w["focused"])["id"] == original["id"], closed
                 if interior:

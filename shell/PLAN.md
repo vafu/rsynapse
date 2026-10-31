@@ -109,12 +109,13 @@ Framework crates under `core/` own:
   widget, including directional owner/content layout, always-open or hover
   reveal policies, and signal-driven popup visibility holds.
 - Completed: project-owned label editing in the Project popover and per-output
-  GitHub filtering from the existing selected-project context. Membership follows
+  authored-PR filtering from the existing selected-project context. Membership follows
   owned github-dbus Listeners; singleton listeners preserve any-label semantics.
   No project/no labels uses a global listener. Workspace occupancy is irrelevant.
 - Completed: incoming review-request discovery in github-dbus and a distinct
   Review requested from you bucket in the shell. Requests retain underlying
-  status details, existing project-label scope and persistent unseen revisions.
+  status details and persistent unseen revisions. Reviews use a separate tagless
+  Listener and remain global regardless of project labels or project availability.
   Authored status and GitHub activity use separate icon-only pill blocks with
   pull-request and GitHub headers respectively.
 - Completed: GitHub activity distinguishes initial reviews, explicit re-reviews
@@ -124,6 +125,10 @@ Framework crates under `core/` own:
   Archived repositories are excluded from all backend PR discovery sources.
 
 ### 4. D-Bus Source Integration
+
+- Completed: github-dbus JSON wire records/enums are defined by the Rsynapse
+  client. Generic source builds no longer require the private producer API
+  checkout; D-Bus names, payloads, listeners and UI behavior remain unchanged.
 
 - Completed: shell compositor state uses the independent `workspace-dbus-api`
   contract and opaque string IDs, with no compositor protocol dependency or

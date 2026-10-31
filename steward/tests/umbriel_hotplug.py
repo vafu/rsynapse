@@ -1,4 +1,4 @@
-"""Opt-in integration: run under dbus-run-session with built service binaries."""
+"""Private compositor regression: Steward expires links without repairing topology."""
 import argparse
 import json
 import os
@@ -15,8 +15,8 @@ WORKSPACE_ROOT = "/org/rsynapse/Workspace"
 MANAGER = "org.rsynapse.Workspace.Manager1"
 WINDOW = "org.rsynapse.Workspace.Window1"
 WORKSPACE = "org.rsynapse.Workspace.Workspace1"
+OUTPUT = "org.rsynapse.Workspace.Output1"
 RELATION = "org.rsynapse.workspace.project"
-ANCHOR = "org.rsynapse.window.workspace-project"
 
 
 def exercise(args):
@@ -110,6 +110,21 @@ def exercise(args):
         return call("org.rsynapse.Steward", "/org/rsynapse/Steward", "org.rsynapse.Steward.Associations1",
             "BindWorkspaceProject", GLib.Variant("(ss)", (identity, str(path))))
 
+    def action(name, **fields):
+        return request("action", action=name, **fields)
+
+    def save(name):
+        return call("org.rsynapse.Steward", "/org/rsynapse/Steward", "org.rsynapse.Steward.Session1",
+            "Save", GLib.Variant("(s)", (name,)))
+
+    def matches_compositor():
+        projected = {}
+        for identity, window in inventory().items():
+            member = properties(window["Workspace"][0], WORKSPACE)
+            projected[identity] = (properties(member["Output"][0], OUTPUT)["Name"], member["Index"])
+        native = {w["id"]: (w["output"], w["index"]) for w in request("workspaces")}
+        return projected == {w["id"]: native[w["workspace"]] for w in request("windows")}
+
     try:
         subscriptions.append(bus.signal_subscribe(None, None, None, None, None, Gio.DBusSignalFlags.NONE, wake))
         compositor = subprocess.Popen([args.umbriel, "-c", str(config)], env=env,
@@ -141,65 +156,50 @@ def exercise(args):
         native = request("windows")
         first = next(w["id"] for w in native if w["title"] == "Umbriel probe A")
         second = next(w["id"] for w in native if w["title"] == "Umbriel probe B")
-        project_a, project_b, project_c = [directory / name for name in ("project-a", "project-b", "project-c")]
-        for path in (project_a, project_b, project_c):
+        project_a, project_b = [directory / name for name in ("project-a", "project-b")]
+        for path in (project_a, project_b):
             path.mkdir()
         bind(workspace(first), project_a)
-        request("output-create", arg="project-hotplug 800x600@30")
-        request("msg", arg=f"window-focus:{second}")
-        request("msg", arg="window-move-to-workspace:1/project-hotplug")
+        request("output-create", args=["project-hotplug", "800x600@30"])
+        action("window-focus", window=second)
+        action("window-move-to-workspace", workspace=1, output="project-hotplug")
         wait(lambda: workspace(second) is not None and workspace(second).startswith("project-hotplug:"))
         original = workspace(second)
         bind(original, project_b)
-        wait(lambda: any(record["subject"].get("id") == second and record["target"].get("id") == str(project_b)
-            for record in records(ANCHOR)))
-        # Keep an unassigned active destination on either remaining output.
-        # If evacuation lands in an explicitly bound workspace, that existing
-        # user's choice correctly wins instead of recovering the old project.
-        for output in ("HEADLESS-1", "HEADLESS-2"):
-            blank = max((w for w in request("workspaces") if w["output"] == output), key=lambda w: w["index"])
-            assert blank["window_count"] == 0
-            request("msg", arg=f'workspace-switch:{blank["index"]}/{output}')
-        request("msg", arg="workspace-switch:1/project-hotplug")
-        request("output-destroy", arg="project-hotplug")
+        save("before-hotplug")
+        request("output-destroy", args=["project-hotplug"])
         wait(lambda: workspace(second) is not None and workspace(second) != original)
         replacement = workspace(second)
-        wait(lambda: assigned(replacement, project_b))
-        assert not assigned(original, project_b)
+        wait(lambda: not assigned(original, project_b))
+        # A capture is also an operation-gate barrier. It must observe the new
+        # native arrangement without running recovery or copying the old bind.
+        save("after-hotplug")
+        assert workspace(second) == replacement
+        assert not assigned(replacement, project_b)
+        assert matches_compositor()
         assert len(inventory()) == 2
         assert assigned(workspace(first), project_a)
-        # A normal explicit selection must still override recovered context.
-        chosen = bind(replacement, project_c)
-        wait(lambda: assigned(replacement, project_c))
+        # Intentional selection remains available for a new workspace lifetime.
+        bind(replacement, project_b)
+        wait(lambda: assigned(replacement, project_b))
         # A replacement monitor can reuse its connector and native counters.
         # The public API must expose a fresh workspace identity for that life.
-        request("output-create", arg="project-hotplug 800x600@30")
-        request("msg", arg=f"window-focus:{second}")
-        request("msg", arg="window-move-to-workspace:1/project-hotplug")
+        request("output-create", args=["project-hotplug", "800x600@30"])
+        action("window-focus", window=second)
+        action("window-move-to-workspace", workspace=1, output="project-hotplug")
         wait(lambda: workspace(second) is not None and workspace(second).startswith("project-hotplug:"))
         reincarnated = workspace(second)
         assert reincarnated != original, "native workspace ID reuse leaked into the public API"
-        wait(lambda: assigned(reincarnated, project_c))
-        for output in ("HEADLESS-1", "HEADLESS-2"):
-            blank = max((w for w in request("workspaces") if w["output"] == output), key=lambda w: w["index"])
-            assert blank["window_count"] == 0
-            request("msg", arg=f'workspace-switch:{blank["index"]}/{output}')
-        request("msg", arg="workspace-switch:1/project-hotplug")
-        request("output-destroy", arg="project-hotplug")
-        wait(lambda: workspace(second) is not None and workspace(second) != reincarnated)
-        replacement = workspace(second)
-        wait(lambda: assigned(replacement, project_c))
-        call("org.rsynapse.Proj", "/org/rsynapse/Proj", "org.rsynapse.Proj.Manager1", "RemoveProject",
-            GLib.Variant("(s)", (chosen,)))
-        wait(lambda: not assigned(replacement, project_c))
-        wait(lambda: not any(record["metadata"].get("project-id") == chosen for record in records(ANCHOR)))
+        save("after-manual-move")
+        assert not assigned(reincarnated, project_b)
+        assert matches_compositor()
         print(json.dumps({"real_umbriel_hotplug": True, "replacement_workspace": True,
-            "project_binding_recovered": True, "explicit_reassignment": True,
-            "project_removal_cleans_anchors": True, "windows_preserved": True,
+            "expired_binding_removed": True, "no_inferred_rebinding": True,
+            "explicit_assignment": True, "native_placement_preserved": True, "windows_preserved": True,
             "reused_connector_has_fresh_workspace_identity": True}))
     except Exception:
         diagnostic = {}
-        for name, read in (("bindings", lambda: records(RELATION)), ("anchors", lambda: records(ANCHOR)),
+        for name, read in (("bindings", lambda: records(RELATION)),
                            ("windows", inventory), ("native_workspaces", lambda: request("workspaces"))):
             try:
                 diagnostic[name] = read()

@@ -149,7 +149,7 @@ env CARGO_TARGET_DIR=/tmp/rsynapse-shell-target cargo test -p rsynapse-shell req
 Install/restart when the running shell should reflect changes:
 
 ```sh
-env CARGO_TARGET_DIR=/tmp/rsynapse-shell-target cargo install --path app --locked --force --root /home/v47/.local
+env CARGO_TARGET_DIR=/tmp/rsynapse-shell-target cargo install --path app --locked --force --root "$HOME/.local"
 systemctl --user restart rsynapse-shell.service
 systemctl --user status rsynapse-shell.service --no-pager
 ```

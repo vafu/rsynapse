@@ -1,7 +1,9 @@
 """Exercise migration against private real services, including conflict safety."""
 import json,os,pathlib,subprocess,sys,tempfile,time
 ROOT=pathlib.Path(__file__).resolve().parents[2]
-PROJ=os.environ.get("PROJ_BIN",str(ROOT/"steward/target/release/proj"))
+BIN=pathlib.Path(os.environ.get("CARGO_TARGET_DIR",ROOT/"projd/target"))/"release"
+PROJ=os.environ.get("PROJ_BIN",str(BIN/"proj"))
+PROJD=os.environ.get("PROJD_BIN",str(BIN/"rsynapse-projd"))
 if "--child" not in sys.argv:
     with tempfile.TemporaryDirectory(prefix="projd-migration-") as temp:
         env=dict(os.environ,PROJ_BIN=PROJ,LOCUS_RELATIONS_PATH=temp+"/relations.json",PROJD_STORE_PATH=temp+"/projd.sqlite3",XDG_STATE_HOME=temp,XDG_DATA_HOME=temp,XDG_DATA_DIRS=temp)
@@ -14,7 +16,7 @@ def bind(kind,id,relation,target_kind,target,metadata,persist):
     flat=[str(len(metadata))]
     for k,v in metadata.items():flat.extend([k,v])
     call("SetWithPersistence","a{ss}sa{ss}a{ss}b",*endpoint(kind,id),relation,*endpoint(target_kind,target),*flat,str(persist).lower())
-daemons=[subprocess.Popen([os.environ["LOCUS_BIN"]]),subprocess.Popen([str(ROOT/"steward/target/release/rsynapse-projd")])]
+daemons=[subprocess.Popen([os.environ["LOCUS_BIN"]]),subprocess.Popen([PROJD])]
 try:
     for _ in range(500):
         try:call("List","s","");subprocess.check_output([PROJ,"goal","list","--all","--json"],stderr=subprocess.DEVNULL);break

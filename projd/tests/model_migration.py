@@ -1,6 +1,8 @@
 """Legacy grouped worktrees become distinct projects; contexts disappear atomically."""
 import json,os,pathlib,sqlite3,subprocess,sys,tempfile,time
-ROOT=pathlib.Path(__file__).resolve().parents[2];PROJD=str(ROOT/'steward/target/release/rsynapse-projd');PROJ=str(ROOT/'steward/target/release/proj')
+ROOT=pathlib.Path(__file__).resolve().parents[2]
+BIN=pathlib.Path(os.environ.get('CARGO_TARGET_DIR',ROOT/'projd/target'))/'release'
+PROJD=os.environ.get('PROJD_BIN',str(BIN/'rsynapse-projd'));PROJ=os.environ.get('PROJ_BIN',str(BIN/'proj'))
 if '--child' not in sys.argv:
     with tempfile.TemporaryDirectory(prefix='projd-model-migrate-') as temp:
         base=pathlib.Path(temp);repo=base/'repo';repo.mkdir()

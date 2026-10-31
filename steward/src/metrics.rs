@@ -21,7 +21,16 @@ use crate::{
 
 use crate::workspace::{object as workspace_object, root_property};
 
+#[path = "metrics/agents.rs"]
 mod agents;
+#[path = "metrics/context.rs"]
+mod context;
+#[cfg(test)]
+#[path = "metrics/probe.rs"]
+mod probe;
+#[cfg(test)]
+#[path = "metrics/source_test.rs"]
+mod source_test;
 
 fn prefix() -> String {
     std::env::var("METRIC_PREFIX").unwrap_or_else(|_| "rsynapse".to_owned())
@@ -76,14 +85,17 @@ impl Metrics {
                 _ = shutdown.changed() => break Ok(()),
                 item = states.next() => match item {
                     Some(Ok(state)) => {
+                        // Focus accounting/publishing must precede unrelated
+                        // domain persistence, which can block or fail on D-Bus.
+                        let observed = Instant::now();
+                        tracker.observe(state.clone(), observed);
+                        publish_events(&mut tracker, &batch_sender);
                         current_focus=state.clone();
                         goal_work.observe(crate::goal_work::scope(&state,&current_goals)).await;
                         productivity.focus(state.clone(), crate::productivity::tracker_now());
                         publish_pending(productivity.publish(&self.locus).await?, &batch_sender);
                         publish_pending(workdays.observe(&state, &self.locus).await?, &batch_sender);
-                        agents.focus(state.window_id.clone(), !state.locked && !state.idle, Instant::now());
-                        tracker.observe(state, Instant::now());
-                        publish_events(&mut tracker, &batch_sender);
+                        agents.focus(state.window_id.clone(), !state.locked && !state.idle, observed);
                         publish_pending(agents.drain(), &batch_sender);
                     }
                     Some(Err(error)) => break Err(anyhow::anyhow!("focus/activity source failed: {error}")),
@@ -293,72 +305,64 @@ mod lock_tests {
     }
 }
 
-/// Full focus state: root focus paths combined, dynamic details resolved per
-/// selection. Single process-wide subscriber; hubs stay connected while the
-/// daemon runs, so workspace switches decode from signals with no re-reads.
+/// Workspace/project context survives window switches and optional enrichment.
 fn focus_state(locus: &LocusClient) -> Observable<FocusState> {
+    combine_latest!(
+        context::source(locus.clone()),
+        window_focus(locus.clone())
+        => move |(context, window): (context::Context, WindowFocus)| FocusState {
+            locked: false,
+            idle: false,
+            workspace_id: context.workspace_id,
+            workspace_name: context.workspace_name,
+            window_id: window.window_id,
+            app_id: window.app_id,
+            project: context.project,
+            project_id: context.project_id,
+            output: window.output,
+        },
+    )
+    .distinct_until_changed()
+    .box_it()
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+struct WindowFocus {
+    window_id: Option<String>,
+    app_id: Option<String>,
+    output: Option<String>,
+}
+
+fn window_focus(locus: LocusClient) -> Observable<WindowFocus> {
     let selection = combine_latest!(
-        crate::workspace::focused_workspace_id(),
         crate::workspace::focused_window_id(),
         focused_window(),
         focused_output()
-        => |(workspace, window_id, window, output)| (workspace, window_id, window, output),
+        => |(window_id, window, output)| (window_id, window, output),
     )
     .distinct_until_changed()
     .box_it();
-    let locus = locus.clone();
-    shell_source::switch_map(selection, move |(workspace, window_id, window, output)| {
-        let workspace = workspace.clone();
+    shell_source::switch_map(selection, move |(window_id, window, output)| {
         let window = window.clone();
         // Rebuilt per switch on purpose: shared hubs dedupe by descriptor
         // key, so this reuses the live upstream instead of cloning streams.
-        let projects = relations::records(locus.clone(), relations::WORKSPACE_PROJECT);
         let instances = relations::records(locus.clone(), relations::WINDOW_APP_INSTANCE);
         let agents = relations::records(locus.clone(), relations::WINDOW_AGENT_SESSION);
-        let names = relations::records(locus.clone(), relations::WORKSPACE_NAME);
         combine_latest!(
             resolve_app(window.clone(), window_id.clone(), instances, agents),
-            resolve_output_name(output.clone()),
-            project_for(projects, workspace.clone()),
-            project_id_for(relations::records(locus.clone(),relations::WORKSPACE_PROJECT), workspace.clone()),
-            explicit_name_for(names, workspace.clone())
-            => move |(app, output_name, project, project_id, explicit_name)| FocusState {
-                locked: false,
-                idle: false,
-                workspace_id: workspace.clone(),
-                // Explicit locus name wins; project display name covers
-                // project-native workspaces; otherwise id-only.
-                workspace_name: explicit_name.or(project.clone()),
+            resolve_output_name(output.clone())
+            => move |(app, output_name): (Option<String>, Option<String>)| WindowFocus {
                 window_id: window_id.clone(),
                 app_id: app,
-                project,
-                project_id,
                 output: output_name,
             },
         )
         .distinct_until_changed()
         .box_it()
     })
+    .start_with(vec![WindowFocus::default()])
     .distinct_until_changed()
     .box_it()
-}
-
-fn project_id_for(
-    records: Observable<Vec<RelationRecord>>,
-    workspace_id: Option<String>,
-) -> Observable<Option<String>> {
-    let Some(id) = workspace_id else {
-        return shell_source::once(None);
-    };
-    let subject = locus::RelationEndpoint::stable_key(locus::keys::WORKSPACE_ID, id);
-    records
-        .map(move |rows| {
-            rows.into_iter()
-                .find(|r| r.subject == subject)
-                .and_then(|r| r.metadata.get("project-id").cloned())
-        })
-        .distinct_until_changed()
-        .box_it()
 }
 
 fn focused_window() -> Observable<Option<OwnedObjectPath>> {
@@ -393,6 +397,8 @@ fn resolve_app(
         app_id
         => move |(agent, hook, app_id)| agent.or(hook).or(app_id),
     )
+    // Enrichment may arrive late; it must not freeze workspace/project timers.
+    .start_with(vec![None])
     .distinct_until_changed()
     .box_it()
 }
@@ -411,27 +417,6 @@ fn resolve_output_name(output: Option<OwnedObjectPath>) -> Observable<Option<Str
     .map(|name| (!name.is_empty()).then_some(name))
     .distinct_until_changed()
     .box_it()
-}
-
-fn project_for(
-    records: Observable<Vec<RelationRecord>>,
-    workspace_id: Option<String>,
-) -> Observable<Option<String>> {
-    let Some(id) = workspace_id else {
-        return shell_source::once(None);
-    };
-    let subject = locus::RelationEndpoint::stable_key(locus::keys::WORKSPACE_ID, id);
-    records
-        .map(move |records| {
-            records.into_iter().find_map(|record| {
-                if record.subject != subject {
-                    return None;
-                }
-                project_name(&record)
-            })
-        })
-        .distinct_until_changed()
-        .box_it()
 }
 
 fn hook_app_name(
@@ -457,52 +442,6 @@ fn hook_app_name(
         })
         .distinct_until_changed()
         .box_it()
-}
-
-/// Explicit workspace name from the namer-owned relation, if any.
-fn explicit_name_for(
-    records: Observable<Vec<RelationRecord>>,
-    workspace_id: Option<String>,
-) -> Observable<Option<String>> {
-    let Some(id) = workspace_id else {
-        return shell_source::once(None);
-    };
-    let subject = locus::RelationEndpoint::stable_key(locus::keys::WORKSPACE_ID, id);
-    records
-        .map(move |records| {
-            records.into_iter().find_map(|record| {
-                if record.subject != subject {
-                    return None;
-                }
-                let name = match &record.target {
-                    locus::RelationEndpoint::StableKey { kind, id }
-                        if kind == relations::WORKSPACE_NAME_KIND =>
-                    {
-                        id.clone()
-                    }
-                    _ => return None,
-                };
-                (!name.trim().is_empty()).then_some(name)
-            })
-        })
-        .distinct_until_changed()
-        .box_it()
-}
-
-fn project_name(record: &RelationRecord) -> Option<String> {
-    record
-        .metadata
-        .get("name")
-        .cloned()
-        .filter(|name| !name.trim().is_empty())
-        .or_else(|| {
-            record.metadata.get("path").and_then(|path| {
-                std::path::Path::new(path)
-                    .file_name()
-                    .and_then(|name| name.to_str())
-                    .map(str::to_owned)
-            })
-        })
 }
 
 fn publish_events(tracker: &mut Tracker, batch_sender: &mpsc::Sender<Vec<(String, f64, u64)>>) {

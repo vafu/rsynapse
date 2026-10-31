@@ -174,8 +174,9 @@ directories, change project CWD, or resurrect deleted project registrations.
 Desktop commands from the old Bash helper (`set-current`, `refresh-current`,
 `publish`, `clear`) are no longer project-management operations. To associate
 the current workspace, use `steward bind-current PATH`, or click the shell's
-initialize-project icon beside an unassociated workspace name. The old script
-is kept only as `install/bin/legacy-proj` for migration reference.
+initialize-project icon beside an unassociated workspace name. The old Bash
+implementation is available in Git history; the data migration tool remains
+at `install/migrate-projd.py`.
 
 ## Goal history and work metrics
 
@@ -266,23 +267,26 @@ The service executable and unit are `rsynapse-projd` and
 ```sh
 bash projd/build.sh --locked
 python3 projd/tests/integration.py
-PROJD_BIN="$PWD/steward/target/debug/rsynapse-projd" \
-  PROJ_BIN="$PWD/steward/target/debug/proj" python3 projd/tests/labels.py
+python3 projd/tests/labels.py
 python3 projd/tests/checklist.py
 python3 projd/tests/metrics.py
 python3 projd/tests/model_migration.py
 python3 projd/tests/responsiveness.py
 python3 steward/tests/model_migration.py
-PROJD_BIN="$PWD/steward/target/release/rsynapse-projd" \
+PROJD_BIN="$PWD/projd/target/release/rsynapse-projd" \
   cargo test --manifest-path shell/Cargo.toml -p shell-source \
   --test project_icons -- --ignored
-PROJD_BIN="$PWD/steward/target/release/rsynapse-projd" \
+PROJD_BIN="$PWD/projd/target/release/rsynapse-projd" \
   cargo test --manifest-path shell/Cargo.toml -p shell-source \
   --test goals -- --ignored
-PROJD_BIN="$PWD/steward/target/release/rsynapse-projd" \
+PROJD_BIN="$PWD/projd/target/release/rsynapse-projd" \
   cargo test --manifest-path shell/Cargo.toml -p rsynapse-shell --lib \
   shell_autopicks_only_unset_project_icons -- --ignored
 ```
+
+Builds use the caller's normal Cargo configuration and write to `projd/target`
+unless `CARGO_TARGET_DIR` is set. The Python checks use release artifacts from
+that same location; tests accepting `PROJD_BIN`/`PROJ_BIN` can target other builds.
 
 The integration test runs on a private bus without any desktop or other service.
 It checks CLI/API parity, separate worktree projects, stored CWD, git notifications,

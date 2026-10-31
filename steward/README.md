@@ -5,6 +5,14 @@ per-project git status. Small single-purpose components (metrics, namer,
 git-status) share one bus connection through a thin locus client; reads
 go through `shell-source` observables, writes through the client.
 
+Steward owns Rsynapse association policy, derived context and activity
+attribution. Workspace project assignments come from explicit selection,
+project initialization or a user-requested session restore. Agent CWDs
+attribute agent/window projects independently of workspace assignments.
+Compositors own workspace identity, window grouping, layout and monitor
+detach/attach behavior. Lifecycle cleanup expires stale associations;
+it does not move windows or infer replacement workspace bindings.
+
 Local-only focus-time metrics: which project, app, output, and workspace
 holds focus, plus workspace-switch counts. Everything stays on this
 machine: the emitter pushes Graphite plaintext to a local carbon daemon,
@@ -13,8 +21,8 @@ leaving the process (only app-ids and project names become metric paths).
 
 ## Desktop session restoration
 
-Steward owns durable logical workspace identities, session capture and
-command-driven window restoration. Locus persists project associations; session
+Steward owns saved-session workspace identities, observation-only capture and
+user-requested window restoration. Locus persists project associations; session
 descriptions and versioned launch recipes live in Steward's own state file.
 See [SESSION.md](SESSION.md) for commands, lifecycle, launch configuration,
 supported behavior and isolated integration testing.
@@ -26,6 +34,7 @@ supported behavior and isolated integration testing.
   Restores through the optional workspace-dbus control interface, matching new
   windows by explicit launch identity or causal fresh process identity. Named
   snapshots retain immutable project references, and restores are repeatable.
+  Capture never repairs monitor topology or restores window placement by itself.
 
 - `goal_work`
   Attributes human focus to the focused workspace's stable project ID and its
@@ -42,6 +51,13 @@ supported behavior and isolated integration testing.
    crate (Apache-2.0) for the Graphite plaintext protocol.
   It also subscribes to all AgentDBus sessions for background agent-state
   durations, session counts, busy cycles, and response-to-read proxy latency.
+  Focused project identity comes from the binding's stable `project-id`; its
+  name is joined from projd's live project catalog. Locus metadata is not a
+  project-name/path mirror. Manual workspace names win; otherwise the current
+  project name (or `empty` for an unassigned workspace) is used, matching the bar.
+  App/agent/output metadata enriches focus independently, so a slow optional
+  property read cannot keep workspace time on the previous context. Focus
+  intervals are timestamped/published before awaiting other domain persistence.
 - `namer`
   Assigns workspace display names into the `org.rsynapse.workspace.name`
    relation: preferred manual names win, then the stored `Project.Name`,
@@ -52,13 +68,15 @@ supported behavior and isolated integration testing.
 - `git_status`
   Requests projd refreshes when project bindings change. Projd owns branch/git
   status and emits reactive properties; UI processes never shell out to git.
- - `associations`
-   Combines projd and session sources, managing workspace/window/project/agent
-   references and day/goal links in locus. `bind-current PATH` is the desktop
-    operation formerly in the old proj Bash helper.
-    At startup it remaps old grouped-project bindings by checkout identity,
-    preserves relation persistence, adopts workspace icon overrides into projects,
-     and updates compact project object-path references without changing goals.
+- `associations`
+  Combines projd and session sources, managing workspace/window/project/agent
+  references and day/goal links in locus. `bind-current PATH` is the desktop
+  operation formerly in the old proj Bash helper.
+  Agent observations resolve known projects for their windows without assigning
+  or reassigning the containing workspace.
+  At startup it remaps old grouped-project bindings by checkout identity,
+  preserves relation persistence, adopts workspace icon overrides into projects,
+  and updates compact project object-path references without changing goals.
 - `associations/workspace_cleanup`
   Observes the neutral API's workspace inventory and source lifecycle. Removes
   outgoing workspace-ID relations on removal/reset/owner loss, reconciles stale
@@ -69,15 +87,9 @@ supported behavior and isolated integration testing.
   metadata, preserving their persistence flags. This distinguishes stale links
   from a fresh binding to a reused native ID, including after steward restarts.
   Snapshot requests use a separate D-Bus connection from bounded signal queues,
-  preventing a hotplug burst from blocking the binding lock.
-- `associations/workspace_recovery`
-  Records session-only `org.rsynapse.window.workspace-project` anchors for the
-  current workspace's project intent, separately from an agent/window's own CWD
-  project. When a compositor replaces workspace objects during monitor changes,
-  a surviving same-owner/generation window can restore an unassigned workspace's
-  project. Multiple different project anchors are left for explicit selection;
-  existing bindings and explicit unassignment win. Closing windows, source resets,
-  and project removal clear obsolete anchors. No project metadata is recreated.
+  preventing a hotplug burst from blocking the binding lock. Cleanup observes
+  workspace inventories and source epochs independently of session capture or
+  restoration, without reading window placement or reconstructing associations.
 - `relations.rs`
   A thin write client plus `records()`
   observables over locus relations. Components compose observables and
@@ -100,10 +112,19 @@ supported behavior and isolated integration testing.
   Overview project/workspace focus charts each have one categorical lane
   containing the focused name or None, rather than one row per entity.
 
-## Registry note
+## Integration checks and builds
 
-An opt-in end-to-end hotplug check uses a private D-Bus, headless Umbriel, and
-isolated Locus/projd state (requires built service binaries and Python GI/GTK4):
+The Rust suite covers explicit assignment, window-only CWD attribution, stale
+workspace cleanup, source resets and signal backpressure:
+
+```sh
+cargo test --manifest-path steward/Cargo.toml --locked
+```
+
+An opt-in lifecycle check uses a private D-Bus, headless Umbriel, and isolated
+Locus/projd state. It verifies that expired bindings are removed, replacement
+workspaces require explicit assignment, and capture preserves native placement
+(requires built service binaries and Python GI/GTK4):
 
 ```sh
 python3 steward/tests/umbriel_hotplug.py \
@@ -120,16 +141,11 @@ explicitly opt into durability. See `../locus/README.md` for the contract and
 the `locus` CLI for `locusd`. Deploy the updated relation service before
 these callers.
 
-This crate resolves dependencies from the **public crates.io** registry,
-not the internal mirror from the user-wide cargo config. Two mechanisms
-enforce that:
-
-- `build.sh` runs cargo from a neutral CWD (`/tmp`, outside `$HOME` so
-  cargo's config walk-up never finds the mirror config) with an isolated
-  `CARGO_HOME` (`steward/.cargo-home`) and a repo-local target dir.
-- `steward/.cargo/config.toml` points crates-io at a nonexistent source so
-  a direct `cargo` run here fails loudly instead of silently using the
-  mirror. Always use `build.sh`.
+This crate uses normal Cargo configuration. `build.sh` is a convenience wrapper
+for `cargo build --release --manifest-path steward/Cargo.toml` and passes through
+arguments and the caller's environment. Direct Cargo invocations work too.
+Artifacts are in `steward/target` unless `CARGO_TARGET_DIR` is set. Nix development
+dependencies are declared in the repository-root flake.
 
 ## Run it
 
@@ -173,7 +189,7 @@ starts active; its first idle timeout begins when the source is created.
 
 | metric | meaning |
 |---|---|
-| `rsynapse.focus.project.<name>.idle.<true,false>.seconds` | completed focus duration per locus project, split by idle state |
+| `rsynapse.focus.project.<name>.idle.<true,false>.seconds` | completed focus duration per associated projd project, split by idle state |
 | `rsynapse.focus.workspace_name.<name>.idle.<true,false>.seconds` | same, keyed by workspace display name |
 | `rsynapse.focus.workspace_name.<name>.app.<app>.idle.<true,false>.seconds` | joint app usage within a workspace context |
 | `rsynapse.focus.project.<name>.state` | transition-only focus gauge: 0 not focused, 1 active focus, 2 idle focus |
@@ -181,7 +197,7 @@ starts active; its first idle timeout begins when the source is created.
 | `rsynapse.focus.no_project.state` | 1 when there is no focused project, 0 when a project is focused |
 | `rsynapse.focus.no_workspace_name.state` | 1 when there is no focused workspace, 0 otherwise |
 | `rsynapse.focus.app.<name>.idle.<true,false>.seconds` | focus duration per canonical app (`opencode`, `codex`, `neovim`, etc.), split by idle state |
-| `rsynapse.focus.workspace.<id>.idle.<true,false>.seconds` | focus duration per niri workspace id, including project-less workspaces |
+| `rsynapse.focus.workspace.<id>.idle.<true,false>.seconds` | focus duration per opaque workspace id, including project-less workspaces |
 | `rsynapse.focus.window.<id>.idle.<true,false>.seconds` | completed window focus duration, split by idle state |
 | `rsynapse.focus.output.<name>.idle.<true,false>.seconds` | focus duration per output, split by idle state |
 | `rsynapse.switches.workspace` | workspace-switch increments emitted immediately |
@@ -202,6 +218,15 @@ Input-idle transitions close the previous segment and immediately start a new
 segment on the same focus with the new idle state, without counting a switch.
 For example, idle -> active after 10 seconds on Codex reports 10 seconds in
 `rsynapse.focus.app.codex.idle.true.seconds` and starts an `idle.false` segment.
+
+Focus-source regressions run on a private bus with independent fake workspace,
+Locus and projd services. They hold an app-property read pending while switching
+workspaces and check full 300-second project/workspace intervals with a virtual
+clock. They also cover ID-only project bindings, live catalog renames, stale
+automatic workspace names and manual-name precedence. No desktop actions or
+real Carbon samples are involved. `metrics::probe::live_focus_probe` is a separate
+ignored, read-only diagnostic which prints collector state against uncached
+workspace API reads for 12 seconds; it never starts collectors or writes data.
 
 Active and idle totals are derived, not emitted as redundant counters:
 `sumSeries(rsynapse.focus.workspace.*.idle.true.seconds)` covers all idle

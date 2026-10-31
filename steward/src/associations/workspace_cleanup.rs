@@ -1,11 +1,10 @@
-//! Workspace lifetime policy belongs here, not in the compositor projection.
+//! Expire associations when their source workspace lifetime ends. Workspace
+//! placement and replacement identities remain authoritative in the compositor.
 use crate::relations::LocusClient;
 use futures_util::StreamExt;
 use locus::RelationEndpoint;
-use std::collections::{HashMap, HashSet};
-use workspace_dbus_api::{
-    BUS_NAME, MANAGER_INTERFACE, OUTPUT_INTERFACE, ROOT_PATH, WINDOW_INTERFACE, WORKSPACE_INTERFACE,
-};
+use std::collections::HashSet;
+use workspace_dbus_api::{BUS_NAME, MANAGER_INTERFACE, ROOT_PATH, WORKSPACE_INTERFACE};
 use zbus::{
     Connection, MatchRule, MessageStream,
     fdo::{DBusProxy, ObjectManagerProxy, PropertiesProxy},
@@ -27,19 +26,10 @@ fn source_changed(message: &zbus::Message) -> bool {
             )>() else {
                 return true;
             };
-            let names: &[&str] = match interface.as_str() {
-                MANAGER_INTERFACE => &[
-                    "Connected",
-                    "Generation",
-                    "Outputs",
-                    "Workspaces",
-                    "Windows",
-                ],
-                WINDOW_INTERFACE => &["Workspace"],
-                WORKSPACE_INTERFACE => &["Windows", "Output"],
-                OUTPUT_INTERFACE => &["Enabled"],
-                _ => return false,
-            };
+            if interface != MANAGER_INTERFACE {
+                return false;
+            }
+            let names = ["Connected", "Generation", "Workspaces"];
             names.iter().any(|name| {
                 changed.contains_key(*name)
                     || invalidated.iter().any(|value| value.as_str() == *name)
@@ -56,7 +46,6 @@ fn source_changed(message: &zbus::Message) -> bool {
                 return true;
             };
             interfaces.contains_key(WORKSPACE_INTERFACE)
-                || interfaces.contains_key(WINDOW_INTERFACE)
         }
         Some("InterfacesRemoved") => {
             let Ok((_, interfaces)) = message
@@ -65,9 +54,7 @@ fn source_changed(message: &zbus::Message) -> bool {
             else {
                 return true;
             };
-            interfaces
-                .iter()
-                .any(|name| [WORKSPACE_INTERFACE, WINDOW_INTERFACE].contains(&name.as_str()))
+            interfaces.iter().any(|name| name == WORKSPACE_INTERFACE)
         }
         _ => false,
     }
@@ -90,18 +77,6 @@ fn relation_changed(message: &zbus::Message, tracker: &Reconciler) -> bool {
     if kind != locus::keys::WORKSPACE_ID {
         return false;
     }
-    // Project/assignment-policy edits must refresh window recovery anchors even
-    // when the workspace epoch is already current (for example a direct Locus
-    // edit or a project-ID migration). Anchor writes themselves are window-keyed
-    // and do not feed this watcher back into a loop.
-    if [
-        crate::relations::WORKSPACE_PROJECT,
-        super::WORKSPACE_PROJECT_POLICY,
-    ]
-    .contains(&record.relation.as_str())
-    {
-        return true;
-    }
     // Our own epoch annotation already describes an observed live workspace.
     // It need not cause another full inventory/Locus read.
     !tracker.epoch.as_ref().is_some_and(|(owner, generation)| {
@@ -117,7 +92,6 @@ pub(super) struct Snapshot {
     pub(super) generation: u64,
     pub(super) connected: bool,
     pub(super) ids: HashSet<String>,
-    pub(super) windows: HashMap<String, Option<String>>,
 }
 
 #[derive(Default)]
@@ -156,7 +130,6 @@ struct Root {
     connected: bool,
     generation: u64,
     paths: Vec<OwnedObjectPath>,
-    windows: Vec<OwnedObjectPath>,
 }
 async fn root(proxy: &PropertiesProxy<'_>) -> anyhow::Result<Root> {
     let mut props = proxy
@@ -177,11 +150,6 @@ async fn root(proxy: &PropertiesProxy<'_>) -> anyhow::Result<Root> {
             props
                 .remove("Workspaces")
                 .ok_or_else(|| anyhow::anyhow!("missing Workspaces"))?,
-        )?,
-        windows: Vec::try_from(
-            props
-                .remove("Windows")
-                .ok_or_else(|| anyhow::anyhow!("missing Windows"))?,
         )?,
     })
 }
@@ -241,7 +209,6 @@ pub(super) async fn snapshot(connection: &Connection) -> anyhow::Result<Option<S
         return Ok(None);
     }
     let mut ids = HashSet::new();
-    let mut workspace_ids = HashMap::new();
     for path in &before.paths {
         let Some(value) = objects
             .get(path)
@@ -256,32 +223,7 @@ pub(super) async fn snapshot(connection: &Connection) -> anyhow::Result<Option<S
         };
         let id = String::try_from(value.try_clone()?)?;
         anyhow::ensure!(!id.is_empty(), "workspace has an empty Id");
-        ids.insert(id.clone());
-        workspace_ids.insert(path.clone(), id);
-    }
-    let mut windows = HashMap::new();
-    for path in &before.windows {
-        let Some(properties) = objects
-            .get(path)
-            .and_then(|interfaces| interfaces.get(WINDOW_INTERFACE))
-        else {
-            return Ok(None);
-        };
-        let Some(id) = properties.get("Id") else {
-            return Ok(None);
-        };
-        let Some(workspace) = properties.get("Workspace") else {
-            return Ok(None);
-        };
-        let id = String::try_from(id.try_clone()?)?;
-        let paths = Vec::<OwnedObjectPath>::try_from(workspace.try_clone()?)?;
-        windows.insert(
-            id,
-            paths
-                .first()
-                .and_then(|path| workspace_ids.get(path))
-                .cloned(),
-        );
+        ids.insert(id);
     }
     let after = match root(&properties).await {
         Ok(root) => root,
@@ -301,7 +243,6 @@ pub(super) async fn snapshot(connection: &Connection) -> anyhow::Result<Option<S
         generation: before.generation,
         connected: true,
         ids,
-        windows,
     }))
 }
 
@@ -413,22 +354,7 @@ pub(super) fn stamp(
     metadata.insert(GENERATION.into(), epoch.1);
 }
 
-#[cfg(test)]
 pub(super) async fn run(locus: LocusClient) -> anyhow::Result<()> {
-    run_impl(locus, None).await
-}
-
-pub(super) async fn run_with_sessions(
-    locus: LocusClient,
-    session: std::sync::Arc<crate::session::Manager>,
-) -> anyhow::Result<()> {
-    run_impl(locus, Some(session)).await
-}
-
-async fn run_impl(
-    locus: LocusClient,
-    session: Option<std::sync::Arc<crate::session::Manager>>,
-) -> anyhow::Result<()> {
     let connection = Connection::session().await?;
     // A hotplug burst can fill a bounded signal queue while reconciliation is
     // awaiting replies. Keep snapshot requests off the subscribed connection so
@@ -458,28 +384,10 @@ async fn run_impl(
     .await?;
     let mut tracker = Reconciler::default();
     loop {
-        // Regroup before taking BIND_LOCK or refreshing any window anchors.
-        // Session capture uses the same operation gate, so neither path can
-        // accept a compositor's temporary evacuation merge as user intent.
-        let mut reconciled = true;
-        if let Some(session) = &session {
-            if snapshot(&reads)
-                .await?
-                .is_some_and(|source| source.connected)
-            {
-                if let Err(error) = session.handle_topology().await {
-                    eprintln!(
-                        "[steward/hotplug] preserving checkpoint, reconciliation deferred: {error:#}"
-                    );
-                    reconciled = false;
-                }
-            }
-        }
-        if reconciled {
+        {
             let _lock = super::BIND_LOCK.lock().await;
             if let Some(snapshot) = snapshot(&reads).await? {
-                reconcile(&locus, &mut tracker, snapshot.clone()).await?;
-                super::workspace_recovery::reconcile(&locus, &snapshot).await?;
+                reconcile(&locus, &mut tracker, snapshot).await?;
             }
         }
         loop {

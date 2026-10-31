@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Apply shared project/workspace and app colors to Grafana dashboards."""
+"""Render local Grafana colors without writing runtime inventory into source."""
 import argparse
 import colorsys
 import hashlib
 import json
+import os
 from pathlib import Path
 import urllib.parse
 import urllib.request
@@ -59,30 +60,34 @@ def series_overrides(names, colors):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--graphite-url', default='http://127.0.0.1:8080')
-    parser.add_argument('--dashboard', type=Path, default=Path(__file__).parent / 'dashboards/rsynapse-focus.json')
-    parser.add_argument('--workspace-dashboard', type=Path, default=Path(__file__).parent / 'dashboards/rsynapse-workspace.json')
-    parser.add_argument('--registry', type=Path, default=Path(__file__).parent / 'focus-colors.json')
+    source_dir = Path(__file__).resolve().parent / 'dashboards'
+    state_dir = Path(os.environ.get('XDG_STATE_HOME', Path.home() / '.local/state'))
+    parser.add_argument('--output-dir', type=Path, default=source_dir.parent / 'generated/dashboards')
+    parser.add_argument('--registry', type=Path, default=state_dir / 'rsynapse/grafana/focus-colors.json')
+    parser.add_argument('--generic', action='store_true', help='Generate a clean baseline offline, with no discovered names')
     parser.add_argument('--check', action='store_true', help='Validate without writing; exit nonzero if refresh is needed')
     args = parser.parse_args()
-    dashboard = json.loads(args.dashboard.read_text())
-    workspace_dashboard = json.loads(args.workspace_dashboard.read_text())
+    if not args.generic and args.output_dir.resolve() == source_dir:
+        parser.error('Runtime colors must be rendered outside the tracked dashboard directory')
+    if not args.generic and args.registry.resolve().is_relative_to(Path(__file__).resolve().parent):
+        parser.error('Keep the runtime registry in user state, outside the Grafana source directory')
+    dashboards = {path.name: json.loads(path.read_text()) for path in source_dir.glob('*.json')}
+    dashboard = dashboards['rsynapse-focus.json']
+    workspace_dashboard = dashboards['rsynapse-workspace.json']
     panels = {p['id']: p for p in dashboard['panels'] if p['id'] in (1, 7)}
-    names = {1: metric_names(args.graphite_url, 'project'), 7: metric_names(args.graphite_url, 'workspace_name')}
-    agent_projects = find_names(args.graphite_url, 'rsynapse.agents.project.*')
-    previous = {}
-    for panel in panels.values():
-        for mapping in panel['fieldConfig']['defaults'].get('mappings', []):
-            if mapping['type'] == 'value':
-                previous.update({name: entry['color'] for name, entry in mapping['options'].items()
-                                 if name != '(none)' and 'color' in entry})
-    registry = json.loads(args.registry.read_text()) if args.registry.exists() else {'contexts': {}, 'apps': {}}
-    previous.update(registry['contexts'])
+    registry = {'contexts': {}, 'apps': {}}
+    if not args.generic and args.registry.exists():
+        registry = json.loads(args.registry.read_text())
+    names = {1: set(), 7: set()}
+    agent_projects, app_names = set(), set()
+    if not args.generic:
+        names = {1: metric_names(args.graphite_url, 'project'), 7: metric_names(args.graphite_url, 'workspace_name')}
+        agent_projects = find_names(args.graphite_url, 'rsynapse.agents.project.*')
+        app_names = metric_names(args.graphite_url, 'app') | find_names(args.graphite_url, 'rsynapse.focus.workspace_name.*.app.*')
+    previous = registry['contexts']
     colors = assign_colors(names[1] | names[7] | agent_projects | set(previous), previous)
-    app_names = metric_names(args.graphite_url, 'app') | find_names(args.graphite_url, 'rsynapse.focus.workspace_name.*.app.*')
     app_colors = assign_colors(app_names | set(registry['apps']), registry['apps'])
     updated_registry = {'contexts': colors, 'apps': app_colors}
-    before_overview = json.dumps(dashboard)
-    before_workspace = json.dumps(workspace_dashboard)
     for panel_id, panel in panels.items():
         options = {'(none)': {'text': 'None', 'color': 'gray'}}
         options.update({name: {'text': name, 'color': colors[name]} for name in sorted(names[panel_id])})
@@ -107,15 +112,19 @@ def main():
             '1': {'text': 'Active focus'}, '2': {'text': 'Idle focus'},
         }
     }]
-    changed = (before_overview != json.dumps(dashboard) or before_workspace != json.dumps(workspace_dashboard)
-               or registry != updated_registry or not args.registry.exists())
+    outputs = {args.output_dir / name: json.dumps(value, indent=2) + '\n'
+               for name, value in dashboards.items()}
+    if not args.generic:
+        outputs[args.registry] = json.dumps(updated_registry, indent=2) + '\n'
+    changed = {path: text for path, text in outputs.items()
+               if not path.exists() or path.read_text() != text}
     if args.check:
         if changed:
             raise SystemExit('New categories need colors; run this tool without --check')
-    elif changed:
-        args.dashboard.write_text(json.dumps(dashboard, indent=2) + '\n')
-        args.workspace_dashboard.write_text(json.dumps(workspace_dashboard, indent=2) + '\n')
-        args.registry.write_text(json.dumps(updated_registry, indent=2) + '\n')
+    else:
+        for path, text in changed.items():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(text)
     print(f'{len(colors)} context colors and {len(app_colors)} app colors shared across panels; None remains gray')
 
 

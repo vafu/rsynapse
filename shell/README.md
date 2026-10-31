@@ -123,6 +123,14 @@ monitor binding; the replacement primary is removed from secondary controllers.
 An output temporarily absent from the projection yields an empty rail rather
 than falling back to other monitors' workspace targets.
 
+Agent icons in the top window strip have slim vertical context-usage meters,
+using the same level renderer as CPU/RAM in line mode. Each follows its own
+AgentDBus session's `ContextPct`; the window tooltip includes the percentage.
+Missing or nonfinite readings hide the meter without hiding the agent icon.
+The meter warns at 80%, becomes danger-colored at 90%, and critical at 95%.
+Reported zero remains an empty track, including providers whose AgentDBus
+context telemetry has not been populated yet.
+
 The left vertical rail is a vertical CenterBox: GitHub PR status at the top,
 ongoing build indicators in the center, and workspace controls at the bottom.
 GitHub controls form two distinct lighter themed pills with icon-only headers:
@@ -166,7 +174,10 @@ request after approval reappears as re-review. A comment-only follow-up does
 not clear an outstanding changes decision; approval or dismissal does.
 Underlying CI/thread details stay in each row. The authored block's awaiting
 approval/changes-requested states are separate from your reviewer workflow.
-The current project's label scope applies through the same Listener memberships.
+All three review-workflow items use an independent **tagless Listener**, shared
+across monitors. They remain global when switching projects, changing labels,
+or while project context is unavailable. Project labels filter only your authored
+PR block, never work requesting your review or waiting for the author.
 Archived repositories are excluded by github-dbus before publication, for both
 authored PRs and review activity, so neither block displays them.
 
@@ -187,9 +198,12 @@ PR inventory property. Persisted dismissal IDs prevent refreshes/restarts from
 bringing them back.
 
 Counts, lists and unseen flags use one live `PullRequestActivity` snapshot
-through typed shell-source observables, with owner-replacement recovery. Each
-rail reuses its output's selected-project context. A project with labels shows
-PRs matching **any** label; no project or no labels shows all PRs. A labeled
+through typed shell-source observables, with owner-replacement recovery. The
+snapshot uses Rsynapse-owned client schema types; the D-Bus integration has no
+build dependency on the service's private Rust API crate. Each
+rail's authored block reuses its output's selected-project context. A project
+with labels shows your PRs matching **any** label; no project or no labels shows
+all your PRs. A labeled
 project keeps its filter even on a workspace with no windows. A configured
 filter with no matches stays empty; unavailable labels are not an empty filter.
 
@@ -198,6 +212,9 @@ matching. The factory matches all requested labels, so the shell unions one
 singleton-label listener per project label (deduplicating URLs). An empty-label
 listener provides global membership. Counts, rows and unseen badges join those
 URLs to the shared activity snapshot before exclusive category classification.
+The review block separately joins the same activity snapshot to a tagless
+listener, without observing project labels. If the authored block also uses an
+empty-label filter, both paths share the same underlying remote listener lease.
 Property changes update membership without Refresh calls or polling. Equivalent
 filters share listener leases across rails, and final unsubscribe closes the
 listener on its creator connection. Service replacement recreates listeners.
@@ -220,6 +237,11 @@ remain visible; the selected workspace always stays represented. Occupancy comes
 from the workspace's window inventory rather than application-ID/icon heuristics.
 
 ## Common Commands
+
+For Nix-provided GTK/Rust dependencies, enter `nix develop` from the repository
+root. The root flake replaces the former launcher `shell.nix` and Nix-store
+discovery workaround. `rebuild.sh` uses normal Cargo to install both shell
+binaries under `${PREFIX:-$HOME/.local}`, then restarts their user units.
 
 From this directory:
 

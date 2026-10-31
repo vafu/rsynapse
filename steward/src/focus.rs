@@ -99,7 +99,14 @@ impl Tracker {
                     "project" => workspace_changed,
                     _ => before != after || forced,
                 };
-                if before.is_some() && after.is_some() && switched {
+                // Optional display metadata may lag the identity transition.
+                // Count known window/project switches without waiting for names.
+                let known = match dimension {
+                    "app" => self.current.window_id.is_some() && state.window_id.is_some(),
+                    "project" => self.current.project_id.is_some() && state.project_id.is_some(),
+                    _ => before.is_some() && after.is_some(),
+                };
+                if known && switched {
                     *self
                         .pending
                         .entry(format!("switches.{dimension}"))
@@ -389,6 +396,27 @@ mod tests {
         );
         assert_eq!(event.get("focus.app.neovim.idle.false.seconds"), Some(&4.0));
         assert_eq!(event.get("switches.workspace"), Some(&1.0));
+    }
+
+    #[test]
+    fn switch_counts_use_known_identities_while_display_metadata_is_pending() {
+        let start = Instant::now();
+        let mut tracker = Tracker::new();
+        tracker.observe(state(1, 10, "codex"), start);
+        tracker.drain();
+        let mut pending = state(2, 20, "ghostty");
+        pending.app_id = None;
+        pending.project = None;
+        tracker.observe(pending, start + Duration::from_secs(5));
+        let changes = tracker.drain();
+        assert_eq!(changes.get("switches.app"), Some(&1.0));
+        assert_eq!(changes.get("switches.project"), Some(&1.0));
+        assert_eq!(changes.get("switches.workspace"), Some(&1.0));
+        tracker.observe(state(2, 20, "ghostty"), start + Duration::from_secs(6));
+        let enrichment = tracker.drain();
+        assert!(!enrichment.contains_key("switches.app"));
+        assert!(!enrichment.contains_key("switches.project"));
+        assert!(!enrichment.contains_key("switches.workspace"));
     }
 
     #[test]

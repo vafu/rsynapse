@@ -13,13 +13,10 @@ const ROOT: &str = "/org/rsynapse/Steward";
 mod icons;
 mod removal;
 mod workspace_cleanup;
-mod workspace_recovery;
 const BUS: &str = "org.rsynapse.Steward";
 const PROJECT_GOAL: &str = "org.rsynapse.goal.project";
 const WINDOW_PROJECT: &str = "org.rsynapse.window.project";
-const WINDOW_WORKSPACE_PROJECT: &str = "org.rsynapse.window.workspace-project";
 const PROJECT_AGENT: &str = "org.rsynapse.project.agent";
-const WORKSPACE_PROJECT_POLICY: &str = "org.rsynapse.workspace.project-policy";
 static BIND_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 fn owned() -> HashMap<String, String> {
     HashMap::from([("managed-by".into(), "rsynapse-steward".into())])
@@ -35,51 +32,33 @@ async fn proj() -> anyhow::Result<Proxy<'static>> {
     .await?)
 }
 
-async fn bind(
+async fn bind_workspace(
     locus: &LocusClient,
     path: &str,
-    mut workspace: Option<String>,
-    window: Option<String>,
-    automatic: bool,
+    workspace: String,
 ) -> anyhow::Result<goal_model::ProjectInfo> {
     let _lock = BIND_LOCK.lock().await;
-    if workspace.is_some() {
-        workspace_cleanup::synchronize(locus).await?;
-    }
-    if automatic {
-        if let Some(id) = &workspace {
-            let subject = RelationEndpoint::stable_key(locus::keys::WORKSPACE_ID, id.clone());
-            let existing = locus.list(relations::WORKSPACE_PROJECT).await?;
-            let policies = locus.list(WORKSPACE_PROJECT_POLICY).await?;
-            if existing.iter().any(|r| r.subject == subject)
-                || policies.iter().any(|r| {
-                    r.subject == subject
-                        && r.metadata.get("automatic").is_some_and(|v| v == "false")
-                })
-            {
-                workspace = None;
-            }
-        }
-    }
-    let proxy = proj().await?;
-    let context: goal_model::ProjectInfo = proxy
-        .call(
-            if automatic {
-                "ResolveProject"
-            } else {
-                "RegisterProject"
-            },
-            &(path,),
-        )
-        .await?;
-    bind_context(locus, context, workspace, window, !automatic).await
+    workspace_cleanup::synchronize(locus).await?;
+    let context = proj().await?.call("RegisterProject", &(path,)).await?;
+    bind_context(locus, context, Some(workspace), None).await
+}
+
+/// An observed CWD attributes the window, independently of the workspace's
+/// explicit project selection. It never creates a project or a workspace bind.
+async fn bind_window(
+    locus: &LocusClient,
+    path: &str,
+    window: String,
+) -> anyhow::Result<goal_model::ProjectInfo> {
+    let _lock = BIND_LOCK.lock().await;
+    let context = proj().await?.call("ResolveProject", &(path,)).await?;
+    bind_context(locus, context, None, Some(window)).await
 }
 async fn bind_context(
     locus: &LocusClient,
     context: goal_model::ProjectInfo,
     workspace: Option<String>,
     window: Option<String>,
-    explicit: bool,
 ) -> anyhow::Result<goal_model::ProjectInfo> {
     let proxy = proj().await?;
     let checkouts: Vec<goal_model::CheckoutInfo> = proxy.call("ListCheckouts", &()).await?;
@@ -105,17 +84,6 @@ async fn bind_context(
                 false,
             )
             .await?;
-        workspace_recovery::remember(locus, &workspace, &target, &metadata).await?;
-        if explicit {
-            let subject = RelationEndpoint::stable_key(locus::keys::WORKSPACE_ID, workspace);
-            for policy in locus.list(WORKSPACE_PROJECT_POLICY).await? {
-                if policy.subject == subject {
-                    locus
-                        .unset(policy.subject, WORKSPACE_PROJECT_POLICY, policy.target)
-                        .await?;
-                }
-            }
-        }
     }
     if let Some(window) = window {
         locus
@@ -134,7 +102,7 @@ pub async fn bind_current(
     locus: &LocusClient,
     path: &str,
 ) -> anyhow::Result<goal_model::ProjectInfo> {
-    bind(locus, path, Some(focused_workspace().await?), None, false).await
+    bind_workspace(locus, path, focused_workspace().await?).await
 }
 pub(crate) async fn restore_workspace(
     locus: &LocusClient,
@@ -144,7 +112,7 @@ pub(crate) async fn restore_workspace(
     if let Some(project) = project {
         let _guard = BIND_LOCK.lock().await;
         workspace_cleanup::synchronize(locus).await?;
-        bind_context(locus, project, Some(workspace.into()), None, true).await?;
+        bind_context(locus, project, Some(workspace.into()), None).await?;
     } else {
         Bindings {
             locus: locus.clone(),
@@ -191,17 +159,6 @@ impl Bindings {
         let result = async {
             let _lock = BIND_LOCK.lock().await;
             let subject = RelationEndpoint::stable_key(locus::keys::WORKSPACE_ID, workspace);
-            let mut metadata = owned();
-            metadata.insert("automatic".into(), "false".into());
-            self.locus
-                .set_one_with_persistence(
-                    subject.clone(),
-                    WORKSPACE_PROJECT_POLICY,
-                    RelationEndpoint::stable_key("org.rsynapse.project-assignment", "unassigned"),
-                    metadata,
-                    false,
-                )
-                .await?;
             for record in self.locus.list(relations::WORKSPACE_PROJECT).await? {
                 if record.subject == subject {
                     self.locus
@@ -219,7 +176,7 @@ impl Bindings {
         workspace: String,
         path: String,
     ) -> zbus::fdo::Result<goal_model::ProjectInfo> {
-        bind(&self.locus, &path, Some(workspace), None, false)
+        bind_workspace(&self.locus, &path, workspace)
             .await
             .map_err(|e| zbus::fdo::Error::Failed(e.to_string()))
     }
@@ -279,7 +236,7 @@ impl Bindings {
                 "Workspace already has a project".into(),
             ));
         }
-        bind_context(&self.locus, context, Some(workspace), None, true)
+        bind_context(&self.locus, context, Some(workspace), None)
             .await
             .map_err(|e| zbus::fdo::Error::Failed(e.to_string()))
     }
@@ -424,10 +381,7 @@ pub async fn run(locus: LocusClient) -> anyhow::Result<()> {
     // binding branch waits for it, preventing that future from being polled.
     let mut cleanup = tokio::task::JoinSet::new();
     let session = crate::session::Manager::new(locus.clone()).await?;
-    cleanup.spawn(workspace_cleanup::run_with_sessions(
-        locus.clone(),
-        session.clone(),
-    ));
+    cleanup.spawn(workspace_cleanup::run(locus.clone()));
     let _conn = zbus::connection::Builder::session()?
         .serve_at(ROOT, crate::session::Sessions(session.clone()))?
         .serve_at(
@@ -459,16 +413,10 @@ pub async fn run(locus: LocusClient) -> anyhow::Result<()> {
             item=agents.next(),if agent_active=>if let Some(Ok(snapshot))=item {
                 for session in &snapshot.sessions {
                     if session.subagent||session.cwd.is_empty()||session.window.is_none(){continue;}
-                    let identity=(session.key.clone(),session.cwd.clone(),session.window.clone(),session.workspace_id.clone());
+                    let identity=(session.key.clone(),session.cwd.clone(),session.window.clone());
                     if seen.contains(&identity){continue;}
                     if !known.iter().any(|c|Path::new(&session.cwd).starts_with(&c.root_path)) && !known_projects.iter().any(|p|p.checkout_id.is_empty() && Path::new(&session.cwd).starts_with(&p.cwd)){continue;}
-                    let mut workspace=session.workspace_id.clone();
-                    if let Some(id)=&workspace {
-                        let existing=locus.list(relations::WORKSPACE_PROJECT).await?;
-                        // Replay must preserve an existing binding's context and persistence.
-                        if existing.iter().any(|r|r.subject==RelationEndpoint::stable_key(locus::keys::WORKSPACE_ID,id.clone())){workspace=None;}
-                    }
-                    let context=match bind(&locus,&session.cwd,workspace,session.window.clone(),true).await { Ok(context)=>context,Err(error)=>{eprintln!("[steward/associations] {}: {error}",session.cwd);continue;} };
+                    let context=match bind_window(&locus,&session.cwd,session.window.clone().unwrap()).await { Ok(context)=>context,Err(error)=>{eprintln!("[steward/associations] {}: {error}",session.cwd);continue;} };
                     let agent=RelationEndpoint::stable_key(locus::keys::AGENT_SESSION_ID,format!("{}/{}",session.agent,session.session_id));
                     let project=RelationEndpoint::dbus_object("session",goal_model::BUS_NAME,goal_model::object_path("Projects",&context.id),goal_model::PROJECT_INTERFACE);
                     locus.set_with_persistence(project,PROJECT_AGENT,agent.clone(),owned(),false).await?;
@@ -477,10 +425,13 @@ pub async fn run(locus: LocusClient) -> anyhow::Result<()> {
                     }
                     seen.insert(identity);
                 }
-                let live:HashSet<_>=snapshot.sessions.iter().map(|s|s.key.clone()).collect();seen.retain(|(key,_,_,_)|live.contains(key));
+                let live:HashSet<_>=snapshot.sessions.iter().map(|s|s.key.clone()).collect();seen.retain(|(key,_,_)|live.contains(key));
                 let agents:HashSet<_>=snapshot.sessions.iter().map(|s|format!("{}/{}",s.agent,s.session_id)).collect();
                 for r in locus.list(PROJECT_AGENT).await? {if r.metadata.get("managed-by").is_some_and(|v|v=="rsynapse-steward") {if let RelationEndpoint::StableKey{kind,id}=&r.target {if kind==locus::keys::AGENT_SESSION_ID&&!agents.contains(id){locus.unset(r.subject,PROJECT_AGENT,r.target).await?;}}}}
             }else{agent_active=false;}
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

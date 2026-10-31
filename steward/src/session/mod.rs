@@ -10,7 +10,6 @@ mod restore;
 mod store;
 #[cfg(test)]
 mod tests;
-mod topology;
 
 use crate::relations::LocusClient;
 use futures_util::StreamExt;
@@ -30,7 +29,6 @@ pub struct Manager {
     rules: launch::Rules,
     operations: Mutex<()>,
     jobs: Mutex<BTreeMap<String, RestoreReport>>,
-    baseline: Mutex<Option<topology::Baseline>>,
 }
 impl Manager {
     pub async fn new(locus: LocusClient) -> anyhow::Result<Arc<Self>> {
@@ -41,7 +39,6 @@ impl Manager {
             rules: launch::Rules::load()?,
             operations: Mutex::new(()),
             jobs: Mutex::new(BTreeMap::new()),
-            baseline: Mutex::new(None),
         }))
     }
     async fn projd(&self) -> anyhow::Result<Proxy<'_>> {
@@ -92,8 +89,7 @@ impl Sessions {
         self.0.store.lock().await.get(&name).map_err(failed)
     }
     async fn save(&self, name: String) -> zbus::fdo::Result<Session> {
-        if name.is_empty() || ["current", "previous", topology::CHECKPOINT].contains(&name.as_str())
-        {
+        if name.is_empty() || ["current", "previous"].contains(&name.as_str()) {
             return Err(zbus::fdo::Error::InvalidArgs(
                 "choose last or a non-reserved session name".into(),
             ));

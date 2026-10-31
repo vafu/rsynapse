@@ -9,9 +9,23 @@
   "version": 17,
   "refresh": "1m",
   "links": [
-    {"type": "link", "title": "Goal work metrics", "url": "/d/rsynapse-goals/rsynapse-goals", "keepTime": true},
-    {"type": "link", "title": "Productivity components and goals", "url": "/d/rsynapse-productivity/rsynapse-productivity-components"},
-    {"type": "link", "title": "Today and daily workday log", "url": "/d/rsynapse-workday/rsynapse-workday", "keepTime": true}
+    {
+      "type": "link",
+      "title": "Goal work metrics",
+      "url": "/d/rsynapse-goals/rsynapse-goals",
+      "keepTime": true
+    },
+    {
+      "type": "link",
+      "title": "Productivity components and goals",
+      "url": "/d/rsynapse-productivity/rsynapse-productivity-components"
+    },
+    {
+      "type": "link",
+      "title": "Today and daily workday log",
+      "url": "/d/rsynapse-workday/rsynapse-workday",
+      "keepTime": true
+    }
   ],
   "templating": {
     "list": [
@@ -51,23 +65,66 @@
     {
       "id": 25,
       "type": "rsynapse-workday-panel",
-      "title": "Today's workday — start / span finish",
-      "description": "Defaults this dashboard to recorded Started today → now on load. Explicit bookmarked/manual ranges are preserved. Click the start to apply it manually. Also shows the 8-hour span deadline and a link to full workday targets.",
+      "title": "Today's workday \u2014 start / span finish",
+      "description": "Defaults this dashboard to recorded Started today \u2192 now on load. Explicit bookmarked/manual ranges are preserved. Click the start to apply it manually. Also shows the 8-hour span deadline and a link to full workday targets.",
       "timeFrom": "now/d",
       "hideTimeOverride": true,
       "maxDataPoints": 1000000,
-      "links": [{"title": "Workday targets and daily log", "url": "/d/rsynapse-workday/rsynapse-workday", "targetBlank": false}],
-      "datasource": {"type": "graphite", "uid": "graphite"},
-      "gridPos": {"h": 5, "w": 24, "x": 0, "y": 0},
-      "fieldConfig": {"defaults": {"unit": "dateTimeAsIso", "noValue": "Not started"}, "overrides": [
-        {"matcher": {"id": "byName", "options": "Started today"}, "properties": [
-          {"id": "links", "value": [{"title": "Use started today → now", "url": "/d/rsynapse-focus/rsynapse-focus?from=${__value.raw}&to=now&${__all_variables}", "targetBlank": false}]}
-        ]}
-      ]},
-      "options": {"autoStartRange": true},
+      "links": [
+        {
+          "title": "Workday targets and daily log",
+          "url": "/d/rsynapse-workday/rsynapse-workday",
+          "targetBlank": false
+        }
+      ],
+      "datasource": {
+        "type": "graphite",
+        "uid": "graphite"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "dateTimeAsIso",
+          "noValue": "Not started"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Started today"
+            },
+            "properties": [
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Use started today \u2192 now",
+                    "url": "/d/rsynapse-focus/rsynapse-focus?from=${__value.raw}&to=now&${__all_variables}",
+                    "targetBlank": false
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "autoStartRange": true
+      },
       "targets": [
-        {"refId": "A", "target": "alias(scale(keepLastValue(rsynapse.workday.today.started.state), 1000), 'Started today')"},
-        {"refId": "B", "target": "alias(scale(keepLastValue(rsynapse.workday.today.planned_finish.state), 1000), 'Span target finish')"}
+        {
+          "refId": "A",
+          "target": "alias(scale(keepLastValue(rsynapse.workday.today.started.state), 1000), 'Started today')"
+        },
+        {
+          "refId": "B",
+          "target": "alias(scale(keepLastValue(rsynapse.workday.today.planned_finish.state), 1000), 'Span target finish')"
+        }
       ]
     },
     {
@@ -91,83 +148,7 @@
           "unit": "dtdurations",
           "min": 0
         },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "coro-db"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#DEB6F2"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "coro-ncm"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#C2D1FF"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "coroutines-startup-sanity"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#B877D9"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "e2e-lsp"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#F29191"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "rsynapse"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#8AB8FF"
-                }
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
       "options": {
         "pieType": "pie",
@@ -224,128 +205,7 @@
           "unit": "dtdurations",
           "min": 0
         },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "chrome"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#B877D9"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "codex"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#FADE2A"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "firefox"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#C2D1FF"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "ghostty"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#F29191"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "neovim"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#5794F2"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "opencode"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#56D9D3"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "slack"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#B3A2F7"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "update-manager"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#F2495C"
-                }
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
       "options": {
         "pieType": "pie",
@@ -409,188 +269,7 @@
             }
           ]
         },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "android_snapchat"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#FFCC99"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "coro-db"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#DEB6F2"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "coro-ncm"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#C2D1FF"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "coro-uiq"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#5794F2"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "coroutines-startup-sanity"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#B877D9"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "e2e-lsp"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#F29191"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "empty"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#F2495C"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "office"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#FFB357"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "personal"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#B8E986"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "rsynapse"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#8AB8FF"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "test"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#FF9830"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "vivid-grove"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#56D9D3"
-                }
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
       "options": {
         "pieType": "pie",
@@ -693,7 +372,9 @@
       "options": {
         "reduceOptions": {
           "values": false,
-          "calcs": ["sum"],
+          "calcs": [
+            "sum"
+          ],
           "fields": ""
         },
         "graphMode": "none"
@@ -761,26 +442,6 @@
                 "(none)": {
                   "text": "None",
                   "color": "gray"
-                },
-                "coro-db": {
-                  "text": "coro-db",
-                  "color": "#DEB6F2"
-                },
-                "coro-ncm": {
-                  "text": "coro-ncm",
-                  "color": "#C2D1FF"
-                },
-                "coroutines-startup-sanity": {
-                  "text": "coroutines-startup-sanity",
-                  "color": "#B877D9"
-                },
-                "e2e-lsp": {
-                  "text": "e2e-lsp",
-                  "color": "#F29191"
-                },
-                "rsynapse": {
-                  "text": "rsynapse",
-                  "color": "#8AB8FF"
                 }
               }
             }
@@ -871,54 +532,6 @@
                 "(none)": {
                   "text": "None",
                   "color": "gray"
-                },
-                "android_snapchat": {
-                  "text": "android_snapchat",
-                  "color": "#FFCC99"
-                },
-                "coro-db": {
-                  "text": "coro-db",
-                  "color": "#DEB6F2"
-                },
-                "coro-ncm": {
-                  "text": "coro-ncm",
-                  "color": "#C2D1FF"
-                },
-                "coro-uiq": {
-                  "text": "coro-uiq",
-                  "color": "#5794F2"
-                },
-                "coroutines-startup-sanity": {
-                  "text": "coroutines-startup-sanity",
-                  "color": "#B877D9"
-                },
-                "e2e-lsp": {
-                  "text": "e2e-lsp",
-                  "color": "#F29191"
-                },
-                "empty": {
-                  "text": "empty",
-                  "color": "#F2495C"
-                },
-                "office": {
-                  "text": "office",
-                  "color": "#FFB357"
-                },
-                "personal": {
-                  "text": "personal",
-                  "color": "#B8E986"
-                },
-                "rsynapse": {
-                  "text": "rsynapse",
-                  "color": "#8AB8FF"
-                },
-                "test": {
-                  "text": "test",
-                  "color": "#FF9830"
-                },
-                "vivid-grove": {
-                  "text": "vivid-grove",
-                  "color": "#56D9D3"
                 }
               }
             }
@@ -1124,83 +737,7 @@
           "unit": "dtdurations",
           "min": 0
         },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "coro-db"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#DEB6F2"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "coro-ncm"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#C2D1FF"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "coroutines-startup-sanity"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#B877D9"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "e2e-lsp"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#F29191"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "rsynapse"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#8AB8FF"
-                }
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
       "options": {
         "pieType": "pie",
@@ -1253,83 +790,7 @@
           "decimals": 0,
           "min": 0
         },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "coro-db"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#DEB6F2"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "coro-ncm"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#C2D1FF"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "coroutines-startup-sanity"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#B877D9"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "e2e-lsp"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#F29191"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "rsynapse"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#8AB8FF"
-                }
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
       "options": {
         "legend": {
@@ -1367,83 +828,7 @@
           "min": 0,
           "noValue": "No data"
         },
-        "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "coro-db"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#DEB6F2"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "coro-ncm"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#C2D1FF"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "coroutines-startup-sanity"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#B877D9"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "e2e-lsp"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#F29191"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "rsynapse"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "mode": "fixed",
-                  "fixedColor": "#8AB8FF"
-                }
-              }
-            ]
-          }
-        ]
+        "overrides": []
       },
       "options": {
         "pieType": "pie",
