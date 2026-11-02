@@ -4,9 +4,11 @@ use gtk::{gdk, glib, prelude::WidgetExt};
 use relm4::prelude::*;
 use shell_core::{
     gtk4_layer_shell::{KeyboardMode, LayerShell},
+    source::StateSignal,
     window::{Anchors, Layer, WindowConfig},
 };
 
+mod client;
 mod source;
 
 /// Input messages for the remarked overlay.
@@ -19,6 +21,8 @@ pub enum RemarkedInput {
     ScrollToPage(Page),
     SelectTask(String),
     ClearTask,
+    SelectNote(String),
+    ClearNote,
 }
 
 impl From<sources::Msg> for RemarkedInput {
@@ -43,17 +47,22 @@ pub struct RemarkedWindow {
     task_revealer: gtk::Revealer,
     task_box: gtk::Box,
     task_list: gtk::ListBox,
+    note_list: gtk::ListBox,
+    note_filter_button: gtk::Button,
     project_chip: gtk::Box,
     project_label: gtk::Label,
     task_chip_label: gtk::Label,
     note_sidebar_button: gtk::Button,
     note_sidebar_revealer: gtk::Revealer,
     project_id: Option<String>,
-    selected_task: Option<String>,
-    selected_note: Option<String>,
+    notebook: StateSignal<Option<source::Notebook>>,
+    selected_task: StateSignal<Option<String>>,
+    selected_note: StateSignal<Option<String>>,
     visible: bool,
     #[source(source::catalog(shell_core::source::once(project_id.clone())))]
     catalog: source::Catalog,
+    #[source(source::notes(notebook.observable(), selected_task.observable()))]
+    notes: source::Notes,
 }
 
 impl RemarkedWindow {
@@ -79,13 +88,13 @@ impl RemarkedWindow {
     }
 
     fn select_task(&mut self, task: Option<String>) {
-        self.selected_task = task.clone();
+        self.selected_task.set(task.clone());
         self.task_box.set_visible(task.is_some());
         self.task_revealer.set_reveal_child(false);
     }
 
     fn set_note(&mut self, note: Option<String>) {
-        self.selected_note = note.clone();
+        self.selected_note.set(note.clone());
         let has_note = note.is_some();
         self.note_sidebar_button.set_sensitive(has_note);
         if !has_note {
@@ -116,32 +125,44 @@ impl RemarkedWindow {
     }
 
     fn reconcile(&mut self, sender: &ComponentSender<Self>) {
-        match &self.catalog {
-            source::Catalog::Ready { project, tasks, .. } => {
-                self.project_label.set_label(
-                    project
-                        .as_ref()
-                        .map(|p| p.name.as_str())
-                        .unwrap_or("Project"),
-                );
-                self.rebuild_task_list(tasks, sender);
+        if let Some(project) = self.catalog.project() {
+            self.project_label.set_label(&project.name);
+            let cwd = &project.cwd;
+            if !cwd.is_empty() {
+                self.notebook.set(Some(source::Notebook {
+                    path: format!("{cwd}/.notes"),
+                    generation: 0,
+                }));
             }
-            _ => {
-                self.project_label.set_label("Project");
-                self.task_list.remove_all();
-            }
+            self.rebuild_task_list(self.catalog.tasks(), sender);
+        } else {
+            self.project_label.set_label("Project");
+            self.notebook.set(None);
+            self.task_list.remove_all();
         }
 
-        if let Some(selected) = &self.selected_task {
+        if let Some(selected) = self.selected_task.get() {
             let title = self
                 .catalog
                 .tasks()
                 .iter()
-                .find(|t| &t.instance_id == selected)
+                .find(|t| t.instance_id == selected)
                 .map(|t| t.goal.title.as_str())
                 .unwrap_or("Selected task");
             self.task_chip_label.set_label(title);
         }
+
+        match &self.notes {
+            source::Notes::Ready(_path, notes) => {
+                self.rebuild_note_list(notes, sender);
+            }
+            _ => {
+                self.note_list.remove_all();
+            }
+        }
+
+        let has_filter = self.selected_task.get().is_some();
+        self.note_filter_button.set_visible(has_filter);
 
         self.clear_changed();
     }
@@ -164,6 +185,23 @@ impl RemarkedWindow {
                 let _ = tx.send(RemarkedInput::SelectTask(instance_id.clone()));
             });
             self.task_list.append(&row);
+        }
+    }
+
+    fn rebuild_note_list(&self, notes: &[notebook_api::note::Note], sender: &ComponentSender<Self>) {
+        self.note_list.remove_all();
+        for note in notes {
+            let row = adw::ActionRow::builder()
+                .title(&note.title)
+                .subtitle(&note.tags.join(", "))
+                .activatable(true)
+                .build();
+            let id = note.id.to_string();
+            let tx = sender.input_sender().clone();
+            row.connect_activated(move |_| {
+                let _ = tx.send(RemarkedInput::SelectNote(id.clone()));
+            });
+            self.note_list.append(&row);
         }
     }
 }
@@ -203,7 +241,7 @@ impl SimpleComponent for RemarkedWindow {
             .build();
 
         let (task_page, task_list) = build_task_pane(&sender);
-        let note_page = build_note_pane(&sender);
+        let (note_page, note_list, note_filter_button) = build_note_pane(&sender);
 
         carousel.append(&task_page);
         carousel.append(&note_page);
@@ -246,14 +284,17 @@ impl SimpleComponent for RemarkedWindow {
             task_revealer,
             task_box,
             task_list,
+            note_list,
+            note_filter_button,
             project_chip,
             project_label,
             task_chip_label,
             note_sidebar_button,
             note_sidebar_revealer,
             project_id,
-            None,
-            None,
+            StateSignal::new(None),
+            StateSignal::new(None),
+            StateSignal::new(None),
             false,
         );
         let widgets = view_output!();
@@ -279,6 +320,8 @@ impl SimpleComponent for RemarkedWindow {
             RemarkedInput::ScrollToPage(page) => self.scroll_to(page),
             RemarkedInput::SelectTask(id) => self.select_task(Some(id)),
             RemarkedInput::ClearTask => self.select_task(None),
+            RemarkedInput::SelectNote(id) => self.set_note(Some(id)),
+            RemarkedInput::ClearNote => self.set_note(None),
         }
     }
 }
@@ -326,24 +369,9 @@ fn build_task_pane(_sender: &ComponentSender<RemarkedWindow>) -> (gtk::Box, gtk:
     let details = adw::PreferencesGroup::builder()
         .title("Task details")
         .build();
-    details.add(
-        &adw::ActionRow::builder()
-            .title("Status")
-            .subtitle("planned")
-            .build(),
-    );
-    details.add(
-        &adw::ActionRow::builder()
-            .title("Priority")
-            .subtitle("medium")
-            .build(),
-    );
-    details.add(
-        &adw::ActionRow::builder()
-            .title("Description")
-            .subtitle("...")
-            .build(),
-    );
+    details.add(&adw::ActionRow::builder().title("Status").subtitle("planned").build());
+    details.add(&adw::ActionRow::builder().title("Priority").subtitle("medium").build());
+    details.add(&adw::ActionRow::builder().title("Description").subtitle("...").build());
 
     split.set_content(Some(&content));
     split.set_sidebar(Some(&details));
@@ -358,7 +386,9 @@ fn build_task_pane(_sender: &ComponentSender<RemarkedWindow>) -> (gtk::Box, gtk:
     (page, list_box)
 }
 
-fn build_note_pane(_sender: &ComponentSender<RemarkedWindow>) -> gtk::Box {
+fn build_note_pane(
+    sender: &ComponentSender<RemarkedWindow>,
+) -> (gtk::Box, gtk::ListBox, gtk::Button) {
     let split = adw::OverlaySplitView::new();
     split.set_sidebar_position(gtk::PackType::Start);
     split.set_show_sidebar(true);
@@ -389,14 +419,6 @@ fn build_note_pane(_sender: &ComponentSender<RemarkedWindow>) -> gtk::Box {
         .vexpand(true)
         .build();
     list_box.add_css_class("remarked-list");
-    for i in 1..=5 {
-        let row = adw::ActionRow::builder()
-            .title(&format!("Note {i}"))
-            .subtitle("placeholder note")
-            .activatable(true)
-            .build();
-        list_box.append(&row);
-    }
 
     let sidebar = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
@@ -439,24 +461,9 @@ fn build_note_pane(_sender: &ComponentSender<RemarkedWindow>) -> gtk::Box {
     let note_details = adw::PreferencesGroup::builder()
         .title("Note details")
         .build();
-    note_details.add(
-        &adw::ActionRow::builder()
-            .title("Backlinks")
-            .subtitle("...")
-            .build(),
-    );
-    note_details.add(
-        &adw::ActionRow::builder()
-            .title("Tags")
-            .subtitle("...")
-            .build(),
-    );
-    note_details.add(
-        &adw::ActionRow::builder()
-            .title("Created")
-            .subtitle("...")
-            .build(),
-    );
+    note_details.add(&adw::ActionRow::builder().title("Backlinks").subtitle("...").build());
+    note_details.add(&adw::ActionRow::builder().title("Tags").subtitle("...").build());
+    note_details.add(&adw::ActionRow::builder().title("Created").subtitle("...").build());
     sidebar_revealer.set_child(Some(&note_details));
     editor_overlay.add_overlay(&sidebar_revealer);
 
@@ -483,7 +490,13 @@ fn build_note_pane(_sender: &ComponentSender<RemarkedWindow>) -> gtk::Box {
 
     let sidebar_revealer_for_toggle = sidebar_revealer.clone();
     toggle.connect_clicked(move |_| {
-        sidebar_revealer_for_toggle.set_reveal_child(!sidebar_revealer_for_toggle.reveals_child());
+        sidebar_revealer_for_toggle
+            .set_reveal_child(!sidebar_revealer_for_toggle.reveals_child());
+    });
+
+    let tx = sender.input_sender().clone();
+    clear_button.connect_clicked(move |_| {
+        let _ = tx.send(RemarkedInput::ClearTask);
     });
 
     // Store references so the model can find them later.
@@ -492,7 +505,7 @@ fn build_note_pane(_sender: &ComponentSender<RemarkedWindow>) -> gtk::Box {
 
     let page = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     page.append(&split);
-    page
+    (page, list_box, clear_button)
 }
 
 fn chip(label: &str) -> (gtk::Box, gtk::Label) {
@@ -520,24 +533,9 @@ fn build_task_chip(
     let details = adw::PreferencesGroup::builder()
         .title("Task metadata")
         .build();
-    details.add(
-        &adw::ActionRow::builder()
-            .title("Status")
-            .subtitle("planned")
-            .build(),
-    );
-    details.add(
-        &adw::ActionRow::builder()
-            .title("Priority")
-            .subtitle("medium")
-            .build(),
-    );
-    details.add(
-        &adw::ActionRow::builder()
-            .title("Description")
-            .subtitle("...")
-            .build(),
-    );
+    details.add(&adw::ActionRow::builder().title("Status").subtitle("planned").build());
+    details.add(&adw::ActionRow::builder().title("Priority").subtitle("medium").build());
+    details.add(&adw::ActionRow::builder().title("Description").subtitle("...").build());
     revealer.set_child(Some(&details));
 
     let r = revealer.clone();
@@ -604,10 +602,7 @@ fn load_styles(window: &adw::ApplicationWindow) {
     );
 }
 
-fn add_keyboard_handlers(
-    window: &adw::ApplicationWindow,
-    sender: &ComponentSender<RemarkedWindow>,
-) {
+fn add_keyboard_handlers(window: &adw::ApplicationWindow, sender: &ComponentSender<RemarkedWindow>) {
     let controller = gtk::EventControllerKey::new();
     let s = sender.clone();
     controller.connect_key_pressed(move |_, keyval, _keycode, _mods| {
