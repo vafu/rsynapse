@@ -1854,11 +1854,18 @@ dependencies = [
 name = "rsynapse-remarked"
 version = "0.1.0"
 dependencies = [
+ "futures-util",
  "gtk4",
  "libadwaita",
+ "notebook-api",
  "relm4",
+ "rsynapse-projd-model",
  "shell-core",
+ "shell-macros",
+ "shell-source",
  "sourceview5",
+ "tokio",
+ "zbus",
 ]
 
 [[package]]

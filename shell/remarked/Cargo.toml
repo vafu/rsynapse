@@ -10,3 +10,10 @@ gtk.workspace = true
 relm4 = { version = "0.11.0", features = ["libadwaita"] }
 sourceview5 = "0.11.2"
 shell-core.workspace = true
+shell-macros.workspace = true
+shell-source.workspace = true
+futures-util = "0.3"
+tokio = { version = "1", features = ["fs", "sync"] }
+zbus = { version = "4.4", default-features = false, features = ["tokio"] }
+proj-model = { package = "rsynapse-projd-model", path = "../../projd/model" }
+notebook-api = { path = "../../../remarked/notebook/api", features = ["dbus"] }

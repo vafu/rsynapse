@@ -1518,11 +1518,7 @@ impl MainBar {
         request.respond(response);
     }
 
-    fn workspace_action(
-        &mut self,
-        action: request::ToggleAction,
-        project: Option<String>,
-    ) {
+    fn workspace_action(&mut self, action: request::ToggleAction, project: Option<String>) {
         use rsynapse_workspace::{WorkspaceInput, WorkspaceWindow};
         let project = project.filter(|id| !id.is_empty()).or_else(|| {
             self.focused_project
@@ -1549,13 +1545,18 @@ impl MainBar {
 
     fn remarked_action(&mut self, action: request::ToggleAction) {
         use rsynapse_remarked::{RemarkedInput, RemarkedWindow};
+        let project = self
+            .focused_project
+            .project
+            .as_ref()
+            .and_then(|p| p.project_id.clone());
         if self._remarked.is_none() {
             if action == request::ToggleAction::Set(false) {
                 return;
             }
             let builder = RemarkedWindow::builder();
             relm4::main_application().add_window(&builder.root);
-            self._remarked = Some(builder.launch(()).detach());
+            self._remarked = Some(builder.launch(project).detach());
         }
         if let Some(window) = &self._remarked {
             window.emit(match action {
