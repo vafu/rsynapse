@@ -86,6 +86,85 @@ impl NotesClient {
     }
 }
 
+#[derive(Clone, Debug)]
+pub(crate) enum TaskAction {
+    Status { key: String, status: String },
+    Start { key: String, project: String },
+    Clear { project: String },
+    Create {
+        project: proj_model::ProjectInfo,
+        parent: String,
+        title: String,
+        description: String,
+    },
+    Edit {
+        key: String,
+        title: String,
+        description: String,
+    },
+}
+
+pub(crate) async fn task_action(action: TaskAction) -> Result<(), String> {
+    use proj_model::{GoalInfo, BUS_NAME, MANAGER_INTERFACE, ROOT_PATH};
+    let conn = zbus::Connection::session().await.map_err(error)?;
+    let proxy = zbus::Proxy::new(&conn, BUS_NAME, ROOT_PATH, MANAGER_INTERFACE)
+        .await
+        .map_err(error)?;
+    match action {
+        TaskAction::Status { key, status } => {
+            let _: GoalInfo = proxy
+                .call("SetGoalStatus", &(key, status))
+                .await
+                .map_err(error)?;
+        }
+        TaskAction::Start { key, project } => {
+            let _: GoalInfo = proxy
+                .call("SetGoalStatus", &(&key, "in-progress"))
+                .await
+                .map_err(error)?;
+            let _: () = proxy
+                .call("SetActiveGoal", &(project, key))
+                .await
+                .map_err(error)?;
+        }
+        TaskAction::Clear { project } => {
+            let _: () = proxy
+                .call("SetActiveGoal", &(project, ""))
+                .await
+                .map_err(error)?;
+        }
+        TaskAction::Create {
+            project,
+            parent,
+            title,
+            description,
+        } => {
+            let goal = GoalInfo {
+                id: uuid::Uuid::new_v4().simple().to_string(),
+                title,
+                description,
+                parent_id: parent,
+                project: project.cwd,
+                project_id: project.id,
+                status: "planned".into(),
+                kind: "task".into(),
+                priority: "medium".into(),
+                ..Default::default()
+            };
+            let _: GoalInfo = proxy.call("CreateGoal", &(goal,)).await.map_err(error)?;
+        }
+        TaskAction::Edit { key, title, description } => {
+            let fields =
+                std::collections::HashMap::from([("title", title), ("description", description)]);
+            let _: GoalInfo = proxy
+                .call("EditGoal", &(key, fields))
+                .await
+                .map_err(error)?;
+        }
+    }
+    Ok(())
+}
+
 fn error(error: impl std::fmt::Display) -> String {
     error.to_string()
 }
