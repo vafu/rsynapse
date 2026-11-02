@@ -8,7 +8,7 @@ use shell_core::source::{
     rx::Observable as _,
 };
 
-use crate::client::{NotesClient, NOTES_IFACE, NOTES_ROOT, SERVICE};
+use crate::client::{NOTES_IFACE, NOTES_ROOT, NotesClient, SERVICE};
 
 #[derive(Clone, Debug, Default)]
 pub(crate) enum Catalog {

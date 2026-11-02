@@ -24,7 +24,13 @@ impl NotesClient {
         .await
         .map_err(error)?;
         let handle: NotebookHandle = manager
-            .call("OpenNotebook", &(NotebookScope { path: path.into(), tags },))
+            .call(
+                "OpenNotebook",
+                &(NotebookScope {
+                    path: path.into(),
+                    tags,
+                },),
+            )
             .await
             .map_err(error)?;
         if handle.object_path.is_empty() {

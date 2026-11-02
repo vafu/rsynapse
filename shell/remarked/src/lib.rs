@@ -23,6 +23,7 @@ pub enum RemarkedInput {
     ClearTask,
     SelectNote(String),
     ClearNote,
+    CaptureNote(String),
 }
 
 impl From<sources::Msg> for RemarkedInput {
@@ -49,6 +50,7 @@ pub struct RemarkedWindow {
     task_list: gtk::ListBox,
     note_list: gtk::ListBox,
     note_filter_button: gtk::Button,
+    note_status_label: gtk::Label,
     project_chip: gtk::Box,
     project_label: gtk::Label,
     task_chip_label: gtk::Label,
@@ -105,23 +107,16 @@ impl RemarkedWindow {
     fn fit_to_monitor(&self) {
         let display = WidgetExt::display(&self.window);
         let monitors = display.monitors();
-        let mut bounds = gdk::Rectangle::new(0, 0, i32::MAX, i32::MAX);
+        let (mut width, mut height) = (i32::MAX, i32::MAX);
         for i in 0..monitors.n_items() {
             if let Some(monitor) = monitors.item(i).and_downcast::<gdk::Monitor>() {
                 let geo = monitor.geometry();
-                bounds = gdk::Rectangle::new(
-                    bounds.x().max(geo.x()),
-                    bounds.y().max(geo.y()),
-                    bounds.width().min(geo.width()),
-                    bounds.height().min(geo.height()),
-                );
+                width = width.min(geo.width());
+                height = height.min(geo.height());
             }
         }
-        let (width, height) = (
-            bounds.width().clamp(1, i32::MAX),
-            bounds.height().clamp(1, i32::MAX),
-        );
-        self.window.set_default_size(width, height);
+        self.window
+            .set_default_size(width.clamp(1, i32::MAX), height.clamp(1, i32::MAX));
     }
 
     fn reconcile(&mut self, sender: &ComponentSender<Self>) {
@@ -154,9 +149,22 @@ impl RemarkedWindow {
 
         match &self.notes {
             source::Notes::Ready(_path, notes) => {
+                self.note_status_label
+                    .set_label(&format!("{} notes", notes.len()));
                 self.rebuild_note_list(notes, sender);
             }
-            _ => {
+            source::Notes::Loading => {
+                self.note_status_label.set_label("Loading notes...");
+                self.note_list.remove_all();
+            }
+            source::Notes::NoNotebook => {
+                self.note_status_label
+                    .set_label("No notebook for this project");
+                self.note_list.remove_all();
+            }
+            source::Notes::Error(error) => {
+                self.note_status_label
+                    .set_label(&format!("Notes error: {error}"));
                 self.note_list.remove_all();
             }
         }
@@ -188,7 +196,11 @@ impl RemarkedWindow {
         }
     }
 
-    fn rebuild_note_list(&self, notes: &[notebook_api::note::Note], sender: &ComponentSender<Self>) {
+    fn rebuild_note_list(
+        &self,
+        notes: &[notebook_api::note::Note],
+        sender: &ComponentSender<Self>,
+    ) {
         self.note_list.remove_all();
         for note in notes {
             let row = adw::ActionRow::builder()
@@ -241,7 +253,10 @@ impl SimpleComponent for RemarkedWindow {
             .build();
 
         let (task_page, task_list) = build_task_pane(&sender);
-        let (note_page, note_list, note_filter_button) = build_note_pane(&sender);
+        task_page.set_size_request(640, 400);
+        let (note_page, note_list, note_filter_button, note_status_label) =
+            build_note_pane(&sender);
+        note_page.set_size_request(640, 400);
 
         carousel.append(&task_page);
         carousel.append(&note_page);
@@ -254,6 +269,7 @@ impl SimpleComponent for RemarkedWindow {
         project_chip.set_valign(gtk::Align::Start);
         project_chip.set_margin_top(24);
         project_chip.set_margin_start(24);
+        project_chip.set_width_request(120);
         overlay.add_overlay(&project_chip);
 
         let (task_chip, task_revealer, task_chip_label) = build_task_chip(&sender);
@@ -263,6 +279,7 @@ impl SimpleComponent for RemarkedWindow {
             .halign(gtk::Align::Center)
             .valign(gtk::Align::Start)
             .margin_top(24)
+            .width_request(200)
             .build();
         task_box.append(&task_chip);
         task_box.append(&task_revealer);
@@ -286,6 +303,7 @@ impl SimpleComponent for RemarkedWindow {
             task_list,
             note_list,
             note_filter_button,
+            note_status_label,
             project_chip,
             project_label,
             task_chip_label,
@@ -322,6 +340,26 @@ impl SimpleComponent for RemarkedWindow {
             RemarkedInput::ClearTask => self.select_task(None),
             RemarkedInput::SelectNote(id) => self.set_note(Some(id)),
             RemarkedInput::ClearNote => self.set_note(None),
+            RemarkedInput::CaptureNote(text) => {
+                let text = text.trim();
+                if text.is_empty() {
+                    return;
+                }
+                if let source::Notes::Ready(path, _) = &self.notes {
+                    let path = path.clone();
+                    let text = text.to_owned();
+                    relm4::spawn(async move {
+                        match crate::client::NotesClient::open(&path, Vec::new()).await {
+                            Ok(client) => {
+                                if let Err(error) = client.capture(&text).await {
+                                    eprintln!("[remarked] capture failed: {error}");
+                                }
+                            }
+                            Err(error) => eprintln!("[remarked] open notebook failed: {error}"),
+                        }
+                    });
+                }
+            }
         }
     }
 }
@@ -369,9 +407,24 @@ fn build_task_pane(_sender: &ComponentSender<RemarkedWindow>) -> (gtk::Box, gtk:
     let details = adw::PreferencesGroup::builder()
         .title("Task details")
         .build();
-    details.add(&adw::ActionRow::builder().title("Status").subtitle("planned").build());
-    details.add(&adw::ActionRow::builder().title("Priority").subtitle("medium").build());
-    details.add(&adw::ActionRow::builder().title("Description").subtitle("...").build());
+    details.add(
+        &adw::ActionRow::builder()
+            .title("Status")
+            .subtitle("planned")
+            .build(),
+    );
+    details.add(
+        &adw::ActionRow::builder()
+            .title("Priority")
+            .subtitle("medium")
+            .build(),
+    );
+    details.add(
+        &adw::ActionRow::builder()
+            .title("Description")
+            .subtitle("...")
+            .build(),
+    );
 
     split.set_content(Some(&content));
     split.set_sidebar(Some(&details));
@@ -388,7 +441,7 @@ fn build_task_pane(_sender: &ComponentSender<RemarkedWindow>) -> (gtk::Box, gtk:
 
 fn build_note_pane(
     sender: &ComponentSender<RemarkedWindow>,
-) -> (gtk::Box, gtk::ListBox, gtk::Button) {
+) -> (gtk::Box, gtk::ListBox, gtk::Button, gtk::Label) {
     let split = adw::OverlaySplitView::new();
     split.set_sidebar_position(gtk::PackType::Start);
     split.set_show_sidebar(true);
@@ -405,13 +458,30 @@ fn build_note_pane(
         .hexpand(true)
         .css_classes(["heading"])
         .build();
+
+    let entry = gtk::Entry::builder()
+        .placeholder_text("New note...")
+        .hexpand(true)
+        .build();
+    let add_button = gtk::Button::builder()
+        .icon_name("list-add-symbolic")
+        .tooltip_text("Capture note")
+        .css_classes(["flat", "circular"])
+        .build();
     let clear_button = gtk::Button::builder()
         .label("Clear filter")
         .css_classes(["flat"])
         .visible(false)
         .build();
     list_header.append(&title);
+    list_header.append(&entry);
+    list_header.append(&add_button);
     list_header.append(&clear_button);
+
+    let status_label = gtk::Label::builder()
+        .halign(gtk::Align::Start)
+        .css_classes(["dim-label", "caption"])
+        .build();
 
     let list_box = gtk::ListBox::builder()
         .css_classes(["boxed-list"])
@@ -426,6 +496,7 @@ fn build_note_pane(
         .width_request(280)
         .build();
     sidebar.append(&list_header);
+    sidebar.append(&status_label);
     sidebar.append(&list_box);
 
     let editor_overlay = gtk::Overlay::new();
@@ -461,9 +532,24 @@ fn build_note_pane(
     let note_details = adw::PreferencesGroup::builder()
         .title("Note details")
         .build();
-    note_details.add(&adw::ActionRow::builder().title("Backlinks").subtitle("...").build());
-    note_details.add(&adw::ActionRow::builder().title("Tags").subtitle("...").build());
-    note_details.add(&adw::ActionRow::builder().title("Created").subtitle("...").build());
+    note_details.add(
+        &adw::ActionRow::builder()
+            .title("Backlinks")
+            .subtitle("...")
+            .build(),
+    );
+    note_details.add(
+        &adw::ActionRow::builder()
+            .title("Tags")
+            .subtitle("...")
+            .build(),
+    );
+    note_details.add(
+        &adw::ActionRow::builder()
+            .title("Created")
+            .subtitle("...")
+            .build(),
+    );
     sidebar_revealer.set_child(Some(&note_details));
     editor_overlay.add_overlay(&sidebar_revealer);
 
@@ -490,13 +576,27 @@ fn build_note_pane(
 
     let sidebar_revealer_for_toggle = sidebar_revealer.clone();
     toggle.connect_clicked(move |_| {
-        sidebar_revealer_for_toggle
-            .set_reveal_child(!sidebar_revealer_for_toggle.reveals_child());
+        sidebar_revealer_for_toggle.set_reveal_child(!sidebar_revealer_for_toggle.reveals_child());
     });
 
     let tx = sender.input_sender().clone();
     clear_button.connect_clicked(move |_| {
         let _ = tx.send(RemarkedInput::ClearTask);
+    });
+
+    let tx = sender.input_sender().clone();
+    let entry_for_button = entry.clone();
+    add_button.connect_clicked(move |_| {
+        let text = entry_for_button.text().to_string();
+        entry_for_button.set_text("");
+        let _ = tx.send(RemarkedInput::CaptureNote(text));
+    });
+
+    let tx = sender.input_sender().clone();
+    entry.connect_activate(move |entry| {
+        let text = entry.text().to_string();
+        entry.set_text("");
+        let _ = tx.send(RemarkedInput::CaptureNote(text));
     });
 
     // Store references so the model can find them later.
@@ -505,7 +605,7 @@ fn build_note_pane(
 
     let page = gtk::Box::new(gtk::Orientation::Horizontal, 0);
     page.append(&split);
-    (page, list_box, clear_button)
+    (page, list_box, clear_button, status_label)
 }
 
 fn chip(label: &str) -> (gtk::Box, gtk::Label) {
@@ -533,9 +633,24 @@ fn build_task_chip(
     let details = adw::PreferencesGroup::builder()
         .title("Task metadata")
         .build();
-    details.add(&adw::ActionRow::builder().title("Status").subtitle("planned").build());
-    details.add(&adw::ActionRow::builder().title("Priority").subtitle("medium").build());
-    details.add(&adw::ActionRow::builder().title("Description").subtitle("...").build());
+    details.add(
+        &adw::ActionRow::builder()
+            .title("Status")
+            .subtitle("planned")
+            .build(),
+    );
+    details.add(
+        &adw::ActionRow::builder()
+            .title("Priority")
+            .subtitle("medium")
+            .build(),
+    );
+    details.add(
+        &adw::ActionRow::builder()
+            .title("Description")
+            .subtitle("...")
+            .build(),
+    );
     revealer.set_child(Some(&details));
 
     let r = revealer.clone();
@@ -602,7 +717,10 @@ fn load_styles(window: &adw::ApplicationWindow) {
     );
 }
 
-fn add_keyboard_handlers(window: &adw::ApplicationWindow, sender: &ComponentSender<RemarkedWindow>) {
+fn add_keyboard_handlers(
+    window: &adw::ApplicationWindow,
+    sender: &ComponentSender<RemarkedWindow>,
+) {
     let controller = gtk::EventControllerKey::new();
     let s = sender.clone();
     controller.connect_key_pressed(move |_, keyval, _keycode, _mods| {
