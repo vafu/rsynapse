@@ -258,11 +258,7 @@ impl Metrics {
             .identities()
             .map_err(error)?
             .into_iter()
-            .find(|g| {
-                g.instance_id == instance_id
-                    && g.deleted_at_ms == 0
-                    && !matches!(g.goal.status.as_str(), "completed" | "deferred")
-            })
+            .find(|g| g.instance_id == instance_id && g.deleted_at_ms == 0 && g.goal.is_open())
             .ok_or_else(|| zbus::fdo::Error::FileNotFound("Open goal instance not found".into()))?;
         for (owner, s) in self.store.open_work(&producer).map_err(error)? {
             if owner == producer && s.open && s.source == source {

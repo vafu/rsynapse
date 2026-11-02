@@ -24,6 +24,9 @@ Own durable lifecycle history and generic recorded work sessions here. Work
 producers use Metrics1; immutable task-instance IDs survive key reuse and deletion.
 Steward measures desktop focus/idle/lock, while projd stores platform-neutral
 records and answers queries. Unknown historical timestamps stay unknown.
+Supported task states are planned, in-progress, completed, deferred and cancelled.
+Cancelled is a terminal outcome distinct from completion: clear active selection,
+reject work attribution, preserve notes/history and do not count it as completed.
 
 Steward owns desktop integration and association policy; locusd stores/queries
 the resulting cross-service associations. UIs and integration clients compose

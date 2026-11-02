@@ -67,6 +67,10 @@ pub struct GoalInfo {
     pub project_id: String,
 }
 impl GoalInfo {
+    pub fn is_open(&self) -> bool {
+        matches!(self.status.as_str(), "planned" | "in-progress")
+    }
+
     pub fn key(&self) -> String {
         goal_key(&self.date, &self.id)
     }
@@ -192,6 +196,7 @@ pub enum Status {
     InProgress,
     Completed,
     Deferred,
+    Cancelled,
 }
 impl Status {
     pub fn is_open(self) -> bool {

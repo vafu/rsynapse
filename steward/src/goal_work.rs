@@ -18,7 +18,7 @@ pub fn scope(state: &FocusState, goals: &[GoalTrackingInfo]) -> Option<Scope> {
     let mut selected = goals.iter().find(|g| {
         g.project_id == *project
             && g.selected
-            && !matches!(g.status.as_str(), "completed" | "deferred")
+            && matches!(g.status.as_str(), "planned" | "in-progress")
     })?;
     let mut visited = vec![selected.instance_id.as_str()];
     loop {

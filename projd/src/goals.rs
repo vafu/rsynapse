@@ -138,7 +138,7 @@ impl Manager {
                 self.children_changed(conn, parent).await?;
             }
         }
-        if matches!(info.status.as_str(), "completed" | "deferred") {
+        if !info.is_open() {
             self.clear_active(&key, conn).await?;
         }
         Ok(info)

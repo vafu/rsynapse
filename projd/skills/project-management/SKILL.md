@@ -20,7 +20,10 @@ database or locus metadata directly. Desktop/window bindings belong to steward.
 6. Verify the success criterion and record supporting evidence in your response
    before explicitly marking an outcome completed. An idle agent is not proof.
 7. Leave personal habit judgments to the user; do not mark them completed from
-   coding/tool activity. Use deferred when the user explicitly changes the plan.
+   coding/tool activity. Use deferred when the user explicitly changes the plan,
+   and cancelled when work is abandoned. Cancellation is not completion; preserve
+   the task, notes and history. Reopen a cancelled task explicitly before tracking
+   it again.
 
 ```sh
 proj metadata --json

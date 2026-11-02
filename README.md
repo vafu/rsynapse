@@ -87,12 +87,16 @@ Builds use normal Cargo configuration, including any explicit `CARGO_HOME` and
 `CARGO_TARGET_DIR`. Without a target override, each Cargo workspace owns its
 `target/` directory.
 
-For Nix-provided Rust/GTK development dependencies, use the root flake:
+For Nix-provided Rust/GTK development dependencies (including GtkSourceView for
+the task-and-notes surface), use the root flake:
 
 ```sh
 nix develop
 cargo test --manifest-path locus/Cargo.toml
 ```
+
+`nix develop .#native` supplies the same native GTK dependencies while retaining
+the caller's installed Rust toolchain.
 
 `flake.lock` pins the development environment. No build script scans the Nix
 store or overrides Cargo registries. Native builds can use system-provided

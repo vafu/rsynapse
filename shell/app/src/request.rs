@@ -29,29 +29,26 @@ impl RequestTarget {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ShellRequest {
     ProjectInit,
-    Hints(HintsAction),
-    Notifications(NotificationCenterAction),
+    Workspace(ToggleAction),
+    Remarked(ToggleAction),
+    Hints(ToggleAction),
+    Notifications(ToggleAction),
 }
 
 impl ShellRequest {
     pub const fn target(&self) -> RequestTarget {
         match self {
-            Self::Hints(_) | Self::ProjectInit => RequestTarget::Shell,
+            Self::Hints(_) | Self::ProjectInit | Self::Workspace(_) | Self::Remarked(_) => {
+                RequestTarget::Shell
+            }
             Self::Notifications(_) => RequestTarget::Notifications,
         }
     }
 }
 
-/// Super-key hints request action.
+/// Show/hide/toggle action shared by overlay surfaces and hints.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum HintsAction {
-    Set(bool),
-    Toggle,
-}
-
-/// Notification center request action.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum NotificationCenterAction {
+pub enum ToggleAction {
     Set(bool),
     Toggle,
 }
@@ -188,7 +185,7 @@ pub fn run_cli(args: impl IntoIterator<Item = OsString>) -> i32 {
 
 /// Send a notification center action to the notifications process.
 pub fn send_notification_center_action(
-    action: NotificationCenterAction,
+    action: ToggleAction,
 ) -> Result<RequestResponse, String> {
     send_request(
         RequestTarget::Notifications,
@@ -237,11 +234,11 @@ fn send_request(target: RequestTarget, args: &[String]) -> Result<RequestRespons
     parse_response(&response)
 }
 
-fn notification_center_request_args(action: NotificationCenterAction) -> Vec<String> {
+fn notification_center_request_args(action: ToggleAction) -> Vec<String> {
     let action = match action {
-        NotificationCenterAction::Set(true) => "show",
-        NotificationCenterAction::Set(false) => "hide",
-        NotificationCenterAction::Toggle => "toggle",
+        ToggleAction::Set(true) => "show",
+        ToggleAction::Set(false) => "hide",
+        ToggleAction::Toggle => "toggle",
     };
 
     vec!["notifications".to_owned(), action.to_owned()]
@@ -261,35 +258,35 @@ fn parse_request(args: &[String]) -> Result<ShellRequest, String> {
     };
     match command {
         "project-init" if args.len() == 1 => Ok(ShellRequest::ProjectInit),
-        "hints" => parse_hints_request(&args[1..]).map(ShellRequest::Hints),
+        "workspace" | "notes" => parse_toggle_request(&args[1..], "workspace", true)
+            .map(ShellRequest::Workspace),
+        "remarked" => parse_toggle_request(&args[1..], "remarked", true)
+            .map(ShellRequest::Remarked),
+        "hints" => parse_toggle_request(&args[1..], "hints", false)
+            .map(ShellRequest::Hints),
         "notifications" | "notification-center" => {
-            parse_notification_center_request(&args[1..]).map(ShellRequest::Notifications)
+            parse_toggle_request(&args[1..], "notifications", false)
+                .map(ShellRequest::Notifications)
         }
         _ => Err(format!("unknown request command: {command}")),
     }
 }
 
-fn parse_notification_center_request(args: &[String]) -> Result<NotificationCenterAction, String> {
+fn parse_toggle_request(
+    args: &[String],
+    kind: &str,
+    empty_toggles: bool,
+) -> Result<ToggleAction, String> {
     match args {
-        [action] if action == "toggle" => Ok(NotificationCenterAction::Toggle),
-        [action] if action == "show" => Ok(NotificationCenterAction::Set(true)),
-        [action] if action == "hide" => Ok(NotificationCenterAction::Set(false)),
+        [] if empty_toggles => Ok(ToggleAction::Toggle),
+        [] => Err(format!("{kind} requires open <bool>, show, hide, or toggle")),
+        [action] if action == "toggle" => Ok(ToggleAction::Toggle),
+        [action] if action == "show" => Ok(ToggleAction::Set(true)),
+        [action] if action == "hide" => Ok(ToggleAction::Set(false)),
         [key, value] if key == "open" || key == "active" => {
-            parse_bool(value).map(NotificationCenterAction::Set)
+            parse_bool(value).map(ToggleAction::Set)
         }
-        [] => Err("notifications requires open <bool>, show, hide, or toggle".to_owned()),
-        _ => Err("invalid notifications request".to_owned()),
-    }
-}
-
-fn parse_hints_request(args: &[String]) -> Result<HintsAction, String> {
-    match args {
-        [action] if action == "toggle" => Ok(HintsAction::Toggle),
-        [action] if action == "show" => Ok(HintsAction::Set(true)),
-        [action] if action == "hide" => Ok(HintsAction::Set(false)),
-        [key, value] if key == "active" => parse_bool(value).map(HintsAction::Set),
-        [] => Err("hints requires active <bool>, show, hide, or toggle".to_owned()),
-        _ => Err("invalid hints request".to_owned()),
+        _ => Err(format!("{kind} requires open <bool>, show, hide, or toggle")),
     }
 }
 
@@ -359,7 +356,7 @@ fn runtime_dir() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::{
-        HintsAction, NotificationCenterAction, RequestResponse, RequestTarget, ShellRequest,
+        ToggleAction, RequestResponse, RequestTarget, ShellRequest,
         decode_args, encode_args, notification_center_request_args, parse_request, parse_response,
         socket_path,
     };
@@ -372,11 +369,11 @@ mod tests {
     fn parses_hints_active_bool() {
         assert_eq!(
             parse_request(&args(&["hints", "active", "true"])).unwrap(),
-            ShellRequest::Hints(HintsAction::Set(true))
+            ShellRequest::Hints(ToggleAction::Set(true))
         );
         assert_eq!(
             parse_request(&args(&["hints", "active", "false"])).unwrap(),
-            ShellRequest::Hints(HintsAction::Set(false))
+            ShellRequest::Hints(ToggleAction::Set(false))
         );
     }
 
@@ -384,7 +381,7 @@ mod tests {
     fn parses_hints_toggle() {
         assert_eq!(
             parse_request(&args(&["hints", "toggle"])).unwrap(),
-            ShellRequest::Hints(HintsAction::Toggle)
+            ShellRequest::Hints(ToggleAction::Toggle)
         );
     }
 
@@ -392,16 +389,41 @@ mod tests {
     fn parses_notifications_actions() {
         assert_eq!(
             parse_request(&args(&["notifications", "toggle"])).unwrap(),
-            ShellRequest::Notifications(NotificationCenterAction::Toggle)
+            ShellRequest::Notifications(ToggleAction::Toggle)
         );
         assert_eq!(
             parse_request(&args(&["notifications", "show"])).unwrap(),
-            ShellRequest::Notifications(NotificationCenterAction::Set(true))
+            ShellRequest::Notifications(ToggleAction::Set(true))
         );
         assert_eq!(
             parse_request(&args(&["notification-center", "hide"])).unwrap(),
-            ShellRequest::Notifications(NotificationCenterAction::Set(false))
+            ShellRequest::Notifications(ToggleAction::Set(false))
         );
+    }
+
+    #[test]
+    fn routes_workspace_requests_to_the_shell() {
+        assert_eq!(
+            parse_request(&args(&["workspace", "show"])).unwrap(),
+            ShellRequest::Workspace(ToggleAction::Set(true))
+        );
+        assert_eq!(
+            parse_request(&args(&["workspace"])).unwrap(),
+            ShellRequest::Workspace(ToggleAction::Toggle)
+        );
+        assert_eq!(
+            parse_request(&args(&["workspace", "toggle"])).unwrap(),
+            ShellRequest::Workspace(ToggleAction::Toggle)
+        );
+        assert_eq!(
+            parse_request(&args(&["workspace", "hide"])).unwrap(),
+            ShellRequest::Workspace(ToggleAction::Set(false))
+        );
+        assert_eq!(
+            parse_request(&args(&["notes", "toggle"])).unwrap().target(),
+            RequestTarget::Shell
+        );
+        assert!(parse_request(&args(&["workspace", "invalid"])).is_err());
     }
 
     #[test]
@@ -427,15 +449,15 @@ mod tests {
     #[test]
     fn builds_notification_center_request_args() {
         assert_eq!(
-            notification_center_request_args(NotificationCenterAction::Toggle),
+            notification_center_request_args(ToggleAction::Toggle),
             args(&["notifications", "toggle"])
         );
         assert_eq!(
-            notification_center_request_args(NotificationCenterAction::Set(true)),
+            notification_center_request_args(ToggleAction::Set(true)),
             args(&["notifications", "show"])
         );
         assert_eq!(
-            notification_center_request_args(NotificationCenterAction::Set(false)),
+            notification_center_request_args(ToggleAction::Set(false)),
             args(&["notifications", "hide"])
         );
     }

@@ -5,6 +5,7 @@ fn goal(id: &str, parent: &str, title: &str) -> GoalInfo {
         id: id.into(),
         parent_id: parent.into(),
         title: title.into(),
+        status: "planned".into(),
         ..Default::default()
     }
 }
@@ -20,13 +21,6 @@ fn hierarchy_retains_parent_context_and_tracks_the_selected_subgoal() {
     assert!(vm.tooltip.starts_with("Z root › A child"));
     assert_eq!(vm.active, "child");
     assert_eq!(vm.context_keys, ["root", "child"]);
-    assert_eq!(
-        vm.rows
-            .iter()
-            .map(|r| (r.goal.id.as_str(), r.depth))
-            .collect::<Vec<_>>(),
-        vec![("root", 0), ("child", 1), ("nested", 2)]
-    );
 }
 
 #[test]
@@ -48,6 +42,19 @@ fn nested_subgoals_show_their_ancestry_and_root_tasks_still_work() {
         "Objective"
     );
     assert_eq!(view("p".into(), goals, "/").title, "Choose goal");
+}
+
+#[test]
+fn empty_projects_keep_the_overlay_entry_and_cancelled_selection_is_ignored() {
+    let empty = view("p".into(), Vec::new(), "/");
+    assert_eq!(empty.project_id.as_deref(), Some("p"));
+    assert_eq!(empty.title, "Choose goal");
+    let mut cancelled = goal("cancelled", "", "Abandoned work");
+    cancelled.status = "cancelled".into();
+    let active = cancelled.object_path();
+    let vm = view("p".into(), vec![cancelled], &active);
+    assert!(vm.active.is_empty());
+    assert_eq!(vm.title, "Choose goal");
 }
 
 #[test]

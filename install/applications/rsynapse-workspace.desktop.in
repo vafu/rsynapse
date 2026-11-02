@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Tasks & Notes
+Comment=Project tasks and personal notes in Rsynapse
+Exec=@LOCAL_BIN@/rsynapse-shell request workspace show
+Icon=document-edit-symbolic
+Terminal=false
+Categories=Office;ProjectManagement;

@@ -1,0 +1,47 @@
+// Native Adwaita controls on the same palette as the bar, popovers and OSD.
+// Scope everything to the hosted surface, leaving framework/other apps alone.
+window.workspace-window {
+  background-color: #{$rsx-surface};
+  color: #{$rsx-on-surface};
+
+  headerbar {
+    background-color: #{$rsx-surface-container-high};
+    color: #{$rsx-on-surface};
+    box-shadow: none;
+    border-bottom: $rsx-surface-outline-width solid #{$rsx-outline-variant};
+  }
+
+  .navigation-sidebar {
+    background-color: transparent;
+    color: #{$rsx-on-surface};
+  }
+
+  // The surrounding session may use a non-Adwaita GTK theme. Resolve text and
+  // icons on these native controls against the shell palette as well.
+  .dim-label,
+  .subtitle,
+  button:disabled label,
+  entry placeholder {
+    color: #{$rsx-on-surface-variant};
+    opacity: 1;
+  }
+
+  label,
+  entry,
+  entry text,
+  entry image,
+  dropdown,
+  dropdown label,
+  searchentry,
+  searchentry text,
+  searchentry image,
+  button image {
+    color: #{$rsx-on-surface};
+  }
+
+  textview,
+  textview text {
+    background-color: #{$rsx-surface};
+    color: #{$rsx-on-surface};
+  }
+}

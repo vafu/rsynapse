@@ -269,16 +269,17 @@ impl NotificationsWindow {
         let response = match request.request {
             request::ShellRequest::Notifications(action) => {
                 self.center_visible = match action {
-                    request::NotificationCenterAction::Set(visible) => visible,
-                    request::NotificationCenterAction::Toggle => !self.center_visible,
+                    request::ToggleAction::Set(visible) => visible,
+                    request::ToggleAction::Toggle => !self.center_visible,
                 };
                 request::RequestResponse::Ok
             }
-            request::ShellRequest::Hints(_) | request::ShellRequest::ProjectInit => {
-                request::RequestResponse::Error(
-                    "shell requests are handled by rsynapse-shell".to_owned(),
-                )
-            }
+            request::ShellRequest::Hints(_)
+            | request::ShellRequest::ProjectInit
+            | request::ShellRequest::Workspace(_)
+            | request::ShellRequest::Remarked(_) => request::RequestResponse::Error(
+                "shell requests are handled by rsynapse-shell".to_owned(),
+            ),
         };
         request.respond(response);
     }

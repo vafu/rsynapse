@@ -87,6 +87,13 @@ typed session relation service rather than a general RDF desktop database.
 
 ## Boundaries
 
+The task-and-notes UI composes projd and Remarked in the shell. Personal notebooks
+live at `<project-cwd>/.notes/`; note frontmatter `task/<immutable-task-instance-id>`
+tags own the many-to-many task-note association. This is an intentional exception
+to the general cross-service-link rule: Locus remains for external desktop/session
+associations, not per-note task membership. Remarked does not own managed tasks;
+Steward is the automation-policy daemon.
+
 - Keep reusable shell framework code in `shell/core`.
 - Keep Rsynapse product UI under `shell/`.
 - Keep compositor protocols in `workspace-dbus/service` and their shared D-Bus

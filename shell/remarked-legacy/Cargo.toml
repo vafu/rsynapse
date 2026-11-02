@@ -1,0 +1,26 @@
+[package]
+name = "rsynapse-workspace"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+adw = { package = "libadwaita", version = "0.9.1", features = ["v1_7"] }
+gtk.workspace = true
+relm4 = { version = "0.11.0", features = ["libadwaita"] }
+sourceview5 = "0.11.2"
+shell-core.workspace = true
+shell-macros.workspace = true
+shell-rx-macros.workspace = true
+futures-util = "0.3"
+tokio = { version = "1", features = ["fs", "sync"] }
+zbus = { version = "4.4", default-features = false, features = ["tokio"] }
+notebook-api = { path = "../../../remarked/notebook/api", features = ["dbus"] }
+proj-model = { package = "rsynapse-projd-model", path = "../../projd/model" }
+uuid = { version = "1", features = ["v4"] }
+
+[build-dependencies]
+pkg-config = "0.3"
+
+[dev-dependencies]
+tempfile = "3"

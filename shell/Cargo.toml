@@ -5,6 +5,8 @@ members = [
     "core/macros",
     "core/rx-macros",
     "app",
+    "remarked-legacy",
+    "remarked",
     "widgets/nerd-icon-picker",
     "examples/battery-status",
     "examples/volume-status",

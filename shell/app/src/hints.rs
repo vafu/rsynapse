@@ -2,16 +2,16 @@ use std::sync::OnceLock;
 
 use shell_core::source::{Observable, StateSignal};
 
-use crate::request::HintsAction;
+use crate::request::ToggleAction;
 
 pub(crate) fn hints_active() -> Observable<bool> {
     state().observable()
 }
 
-pub(crate) fn apply(action: HintsAction) {
+pub(crate) fn apply(action: ToggleAction) {
     match action {
-        HintsAction::Set(active) => set_active(active),
-        HintsAction::Toggle => set_active(!active()),
+        ToggleAction::Set(active) => set_active(active),
+        ToggleAction::Toggle => set_active(!active()),
     }
 }
 
@@ -34,7 +34,7 @@ mod tests {
 
     use shell_core::source::rx::{Observable as _, Observer, Subscription};
 
-    use super::{HintsAction, apply, hints_active};
+    use super::{ToggleAction, apply, hints_active};
 
     #[derive(Clone)]
     struct Capture(Arc<Mutex<Vec<bool>>>);
@@ -55,13 +55,13 @@ mod tests {
 
     #[test]
     fn hints_observable_emits_initial_and_changes() {
-        apply(HintsAction::Set(false));
+        apply(ToggleAction::Set(false));
         let values = Arc::new(Mutex::new(Vec::new()));
         let subscription = hints_active().subscribe_with(Capture(values.clone()));
 
-        apply(HintsAction::Set(true));
-        apply(HintsAction::Set(true));
-        apply(HintsAction::Toggle);
+        apply(ToggleAction::Set(true));
+        apply(ToggleAction::Set(true));
+        apply(ToggleAction::Toggle);
 
         subscription.unsubscribe();
         assert_eq!(*values.lock().unwrap(), vec![false, true, false]);

@@ -58,6 +58,16 @@ fn selection_resolves_ambiguity_without_counting_every_in_progress_task() {
 }
 
 #[test]
+fn cancelled_tasks_cannot_receive_focus_work_even_with_stale_selection() {
+    let state = FocusState {
+        project_id: Some("p".into()),
+        ..Default::default()
+    };
+    let tasks = vec![task("cancelled", "", true, "cancelled")];
+    assert_eq!(scope(&state, &tasks), None);
+}
+
+#[test]
 #[ignore = "requires PROJD_BIN and dbus-run-session; private bus, no desktop actions"]
 fn recorder_tracks_goal_idle_lock_and_service_restarts() {
     use futures_util::StreamExt;

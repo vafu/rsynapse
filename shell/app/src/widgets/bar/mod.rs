@@ -5,8 +5,8 @@ mod battery;
 mod bluetooth;
 mod brightness;
 mod context_zone;
-mod goals;
 mod github_status;
+mod goals;
 mod icon_resolver;
 mod layout_indicator;
 // Build status icon rendering is paused while the status is moved to a new surface.
@@ -29,12 +29,7 @@ mod workspace;
 mod workspace_bar;
 mod workspaces;
 
-use std::{
-    cell::RefCell,
-    process::Command,
-    rc::Rc,
-    thread,
-};
+use std::{cell::RefCell, process::Command, rc::Rc, thread};
 
 use relm4::component::ComponentController;
 use relm4::prelude::*;
@@ -46,9 +41,11 @@ use shell_core::{
     window::{self, Anchors, Edge, Layer, WindowConfig},
 };
 
+use crate::widgets::button_group::{
+    ButtonGroup, Config as ButtonGroupConfig, Direction, RevealMode,
+};
 use crate::widgets::nerd_icon::{NerdIcon, NerdIconLabelExt};
 use crate::widgets::nerd_icon::{fa, md};
-use crate::widgets::button_group::{ButtonGroup, Config as ButtonGroupConfig, Direction, RevealMode};
 
 use self::audio::{AudioRoutePopover, AudioView, audio_status};
 use self::battery::BatteryView;
@@ -131,6 +128,8 @@ pub enum MainBarInput {
     ToggleNotificationCenter,
     CopyBranch,
     MonitorsChanged,
+    OpenWorkspace,
+    WorkspaceProject(String),
     Request(request::PendingRequest),
 }
 
@@ -154,6 +153,8 @@ struct SecondaryBar {
 
 #[shell_macros::model]
 pub struct MainBar {
+    _workspace: Option<Controller<rsynapse_workspace::WorkspaceWindow>>,
+    _remarked: Option<Controller<rsynapse_remarked::RemarkedWindow>>,
     _osd: Option<AsyncController<OsdWindow>>,
     _request_server: Option<request::RequestServer>,
     _workspace_bar: Option<Controller<WorkspaceBar>>,
@@ -171,6 +172,9 @@ pub struct MainBar {
 
     #[source(shell_core::source::switch_map(output_scope.observable(), selected_project_status))]
     selected_project: SelectedWorkspaceView,
+
+    #[source(selected_project_status(None))]
+    focused_project: SelectedWorkspaceView,
 
     #[source(shell_core::source::switch_map(output_scope.observable(), layout_indicator::status))]
     layout: layout_indicator::LayoutIndicatorView,
@@ -216,7 +220,6 @@ pub struct MainBar {
 
     _workspace_popup: Option<selected_project::WorkspacePopup>,
     _project_initializer: Option<selected_project::ProjectInitializer>,
-    _goal_popup: Option<goals::GoalPopup>,
 
     #[source(shell_core::source::switch_map(output_scope.observable(), goals::goal_bar))]
     goals: goals::GoalBarVm,
@@ -310,15 +313,14 @@ impl SimpleAsyncComponent for MainBar {
                         },
 
                     #[name = "goal_button"]
-                    add_overlay = &gtk::MenuButton {
+                    add_overlay = &gtk::Button {
                         add_css_class: "flat",
                         add_css_class: "goal-tracking-button",
                         set_halign: gtk::Align::End,
                         set_valign: gtk::Align::Center,
                         set_has_frame: false,
-                        set_always_show_arrow: false,
                         #[watch]
-                        set_visible: model.goals.has_goals(),
+                        set_visible: model.goals.project_id.is_some(),
                         #[watch]
                         set_tooltip_text: Some(model.goals.tooltip.as_str()),
                         #[wrap(Some)]
@@ -374,6 +376,7 @@ impl SimpleAsyncComponent for MainBar {
                             #[watch]
                             set_visible: selected_project::first_separator_visible(&model.selected_project),
                         },
+
 
                         #[name = "branch_copy_button"]
                         gtk::Button {
@@ -1137,6 +1140,15 @@ impl SimpleAsyncComponent for MainBar {
         };
 
         let request_server = if init.primary {
+            let action =
+                gtk::gio::SimpleAction::new("task-notes", Some(gtk::glib::VariantTy::STRING));
+            let action_sender = sender.input_sender().clone();
+            action.connect_activate(move |_, parameter| {
+                if let Some(project) = parameter.and_then(|value| value.get::<String>()) {
+                    action_sender.emit(MainBarInput::WorkspaceProject(project));
+                }
+            });
+            relm4::main_application().add_action(&action);
             let request_sender = sender.input_sender().clone();
             match request::start_server(request::RequestTarget::Shell, move |request| {
                 request_sender.emit(MainBarInput::Request(request));
@@ -1168,6 +1180,8 @@ impl SimpleAsyncComponent for MainBar {
             .flatten();
 
         let mut model = MainBar::new(
+            None,
+            None,
             osd,
             request_server,
             workspace_bar,
@@ -1178,7 +1192,6 @@ impl SimpleAsyncComponent for MainBar {
             output_name.clone(),
             shell_core::source::StateSignal::new(output_name),
             root.downgrade(),
-            None,
             None,
             None,
         );
@@ -1204,10 +1217,10 @@ impl SimpleAsyncComponent for MainBar {
         popup.set_target(&model.selected_project);
         model._workspace_popup = Some(popup);
         model._project_initializer = Some(initializer);
-        let goal_popup = goals::GoalPopup::new(&widgets.goal_button);
-        goal_popup.update(&model.goals);
-        model._goal_popup = Some(goal_popup);
-
+        let input_sender = sender.input_sender().clone();
+        widgets.goal_button.connect_clicked(move |_| {
+            input_sender.emit(MainBarInput::OpenWorkspace);
+        });
         let input_sender = sender.input_sender().clone();
         widgets.branch_copy_button.connect_clicked(move |_| {
             input_sender.emit(MainBarInput::CopyBranch);
@@ -1306,9 +1319,6 @@ impl SimpleAsyncComponent for MainBar {
                 let previous_audio = self.audio.clone();
                 let previous_brightness = self.brightness.clone();
                 MainBar::update(self, msg);
-                if let Some(popup) = &self._goal_popup {
-                    popup.update(&self.goals);
-                }
                 if let Some(popup) = &self._workspace_popup {
                     popup.set_catalog(&self.project_catalog);
                     popup.set_target(&self.selected_project);
@@ -1322,6 +1332,19 @@ impl SimpleAsyncComponent for MainBar {
                 power_profile::cycle_power_profile(&self.power_profile.profile)
             }
             MainBarInput::MonitorsChanged => self.reconcile_secondary_bars(),
+            MainBarInput::OpenWorkspace => {
+                let project = self
+                    .selected_project
+                    .project
+                    .as_ref()
+                    .and_then(|p| p.project_id.clone())
+                    .unwrap_or_default();
+                relm4::main_application()
+                    .activate_action("task-notes", Some(&project.to_variant()));
+            }
+            MainBarInput::WorkspaceProject(project) => {
+                self.workspace_action(request::ToggleAction::Set(true), Some(project))
+            }
             MainBarInput::ToggleNotificationCenter => request_notification_center_toggle(),
             MainBarInput::CopyBranch => {
                 if let Some(branch) = selected_project::branch_for_clipboard(
@@ -1459,12 +1482,14 @@ fn main_bar_input_name(msg: &MainBarInput) -> &'static str {
         MainBarInput::ToggleNotificationCenter => "toggle-notification-center",
         MainBarInput::CopyBranch => "copy-branch",
         MainBarInput::MonitorsChanged => "monitors_changed",
+        MainBarInput::OpenWorkspace => "open-workspace",
+        MainBarInput::WorkspaceProject(_) => "workspace-project",
         MainBarInput::Request(_) => "request",
     }
 }
 
 impl MainBar {
-    fn handle_request(&self, request: request::PendingRequest) {
+    fn handle_request(&mut self, request: request::PendingRequest) {
         let response = match request.request {
             request::ShellRequest::ProjectInit => {
                 if let Some(initializer) = &self._project_initializer {
@@ -1478,17 +1503,73 @@ impl MainBar {
                 hints::apply(action);
                 request::RequestResponse::Ok
             }
+            request::ShellRequest::Workspace(action) => {
+                self.workspace_action(action, None);
+                request::RequestResponse::Ok
+            }
+            request::ShellRequest::Remarked(action) => {
+                self.remarked_action(action);
+                request::RequestResponse::Ok
+            }
             request::ShellRequest::Notifications(_) => request::RequestResponse::Error(
                 "notification requests are handled by rsynapse-notifications".to_owned(),
             ),
         };
         request.respond(response);
     }
+
+    fn workspace_action(
+        &mut self,
+        action: request::ToggleAction,
+        project: Option<String>,
+    ) {
+        use rsynapse_workspace::{WorkspaceInput, WorkspaceWindow};
+        let project = project.filter(|id| !id.is_empty()).or_else(|| {
+            self.focused_project
+                .project
+                .as_ref()
+                .and_then(|p| p.project_id.clone())
+        });
+        if self._workspace.is_none() {
+            if action == request::ToggleAction::Set(false) {
+                return;
+            }
+            let builder = WorkspaceWindow::builder();
+            relm4::main_application().add_window(&builder.root);
+            self._workspace = Some(builder.launch(project.clone()).detach());
+        }
+        if let Some(window) = &self._workspace {
+            window.emit(match action {
+                request::ToggleAction::Set(true) => WorkspaceInput::Open(project),
+                request::ToggleAction::Set(false) => WorkspaceInput::Hide,
+                request::ToggleAction::Toggle => WorkspaceInput::Toggle(project),
+            });
+        }
+    }
+
+    fn remarked_action(&mut self, action: request::ToggleAction) {
+        use rsynapse_remarked::{RemarkedInput, RemarkedWindow};
+        if self._remarked.is_none() {
+            if action == request::ToggleAction::Set(false) {
+                return;
+            }
+            let builder = RemarkedWindow::builder();
+            relm4::main_application().add_window(&builder.root);
+            self._remarked = Some(builder.launch(()).detach());
+        }
+        if let Some(window) = &self._remarked {
+            window.emit(match action {
+                request::ToggleAction::Set(true) => RemarkedInput::Show,
+                request::ToggleAction::Set(false) => RemarkedInput::Hide,
+                request::ToggleAction::Toggle => RemarkedInput::Toggle,
+            });
+        }
+    }
 }
 
 fn request_notification_center_toggle() {
     thread::spawn(|| {
-        match request::send_notification_center_action(request::NotificationCenterAction::Toggle) {
+        match request::send_notification_center_action(request::ToggleAction::Toggle) {
             Ok(request::RequestResponse::Ok) => {}
             Ok(request::RequestResponse::Error(error)) => {
                 eprintln!("[notifications/request] {error}");

@@ -61,12 +61,18 @@ pub enum GoalCommand {
     },
     Status {
         id: String,
-        #[arg(value_parser=["planned","todo","in-progress","completed","deferred"])]
+        #[arg(value_parser=["planned","todo","in-progress","completed","deferred","cancelled"])]
         status: String,
         #[arg(long)]
         date: Option<String>,
     },
     Complete {
+        id: String,
+        #[arg(long)]
+        date: Option<String>,
+    },
+    /// Cancel a task without recording a completion.
+    Cancel {
         id: String,
         #[arg(long)]
         date: Option<String>,
@@ -205,6 +211,9 @@ pub async fn run(proxy: &Proxy<'_>, command: GoalCommand) -> anyhow::Result<()> 
         GoalCommand::Complete { id, date } => {
             set_status(proxy, &id, "completed", date.as_deref(), false).await?
         }
+        GoalCommand::Cancel { id, date } => {
+            set_status(proxy, &id, "cancelled", date.as_deref(), false).await?
+        }
         GoalCommand::Start { id, date } => {
             set_status(proxy, &id, "in-progress", date.as_deref(), true).await?
         }
@@ -290,9 +299,7 @@ async fn create(proxy: &Proxy<'_>, new: NewGoal, upsert: bool) -> anyhow::Result
         }) {
             let existing = find(&all, new.id.as_deref().unwrap(), new.date.as_deref())?;
             anyhow::ensure!(
-                !new.active
-                    || (!existing.project_id.is_empty()
-                        && !matches!(existing.status.as_str(), "completed" | "deferred")),
+                !new.active || (!existing.project_id.is_empty() && existing.is_open()),
                 "Only an open task in a registered project can be tracked"
             );
             let mut fields = std::collections::HashMap::from([("title", new.title)]);

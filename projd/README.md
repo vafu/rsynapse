@@ -60,6 +60,7 @@ proj goal update GOAL_ID --title 'Ship v2' --description 'Updated context'
 proj goal set release --title 'Ship the release'
 proj goal start GOAL_ID
 proj goal complete GOAL_ID
+proj goal cancel GOAL_ID
 proj goal note GOAL_ID
 proj goal note GOAL_ID --open
 proj goal add outcome1 --kind outcome --title 'Observable result' --project "$PWD" \
@@ -117,7 +118,9 @@ Use the full `date/ID` key when a historical ID occurs on several days.
 
 `--parent ID` creates a subtask inheriting its parent's project. Subtasks can
 nest. Status changes are explicit: `planned` (`todo` in the CLI), `in-progress`,
-`completed`, or `deferred`. Completing a child does not complete its parent;
+`completed`, `deferred`, or `cancelled`. Cancellation is terminal but is not a
+completion; it retains the task, notes and history. `goal cancel ID` is shorthand
+for `goal status ID cancelled`. Completing a child does not complete its parent;
 completing a parent does not change its children. Remove children before removing
 their parent. `goal update` edits title/description without overwriting a concurrent
 status change. `goal show ID` returns the full record as JSON.
@@ -126,7 +129,9 @@ Each project independently selects an active task. `goal active ID` selects an
 open task; `goal active --clear` stops tracking it. `goal start ID` both marks it
 in progress and selects it. Several tasks can be in progress while only one is
 shown on that project's bar. Completing, deferring or removing the selected task
-clears active selection. Selection persists across restart.
+clears active selection. Cancelling the selected task also clears selection and
+prevents new work attribution until it is explicitly reopened. Cancellation does
+not increment completion counts or create completion timestamps. Selection persists across restart.
 For multi-step work, keep the parent goal in progress and start the concrete
 subgoal being worked on. The shell derives parent context from the hierarchy for
 the tooltip/checklist, while the bar shows only the current subgoal title. No

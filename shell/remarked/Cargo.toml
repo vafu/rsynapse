@@ -1,0 +1,11 @@
+[package]
+name = "rsynapse-remarked"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+adw = { package = "libadwaita", version = "0.9.1", features = ["v1_7"] }
+gtk.workspace = true
+relm4 = { version = "0.11.0", features = ["libadwaita"] }
+shell-core.workspace = true

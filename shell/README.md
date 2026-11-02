@@ -24,6 +24,17 @@ GTK4/Relm4 framework crates plus concrete Rsynapse UI surfaces.
   Reusable `pick-icon`-backed fuzzy GTK picker for Nerd Font glyphs and
   consumer-supplied specific icon rows.
 
+- `remarked` (`rsynapse-workspace`)
+  Fresh **Tasks & Notes** layer-shell overlay, hosted inside the existing shell process.
+  It composes projd tasks and Remarked notes through shell-source Observables and
+  uses a native GtkSourceView Markdown editor. Click the bar's goal widget, press
+  **Mod+N** in Umbriel, or run `rsynapse-shell request workspace show|hide|toggle`.
+  Project notebooks live in globally Git-ignored `<project-cwd>/.notes/` directories;
+  immutable-instance `task/<id>` frontmatter tags associate notes with tasks.
+  Escape dismisses the centered overlay, releasing its keyboard focus. It does
+  not create or resize a normal tiled window.
+  See [the surface guide](remarked/README.md).
+
 - `app`
   The current combined `rsynapse-shell` package. It owns the bar, OSD,
   notifications bridge, request socket, styles, and Rsynapse-specific UI
@@ -63,10 +74,11 @@ GTK4/Relm4 framework crates plus concrete Rsynapse UI surfaces.
    workspace and can be used as a compositor shortcut command.
    The bar also shows the project's active goal as a button (or **Choose goal**).
    The button shows only the current subgoal title when one is being worked on,
-   otherwise the main goal title. Parent context stays in the tooltip/checklist.
+   otherwise the main goal title. Parent context stays in the tooltip.
    A selected parent follows its unique in-progress child; multiple in-progress
    siblings require an explicit selection instead of guessing the current step.
-   The button is hidden when the current project has no goals.
+   The button remains available for associated projects with no goals, so it can
+   open the overlay to create the first task.
    The main bar uses a CenterBox: windows on the left, a context block in the
    middle, and status widgets on the right. The context block is itself a
    CenterBox, with project/workspace title plus Git information in its center
@@ -74,21 +86,12 @@ GTK4/Relm4 framework crates plus concrete Rsynapse UI surfaces.
    right-aligned inside that section, next to the centered project/Git row.
    The goal is an unmeasured overlay within the left section, so long
    titles shrink to available space instead of displacing the center row.
-   It opens a nested checklist popover: checkboxes complete/reopen tasks, and clicking a task title
-   opens its Markdown note in `$EDITOR` (then `$VISUAL`, otherwise `vi`) through a
-   terminal. The note path comes directly from projd's goal snapshot; opening a
-   note does not invoke a `proj` executable from `PATH`. Titles/descriptions
-   and active selection follow projd properties. Task lists come from its reactive
-   snapshots; the shell does not watch or parse Markdown for checklist state.
-   A disclosure control at the right end of each parent row expands/collapses its
-   subgoal group; leaf rows have no trailing control. Active tasks are selected
-   with `proj goal start` or `proj goal active`. Completed groups fold
-   automatically, and completed titles are struck through. A group whose children
-   are all complete is presented as complete without changing its stored status;
-   its checkbox stays mixed until explicitly completed. Manual expansion survives
-   updates; completion/reopening transitions fold/expand the group. Siblings sort
-   unfinished first, then high-to-low priority, then oldest creation date; unknown
-   legacy dates sort last within their priority. Children stay under their parent.
+   Clicking the goal widget opens the shell-hosted Tasks & Notes overlay directly;
+   task management and note editing live there. There is no separate notes icon
+   or task popover in the bar. Titles/descriptions and selection follow projd
+   properties, while task lists use reactive service snapshots rather than
+   Markdown parsing. Active tasks can also be selected with `proj goal start`
+   or `proj goal active`; cancelled tasks are closed and cannot remain selected.
 
 - `launcher`
   The launcher workspace. It owns the D-Bus launcher daemon, CLI, GTK launcher

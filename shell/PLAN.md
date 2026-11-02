@@ -73,6 +73,12 @@ Framework crates under `core/` own:
 
 ### 3. Rsynapse UI Consumers
 
+- Completed core surface: `remarked/` provides a fresh native task-and-notes layer-shell overlay
+  hosted by `app/`, with projd task sources, Remarked D-Bus note scopes, personal
+  `.notes/` notebooks, task-instance tags and revision-safe GtkSourceView editing.
+  One primary-shell controller serves all monitor buttons and workspace requests.
+  Steward remains automation policy; the UI does not merge service ownership.
+
 - Use `app/` as the current local consumer for framework ergonomics.
 - Keep widget policy, source composition, CSS, and AGS migration behavior in
   UI crates, not in framework crates.
@@ -84,8 +90,9 @@ Framework crates under `core/` own:
 - Completed: checkout/worktree-per-project catalog, stored project names, and
   project-owned icon property subscriptions. Associated icons switch their D-Bus
   source with the project; conditional automatic selection preserves manual picks.
-- Completed: per-project active-goal bar button, hierarchical checkbox popover,
-  and terminal `$EDITOR` note opening over projd's persistent task model.
+- Completed: per-project active-goal bar button with live ancestor/subgoal context.
+  It opens the Tasks & Notes overlay directly, including when the project has no
+  tasks. The former checkbox popover and separate notes icon have been removed.
 - `app/` owns its Unix-socket request CLI for consumer runtime
   commands such as theme switching, Super-key hints, and notification-center
   control. Notification-center commands route to the `rsynapse-notifications`

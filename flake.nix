@@ -9,20 +9,21 @@
       forAllSystems = nixpkgs.lib.genAttrs systems;
     in {
       devShells = forAllSystems (system:
-        let pkgs = nixpkgs.legacyPackages.${system};
+        let
+          pkgs = nixpkgs.legacyPackages.${system};
+          nativePackages = with pkgs; [ pkg-config gtk4 libadwaita gtk4-layer-shell gtksourceview5 ];
         in {
+          # Use an already installed Rust toolchain with the pinned native GTK
+          # dependencies, without downloading a second compiler and source tree.
+          native = pkgs.mkShell { packages = nativePackages; };
           default = pkgs.mkShell {
-            packages = with pkgs; [
+            packages = nativePackages ++ (with pkgs; [
               cargo
               rustc
               rustfmt
               clippy
               rust-analyzer
-              pkg-config
-              gtk4
-              libadwaita
-              gtk4-layer-shell
-            ];
+            ]);
             RUST_SRC_PATH = "${pkgs.rustPlatform.rustLibSrc}";
           };
         });

@@ -1,0 +1,9 @@
+#!/usr/bin/env sh
+# Keep existing launch bindings while the shell owns the actual UI/window.
+set -eu
+action=show
+case "${1:-}" in
+  toggle|--toggle) action=toggle ;;
+  hide|--hide) action=hide ;;
+esac
+exec rsynapse-shell request workspace "$action"

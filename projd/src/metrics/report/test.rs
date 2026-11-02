@@ -80,6 +80,30 @@ fn effort_status_elapsed_and_completion_cycles_are_distinct() {
         500
     );
 }
+
+#[test]
+fn cancellation_ends_progress_without_recording_a_completion() {
+    let mut identity = identity();
+    identity.goal.status = "cancelled".into();
+    let events = vec![
+        event(100, "created", "", "planned"),
+        event(200, "status-changed", "planned", "in-progress"),
+        event(800, "status-changed", "in-progress", "cancelled"),
+    ];
+    let stats = stats(identity, &events, &[], 0, 1500);
+    assert_eq!(stats.status, "cancelled");
+    assert_eq!(stats.in_progress_ms, 600);
+    assert_eq!(stats.first_started_at_ms, 200);
+    assert_eq!(
+        (
+            stats.completion_count,
+            stats.completed_at_ms,
+            stats.lead_time_ms,
+            stats.cycle_time_ms
+        ),
+        (0, 0, 0, 0)
+    );
+}
 #[test]
 fn legacy_observation_does_not_invent_start_or_creation_times() {
     let mut i = identity();

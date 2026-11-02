@@ -1,10 +1,5 @@
 use super::super::selected_project::selected_project_status;
-use shell_core::source::{
-    self, Observable,
-    proj::{GoalIdentityInfo, GoalInfo},
-    rx::Observable as _,
-};
-mod catalog;
+use shell_core::source::{self, Observable, proj::GoalInfo, rx::Observable as _};
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(in crate::widgets::bar) struct GoalBarVm {
@@ -14,22 +9,6 @@ pub(in crate::widgets::bar) struct GoalBarVm {
     pub tooltip: String,
     pub active: String,
     context_keys: Vec<String>,
-    pub(super) rows: Vec<GoalRow>,
-}
-impl GoalBarVm {
-    pub fn has_goals(&self) -> bool {
-        !self.rows.is_empty()
-    }
-}
-#[derive(Clone, Debug, PartialEq)]
-pub(super) struct GoalRow {
-    pub goal: GoalInfo,
-    pub depth: usize,
-    pub completed: bool,
-    pub child_count: usize,
-    pub completed_children: usize,
-    pub instance_id: String,
-    pub created_at_ms: u64,
 }
 
 pub(in crate::widgets::bar) fn goal_bar(output: Option<String>) -> Observable<GoalBarVm> {
@@ -41,16 +20,12 @@ pub(in crate::widgets::bar) fn goal_bar(output: Option<String>) -> Observable<Go
         let Some(id) = id else {
             return source::once(GoalBarVm::default());
         };
-        source::proj::goal_identities()
+        source::proj::goals()
             .combine_latest(
                 source::proj::active_goal(id.clone()),
-                move |identities, active| {
-                    let identities: Vec<_> = identities
-                        .into_iter()
-                        .filter(|g| g.deleted_at_ms == 0 && g.goal.project_id == id)
-                        .collect();
-                    let goals = identities.iter().map(|g| g.goal.clone()).collect();
-                    view_with_metadata(id.clone(), goals, active.as_str(), &identities)
+                move |goals, active| {
+                    let goals = goals.into_iter().filter(|g| g.project_id == id).collect();
+                    view(id.clone(), goals, active.as_str())
                 },
             )
             .distinct_until_changed()
@@ -93,17 +68,10 @@ fn tracked_context(vm: GoalBarVm) -> Observable<GoalBarVm> {
     .distinct_until_changed()
     .box_it()
 }
-#[cfg(test)]
 fn view(project: String, goals: Vec<GoalInfo>, active: &str) -> GoalBarVm {
-    view_with_metadata(project, goals, active, &[])
-}
-fn view_with_metadata(
-    project: String,
-    goals: Vec<GoalInfo>,
-    active: &str,
-    identities: &[GoalIdentityInfo],
-) -> GoalBarVm {
-    let selected = goals.iter().find(|g| g.object_path() == active);
+    let selected = goals
+        .iter()
+        .find(|g| g.object_path() == active && g.is_open());
     let mut context = Vec::new();
     let mut current = selected;
     while let Some(goal) = current {
@@ -139,7 +107,6 @@ fn view_with_metadata(
         active: selected.map(|g| g.key()).unwrap_or_default(),
         tooltip: String::new(),
         context_keys: context.iter().map(|g| g.key()).collect(),
-        rows: catalog::rows(&goals, identities),
     };
     let breadcrumb = context
         .iter()

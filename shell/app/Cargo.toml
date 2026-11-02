@@ -28,6 +28,8 @@ shell-words = "1"
 shell-core.workspace = true
 shell-macros.workspace = true
 shell-rx-macros.workspace = true
+rsynapse-workspace = { path = "../remarked-legacy" }
+rsynapse-remarked = { path = "../remarked" }
 tokio = { version = "1.52.3", features = ["fs", "io-util", "process", "time"] }
 toml = "1.1.2"
 tracing.workspace = true

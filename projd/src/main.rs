@@ -684,9 +684,7 @@ impl Manager {
                 .into_iter()
                 .find(|g| g.key() == key)
                 .ok_or_else(|| zbus::fdo::Error::FileNotFound("Goal not found".into()))?;
-            if goal.project_id != project_id
-                || matches!(goal.status.as_str(), "completed" | "deferred")
-            {
+            if goal.project_id != project_id || !goal.is_open() {
                 return Err(zbus::fdo::Error::InvalidArgs(
                     "Active goal must be an open task in this project".into(),
                 ));
@@ -724,7 +722,7 @@ impl Manager {
             .save_goal(&goal, false, metrics::now_ms())
             .map_err(error)?;
         publish_goal(conn, goal.clone()).await.map_err(error)?;
-        if matches!(goal.status.as_str(), "completed" | "deferred") {
+        if !goal.is_open() {
             self.clear_active(&key, conn).await?;
         }
         Self::changed(&e, "goal", &key).await.map_err(error)?;
