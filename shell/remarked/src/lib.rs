@@ -30,6 +30,7 @@ pub enum RemarkedInput {
     StopTracking,
     SetTaskStatus(String),
     ToggleTaskDetails,
+    ToggleTaskCollapse(String),
     NoteFilter(String),
     TagsChanged,
     NoteChanged,
@@ -78,6 +79,7 @@ pub struct RemarkedWindow {
     note_dirty: bool,
     note_busy: bool,
     visible: bool,
+    collapsed_tasks: std::collections::HashSet<String>,
     #[source(source::catalog(project_id.observable()))]
     catalog: source::Catalog,
     #[source(source::notes(notebook.observable(), selected_task.observable()))]
@@ -169,22 +171,96 @@ impl RemarkedWindow {
     fn rebuild_task_list(&self, sender: &ComponentSender<Self>) {
         self.task_list.remove_all();
         let tasks = self.catalog.tasks();
-        for (task, depth) in model::task_rows(tasks, self.show_finished) {
-            let row = adw::ActionRow::builder()
-                .title(&task.goal.title)
-                .subtitle(&format!("{} · {}", task.goal.status, task.key))
-                .activatable(true)
-                .build();
-            row.add_css_class("remarked-row");
+        let active = self.catalog.active();
+        for (task, depth, has_children) in
+            model::task_rows(tasks, self.show_finished, &self.collapsed_tasks)
+        {
+            let row = gtk::ListBoxRow::builder().activatable(true).build();
+            row.add_css_class("remarked-task-row");
             if depth > 0 {
                 row.set_margin_start(depth as i32 * 16);
             }
+
+            let hbox = gtk::Box::builder()
+                .orientation(gtk::Orientation::Horizontal)
+                .spacing(8)
+                .margin_top(6)
+                .margin_bottom(6)
+                .margin_start(8)
+                .margin_end(8)
+                .build();
+
+            let expander = if has_children {
+                let icon = if self.collapsed_tasks.contains(&task.key) {
+                    "pan-end-symbolic"
+                } else {
+                    "pan-down-symbolic"
+                };
+                let button = gtk::Button::builder()
+                    .icon_name(icon)
+                    .css_classes(["flat", "circular"])
+                    .width_request(24)
+                    .height_request(24)
+                    .build();
+                let key = task.key.clone();
+                let tx = sender.input_sender().clone();
+                button.connect_clicked(move |_| {
+                    let _ = tx.send(RemarkedInput::ToggleTaskCollapse(key.clone()));
+                });
+                button.upcast::<gtk::Widget>()
+            } else {
+                gtk::Box::builder()
+                    .width_request(24)
+                    .build()
+                    .upcast::<gtk::Widget>()
+            };
+            hbox.append(&expander);
+
+            let status_icon = if active.contains(&task.instance_id) {
+                "find-location-symbolic"
+            } else {
+                match task.goal.status.as_str() {
+                    "completed" => "emblem-ok-symbolic",
+                    "cancelled" => "process-stop-symbolic",
+                    "in-progress" => "media-playback-start-symbolic",
+                    "deferred" => "media-playback-pause-symbolic",
+                    _ => "radio-symbolic",
+                }
+            };
+            let icon = gtk::Image::builder()
+                .icon_name(status_icon)
+                .pixel_size(16)
+                .valign(gtk::Align::Center)
+                .build();
+            hbox.append(&icon);
+
+            let vbox = gtk::Box::builder()
+                .orientation(gtk::Orientation::Vertical)
+                .spacing(2)
+                .hexpand(true)
+                .build();
+            let title = gtk::Label::builder()
+                .label(&task.goal.title)
+                .halign(gtk::Align::Start)
+                .wrap(true)
+                .wrap_mode(gtk::pango::WrapMode::Word)
+                .build();
+            let subtitle = gtk::Label::builder()
+                .label(&task.goal.status.replace('-', " "))
+                .halign(gtk::Align::Start)
+                .css_classes(["dim-label", "caption"])
+                .build();
             if model::is_finished(&task.goal.status) {
-                row.add_css_class("dim-label");
+                title.add_css_class("dim-label");
             }
+            vbox.append(&title);
+            vbox.append(&subtitle);
+            hbox.append(&vbox);
+
+            row.set_child(Some(&hbox));
             let instance_id = task.instance_id.clone();
             let tx = sender.input_sender().clone();
-            row.connect_activated(move |_| {
+            row.connect_activate(move |_| {
                 let _ = tx.send(RemarkedInput::SelectTask(instance_id.clone()));
             });
             self.task_list.append(&row);
@@ -530,6 +606,7 @@ impl SimpleComponent for RemarkedWindow {
             false,
             false,
             false,
+            std::collections::HashSet::new(),
         );
         let widgets = view_output!();
         model.reconcile(&sender);
@@ -571,6 +648,15 @@ impl SimpleComponent for RemarkedWindow {
             }
             RemarkedInput::ToggleTaskDetails => {
                 self.toggle_task_details();
+                self.clear_changed();
+            }
+            RemarkedInput::ToggleTaskCollapse(key) => {
+                if self.collapsed_tasks.contains(&key) {
+                    self.collapsed_tasks.remove(&key);
+                } else {
+                    self.collapsed_tasks.insert(key);
+                }
+                self.rebuild_task_list(&sender);
                 self.clear_changed();
             }
             RemarkedInput::SelectNote(id) => {
@@ -1075,6 +1161,16 @@ fn load_styles(window: &adw::ApplicationWindow) {
         }
         .remarked-task-pane {
             border-right: 1px solid rgba(255, 255, 255, 0.08);
+        }
+        .remarked-task-row {
+            background: transparent;
+            border-radius: 8px;
+        }
+        .remarked-task-row:hover {
+            background: rgba(255, 255, 255, 0.05);
+        }
+        .remarked-task-row:active {
+            background: rgba(255, 255, 255, 0.08);
         }
         .remarked-task-details {
             background: rgba(255, 255, 255, 0.05);

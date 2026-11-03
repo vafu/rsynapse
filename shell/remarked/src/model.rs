@@ -1,4 +1,6 @@
 //! View-model helpers for tasks and notes.
+use std::collections::HashSet;
+
 use proj_model::GoalIdentityInfo;
 
 pub(crate) fn task_tag(instance: &str) -> String {
@@ -22,10 +24,13 @@ pub(crate) fn parse_tags(text: &str) -> Vec<String> {
 }
 
 /// Flattens a project's goals into a displayable, depth-ordered task list.
+/// Descendants of collapsed parents are omitted. The boolean flag indicates
+/// whether the task has any children.
 pub(crate) fn task_rows<'a>(
     tasks: &'a [GoalIdentityInfo],
     show_finished: bool,
-) -> Vec<(&'a GoalIdentityInfo, usize)> {
+    collapsed: &HashSet<String>,
+) -> Vec<(&'a GoalIdentityInfo, usize, bool)> {
     let mut tasks: Vec<_> = tasks
         .iter()
         .filter(|task| task.deleted_at_ms == 0)
@@ -49,12 +54,13 @@ pub(crate) fn task_rows<'a>(
         parent: &str,
         depth: usize,
         show: bool,
-        out: &mut Vec<(&'a GoalIdentityInfo, usize)>,
+        collapsed: &HashSet<String>,
+        out: &mut Vec<(&'a GoalIdentityInfo, usize, bool)>,
     ) {
         for task in all.iter().filter(|task| task.goal.parent_id == parent) {
             if out
                 .iter()
-                .any(|(seen, _)| seen.instance_id == task.instance_id)
+                .any(|(seen, _, _)| seen.instance_id == task.instance_id)
             {
                 continue;
             }
@@ -64,21 +70,24 @@ pub(crate) fn task_rows<'a>(
                     child.goal.parent_id == task.key && !is_finished(&child.goal.status)
                 })
             {
-                out.push((task, depth));
-                walk(all, &task.key, depth + 1, show, out);
+                let has_children = all.iter().any(|child| child.goal.parent_id == task.key);
+                out.push((task, depth, has_children));
+                if has_children && !collapsed.contains(&task.key) {
+                    walk(all, &task.key, depth + 1, show, collapsed, out);
+                }
             }
         }
     }
 
     let mut out = Vec::new();
-    walk(&tasks, "", 0, show_finished, &mut out);
+    walk(&tasks, "", 0, show_finished, collapsed, &mut out);
     for task in tasks {
         if !out
             .iter()
-            .any(|(seen, _)| seen.instance_id == task.instance_id)
+            .any(|(seen, _, _)| seen.instance_id == task.instance_id)
             && (show_finished || !is_finished(&task.goal.status))
         {
-            out.push((task, 0));
+            out.push((task, 0, false));
         }
     }
     out

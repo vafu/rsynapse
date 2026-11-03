@@ -37,6 +37,13 @@ impl Catalog {
             _ => None,
         }
     }
+
+    pub(crate) fn active(&self) -> &[String] {
+        match self {
+            Catalog::Ready { active, .. } => active,
+            _ => &[],
+        }
+    }
 }
 
 /// Returns a live catalog scoped to the provided project ID.
