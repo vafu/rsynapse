@@ -1178,41 +1178,14 @@ fn load_styles(window: &adw::ApplicationWindow) {
     let provider = gtk::CssProvider::new();
     provider.load_from_string(
         "
-        .remarked-window {
-            background: transparent;
-        }
-        .remarked-root {
-            background: transparent;
-        }
         .remarked-pane {
-            background-color: rgba(30, 30, 30, 0.96);
             padding: 12px;
         }
-        .remarked-task-pane {
-            border-right: 1px solid rgba(255, 255, 255, 0.08);
-        }
-        .remarked-task-row {
-            background: transparent;
-            border-radius: 8px;
-        }
-        .remarked-task-row:hover {
-            background: rgba(255, 255, 255, 0.05);
-        }
-        .remarked-task-row:active {
-            background: rgba(255, 255, 255, 0.08);
-        }
         .remarked-task-details {
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 16px;
             padding: 16px;
         }
         .remarked-row {
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 12px;
             margin: 4px 0;
-        }
-        .remarked-note-active {
-            background: rgba(120, 174, 237, 0.15);
         }
         ",
     );
