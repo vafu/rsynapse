@@ -79,15 +79,22 @@ pub(crate) fn task_rows<'a>(
         }
     }
 
+    let keys: HashSet<_> = tasks.iter().map(|task| task.key.as_str()).collect();
     let mut out = Vec::new();
     walk(&tasks, "", 0, show_finished, collapsed, &mut out);
     for task in tasks {
-        if !out
+        if out
             .iter()
             .any(|(seen, _, _)| seen.instance_id == task.instance_id)
-            && (show_finished || !is_finished(&task.goal.status))
         {
-            out.push((task, 0, false));
+            continue;
+        }
+        if show_finished || !is_finished(&task.goal.status) {
+            let parent_missing =
+                task.goal.parent_id.is_empty() || !keys.contains(task.goal.parent_id.as_str());
+            if parent_missing {
+                out.push((task, 0, false));
+            }
         }
     }
     out
