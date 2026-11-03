@@ -7,6 +7,7 @@ use shell_core::{
     source::StateSignal,
     window::{Anchors, Layer, WindowConfig},
 };
+use sourceview5::prelude::*;
 
 mod client;
 mod model;
@@ -1120,9 +1121,26 @@ fn build_note_pane(
     content.append(&tags_entry);
 
     let buffer = sourceview5::Buffer::new(None);
+    buffer.set_language(
+        sourceview5::LanguageManager::default()
+            .language("markdown")
+            .as_ref(),
+    );
+    buffer.set_highlight_syntax(true);
+    buffer.set_enable_undo(true);
+    set_source_scheme(&buffer);
+    let scheme_buffer = buffer.downgrade();
+    adw::StyleManager::default().connect_dark_notify(move |_| {
+        if let Some(buffer) = scheme_buffer.upgrade() {
+            set_source_scheme(&buffer);
+        }
+    });
+
     let source_view = sourceview5::View::with_buffer(&buffer);
     source_view.set_vexpand(true);
     source_view.set_hexpand(true);
+    source_view.set_wrap_mode(gtk::WrapMode::WordChar);
+    source_view.set_monospace(true);
     source_view.add_css_class("frame");
     let tx = sender.input_sender().clone();
     buffer.connect_changed(move |_| {
@@ -1172,6 +1190,19 @@ fn build_note_pane(
         status_page,
         clear_button,
     )
+}
+
+fn set_source_scheme(buffer: &sourceview5::Buffer) {
+    let name = if adw::StyleManager::default().is_dark() {
+        "Adwaita-dark"
+    } else {
+        "Adwaita"
+    };
+    buffer.set_style_scheme(
+        sourceview5::StyleSchemeManager::default()
+            .scheme(name)
+            .as_ref(),
+    );
 }
 
 fn load_styles(window: &adw::ApplicationWindow) {
