@@ -128,6 +128,37 @@ impl RemarkedWindow {
         self.note_busy = false;
     }
 
+    fn refresh_panes(&mut self, sender: &ComponentSender<Self>) {
+        if let Some(id) = self.selected_task.get() {
+            if !self
+                .catalog
+                .tasks()
+                .iter()
+                .any(|task| task.instance_id == id)
+            {
+                self.selected_task.set(None);
+            }
+        }
+
+        self.update_task_details();
+        self.rebuild_note_list(sender);
+
+        if let Some(id) = self.selected_note.get() {
+            let notes = match &self.notes {
+                source::Notes::Ready(_, notes) => notes.as_slice(),
+                _ => &[],
+            };
+            if !notes.iter().any(|note| note.id.to_string() == id) {
+                self.select_note(None);
+                self.source_view.buffer().set_text("");
+                self.tags_entry.set_text("");
+            }
+        }
+
+        self.update_editor_state();
+        self.clear_changed();
+    }
+
     fn reconcile(&mut self, sender: &ComponentSender<Self>) {
         if let Some(project) = self.catalog.project() {
             self.header_subtitle.set_label(&project.name);
@@ -143,29 +174,8 @@ impl RemarkedWindow {
             self.notebook.set(None);
         }
 
-        if let Some(id) = self.selected_task.get() {
-            let tasks = self.catalog.tasks();
-            if !tasks.iter().any(|task| task.instance_id == id) {
-                self.selected_task.set(None);
-            }
-        }
-
         self.rebuild_task_list(sender);
-        self.update_task_details();
-        self.rebuild_note_list(sender);
-        if let Some(id) = self.selected_note.get() {
-            let notes = match &self.notes {
-                source::Notes::Ready(_, notes) => notes.as_slice(),
-                _ => &[],
-            };
-            if !notes.iter().any(|note| note.id.to_string() == id) {
-                self.select_note(None);
-                self.source_view.buffer().set_text("");
-                self.tags_entry.set_text("");
-            }
-        }
-        self.update_editor_state();
-        self.clear_changed();
+        self.refresh_panes(sender);
     }
 
     fn rebuild_task_list(&self, sender: &ComponentSender<Self>) {
@@ -645,11 +655,11 @@ impl SimpleComponent for RemarkedWindow {
             }
             RemarkedInput::SelectTask(id) => {
                 self.select_task(Some(id));
-                self.reconcile(&sender);
+                self.refresh_panes(&sender);
             }
             RemarkedInput::ClearTask => {
                 self.select_task(None);
-                self.reconcile(&sender);
+                self.refresh_panes(&sender);
             }
             RemarkedInput::ToggleTaskDetails => {
                 self.toggle_task_details();
@@ -667,11 +677,11 @@ impl SimpleComponent for RemarkedWindow {
             RemarkedInput::SelectNote(id) => {
                 self.select_note(Some(id.clone()));
                 self.load_note(&sender, id);
-                self.reconcile(&sender);
+                self.refresh_panes(&sender);
             }
             RemarkedInput::ClearNote => {
                 self.select_note(None);
-                self.reconcile(&sender);
+                self.refresh_panes(&sender);
             }
             RemarkedInput::CaptureNote(text) => {
                 let text = text.trim().to_string();
