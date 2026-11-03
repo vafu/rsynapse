@@ -7,6 +7,15 @@ pub(crate) fn task_tag(instance: &str) -> String {
     format!("task/{instance}")
 }
 
+pub(crate) fn task_title(title: &str) -> &str {
+    let trimmed = title.trim();
+    if trimmed.is_empty() {
+        "Untitled"
+    } else {
+        trimmed
+    }
+}
+
 pub(crate) fn is_finished(status: &str) -> bool {
     matches!(status, "completed" | "cancelled")
 }

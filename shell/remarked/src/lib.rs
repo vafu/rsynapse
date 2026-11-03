@@ -260,7 +260,7 @@ impl RemarkedWindow {
                 .hexpand(true)
                 .build();
             let title = gtk::Label::builder()
-                .label(&task.goal.title)
+                .label(model::task_title(&task.goal.title))
                 .halign(gtk::Align::Start)
                 .wrap(true)
                 .wrap_mode(gtk::pango::WrapMode::Word)
@@ -305,7 +305,8 @@ impl RemarkedWindow {
             self.task_details_box.set_visible(true);
             self.task_details_button
                 .set_icon_name("sidebar-hide-symbolic");
-            self.task_title.set_label(&task.goal.title);
+            self.task_title
+                .set_label(model::task_title(&task.goal.title));
             self.task_description.set_label(&task.goal.description);
             let active = self.catalog.active().contains(&task.instance_id);
             let finished = model::is_finished(&task.goal.status);
