@@ -51,7 +51,8 @@ impl From<sources::Msg> for RemarkedInput {
 pub struct RemarkedWindow {
     window: adw::ApplicationWindow,
     main_box: gtk::Box,
-    task_split: adw::OverlaySplitView,
+    task_pane: gtk::Box,
+    task_details_box: gtk::Box,
     task_list: gtk::ListBox,
     task_details_button: gtk::Button,
     task_title: gtk::Label,
@@ -301,7 +302,7 @@ impl RemarkedWindow {
 
     fn update_task_details(&self) {
         if let Some(task) = self.selected_task_info() {
-            self.task_split.set_show_sidebar(true);
+            self.task_details_box.set_visible(true);
             self.task_details_button
                 .set_icon_name("sidebar-hide-symbolic");
             self.task_title.set_label(&task.goal.title);
@@ -322,7 +323,7 @@ impl RemarkedWindow {
                 .unwrap_or(0) as u32;
             self.task_status_drop.set_selected(position);
         } else {
-            self.task_split.set_show_sidebar(false);
+            self.task_details_box.set_visible(false);
             self.task_details_button
                 .set_icon_name("document-properties-symbolic");
             self.task_title.set_label("");
@@ -331,8 +332,8 @@ impl RemarkedWindow {
     }
 
     fn toggle_task_details(&mut self) {
-        let show = !self.task_split.shows_sidebar();
-        self.task_split.set_show_sidebar(show);
+        let show = !self.task_details_box.is_visible();
+        self.task_details_box.set_visible(show);
         if !show {
             self.selected_task.set(None);
         }
@@ -543,7 +544,8 @@ impl SimpleComponent for RemarkedWindow {
         toolbar.add_top_bar(&header);
 
         let (
-            task_split,
+            task_pane,
+            task_details_box,
             task_list,
             task_details_button,
             task_title,
@@ -552,8 +554,8 @@ impl SimpleComponent for RemarkedWindow {
             task_status_drop,
             show_finished_switch,
         ) = build_task_pane(&sender);
-        task_split.set_hexpand(false);
-        task_split.set_width_request(400);
+        task_pane.set_hexpand(false);
+        task_pane.set_width_request(400);
         let tx = sender.input_sender().clone();
         task_list.connect_row_selected(move |_, row| {
             if let Some(row) = row {
@@ -582,7 +584,7 @@ impl SimpleComponent for RemarkedWindow {
             .vexpand(true)
             .hexpand(true)
             .build();
-        main_box.append(&task_split);
+        main_box.append(&task_pane);
         main_box.append(&note_split);
 
         toolbar.set_content(Some(&main_box));
@@ -601,7 +603,8 @@ impl SimpleComponent for RemarkedWindow {
         let model = Self::new(
             root.clone(),
             main_box,
-            task_split,
+            task_pane,
+            task_details_box,
             task_list,
             task_details_button,
             task_title,
@@ -836,7 +839,8 @@ impl SimpleComponent for RemarkedWindow {
 fn build_task_pane(
     sender: &ComponentSender<RemarkedWindow>,
 ) -> (
-    adw::OverlaySplitView,
+    gtk::Box,
+    gtk::Box,
     gtk::ListBox,
     gtk::Button,
     gtk::Label,
@@ -845,10 +849,8 @@ fn build_task_pane(
     gtk::DropDown,
     gtk::Switch,
 ) {
-    let split = adw::OverlaySplitView::builder()
-        .sidebar_position(gtk::PackType::End)
-        .show_sidebar(false)
-        .pin_sidebar(true)
+    let split = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
         .vexpand(true)
         .hexpand(false)
         .build();
@@ -922,9 +924,11 @@ fn build_task_pane(
     let details = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
         .spacing(12)
-        .width_request(240)
+        .width_request(280)
         .vexpand(true)
+        .visible(false)
         .build();
+    details.add_css_class("remarked-pane");
     details.add_css_class("remarked-task-details");
 
     let task_title = gtk::Label::builder()
@@ -974,8 +978,8 @@ fn build_task_pane(
     actions.append(&task_status_drop);
     details.append(&actions);
 
-    split.set_content(Some(&content));
-    split.set_sidebar(Some(&details));
+    split.append(&content);
+    split.append(&details);
 
     let tx = sender.input_sender().clone();
     details_button.connect_clicked(move |_| {
@@ -984,6 +988,7 @@ fn build_task_pane(
 
     (
         split,
+        details,
         list_box,
         details_button,
         task_title,
