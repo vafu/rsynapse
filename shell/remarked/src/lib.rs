@@ -59,7 +59,7 @@ pub struct RemarkedWindow {
     task_description: gtk::Label,
     task_start_button: gtk::Button,
     task_status_drop: gtk::DropDown,
-    note_split: adw::OverlaySplitView,
+    note_pane: gtk::Box,
     note_list: gtk::ListBox,
     note_filter_entry: gtk::Entry,
     editor_box: gtk::Box,
@@ -307,8 +307,12 @@ impl RemarkedWindow {
                 .set_icon_name("sidebar-hide-symbolic");
             self.task_title.set_label(&task.goal.title);
             self.task_description.set_label(&task.goal.description);
+            let active = self.catalog.active().contains(&task.instance_id);
+            let finished = model::is_finished(&task.goal.status);
+            self.task_start_button.set_visible(!finished);
             self.task_start_button
-                .set_visible(!model::is_finished(&task.goal.status));
+                .set_label(if active { "Tracking" } else { "Start" });
+            self.task_start_button.set_sensitive(!active);
 
             let statuses = [
                 "planned",
@@ -567,7 +571,7 @@ impl SimpleComponent for RemarkedWindow {
         });
 
         let (
-            note_split,
+            note_pane,
             note_list,
             note_filter_entry,
             editor_box,
@@ -577,7 +581,7 @@ impl SimpleComponent for RemarkedWindow {
             editor_status_page,
             clear_filter_button,
         ) = build_note_pane(&sender);
-        note_split.set_hexpand(true);
+        note_pane.set_hexpand(true);
 
         let main_box = gtk::Box::builder()
             .orientation(gtk::Orientation::Horizontal)
@@ -585,7 +589,7 @@ impl SimpleComponent for RemarkedWindow {
             .hexpand(true)
             .build();
         main_box.append(&task_pane);
-        main_box.append(&note_split);
+        main_box.append(&note_pane);
 
         toolbar.set_content(Some(&main_box));
 
@@ -611,7 +615,7 @@ impl SimpleComponent for RemarkedWindow {
             task_description,
             task_start_button,
             task_status_drop,
-            note_split,
+            note_pane,
             note_list,
             note_filter_entry,
             editor_box,
@@ -695,11 +699,13 @@ impl SimpleComponent for RemarkedWindow {
             RemarkedInput::SelectNote(id) => {
                 self.select_note(Some(id.clone()));
                 self.load_note(&sender, id);
-                self.refresh_panes(&sender);
+                self.update_editor_state();
+                self.clear_changed();
             }
             RemarkedInput::ClearNote => {
                 self.select_note(None);
-                self.refresh_panes(&sender);
+                self.update_editor_state();
+                self.clear_changed();
             }
             RemarkedInput::CaptureNote(text) => {
                 let text = text.trim().to_string();
@@ -943,7 +949,7 @@ fn build_task_pane(
         .halign(gtk::Align::Start)
         .wrap(true)
         .wrap_mode(gtk::pango::WrapMode::Word)
-        .css_classes(["dim-label", "caption"])
+        .css_classes(["dim-label"])
         .build();
     details.append(&task_description);
 
@@ -1002,7 +1008,7 @@ fn build_task_pane(
 fn build_note_pane(
     sender: &ComponentSender<RemarkedWindow>,
 ) -> (
-    adw::OverlaySplitView,
+    gtk::Box,
     gtk::ListBox,
     gtk::Entry,
     gtk::Box,
@@ -1012,10 +1018,8 @@ fn build_note_pane(
     adw::StatusPage,
     gtk::Button,
 ) {
-    let split = adw::OverlaySplitView::builder()
-        .sidebar_position(gtk::PackType::Start)
-        .show_sidebar(true)
-        .pin_sidebar(true)
+    let split = gtk::Box::builder()
+        .orientation(gtk::Orientation::Horizontal)
         .vexpand(true)
         .hexpand(true)
         .build();
@@ -1073,7 +1077,7 @@ fn build_note_pane(
         .build();
     sidebar.append(&list_box);
 
-    split.set_sidebar(Some(&sidebar));
+    split.append(&sidebar);
 
     let content = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
@@ -1177,7 +1181,7 @@ fn build_note_pane(
         .build();
     content.append(&status_page);
 
-    split.set_content(Some(&content));
+    split.append(&content);
 
     let tx = sender.input_sender().clone();
     clear_button.connect_clicked(move |_| {
