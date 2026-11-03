@@ -184,9 +184,7 @@ pub fn run_cli(args: impl IntoIterator<Item = OsString>) -> i32 {
 }
 
 /// Send a notification center action to the notifications process.
-pub fn send_notification_center_action(
-    action: ToggleAction,
-) -> Result<RequestResponse, String> {
+pub fn send_notification_center_action(action: ToggleAction) -> Result<RequestResponse, String> {
     send_request(
         RequestTarget::Notifications,
         &notification_center_request_args(action),
@@ -258,12 +256,13 @@ fn parse_request(args: &[String]) -> Result<ShellRequest, String> {
     };
     match command {
         "project-init" if args.len() == 1 => Ok(ShellRequest::ProjectInit),
-        "workspace" | "notes" => parse_toggle_request(&args[1..], "workspace", true)
-            .map(ShellRequest::Workspace),
-        "remarked" => parse_toggle_request(&args[1..], "remarked", true)
-            .map(ShellRequest::Remarked),
-        "hints" => parse_toggle_request(&args[1..], "hints", false)
-            .map(ShellRequest::Hints),
+        "workspace" | "notes" => {
+            parse_toggle_request(&args[1..], "workspace", true).map(ShellRequest::Workspace)
+        }
+        "remarked" => {
+            parse_toggle_request(&args[1..], "remarked", true).map(ShellRequest::Remarked)
+        }
+        "hints" => parse_toggle_request(&args[1..], "hints", false).map(ShellRequest::Hints),
         "notifications" | "notification-center" => {
             parse_toggle_request(&args[1..], "notifications", false)
                 .map(ShellRequest::Notifications)
@@ -279,14 +278,18 @@ fn parse_toggle_request(
 ) -> Result<ToggleAction, String> {
     match args {
         [] if empty_toggles => Ok(ToggleAction::Toggle),
-        [] => Err(format!("{kind} requires open <bool>, show, hide, or toggle")),
+        [] => Err(format!(
+            "{kind} requires open <bool>, show, hide, or toggle"
+        )),
         [action] if action == "toggle" => Ok(ToggleAction::Toggle),
         [action] if action == "show" => Ok(ToggleAction::Set(true)),
         [action] if action == "hide" => Ok(ToggleAction::Set(false)),
         [key, value] if key == "open" || key == "active" => {
             parse_bool(value).map(ToggleAction::Set)
         }
-        _ => Err(format!("{kind} requires open <bool>, show, hide, or toggle")),
+        _ => Err(format!(
+            "{kind} requires open <bool>, show, hide, or toggle"
+        )),
     }
 }
 
@@ -356,9 +359,8 @@ fn runtime_dir() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::{
-        ToggleAction, RequestResponse, RequestTarget, ShellRequest,
-        decode_args, encode_args, notification_center_request_args, parse_request, parse_response,
-        socket_path,
+        RequestResponse, RequestTarget, ShellRequest, ToggleAction, decode_args, encode_args,
+        notification_center_request_args, parse_request, parse_response, socket_path,
     };
 
     fn args(values: &[&str]) -> Vec<String> {

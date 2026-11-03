@@ -26,7 +26,10 @@ pub(crate) fn task_rows<'a>(
     tasks: &'a [GoalIdentityInfo],
     show_finished: bool,
 ) -> Vec<(&'a GoalIdentityInfo, usize)> {
-    let mut tasks: Vec<_> = tasks.iter().filter(|task| task.deleted_at_ms == 0).collect();
+    let mut tasks: Vec<_> = tasks
+        .iter()
+        .filter(|task| task.deleted_at_ms == 0)
+        .collect();
     tasks.sort_by(|a, b| {
         let rank = |status: &str| match status {
             "in-progress" => 0,

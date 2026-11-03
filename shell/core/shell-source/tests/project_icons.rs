@@ -150,14 +150,22 @@ fn project_icons_seed_follow_changes_and_switch_projects() {
         daemon.0.wait().unwrap();
         daemon.0 = Command::new(std::env::var_os("PROJD_BIN").unwrap())
             .env("PROJD_STORE_PATH", temp.path().join("store.sqlite3"))
-            .spawn().unwrap();
+            .spawn()
+            .unwrap();
         tokio::time::timeout(Duration::from_secs(10), async {
             while let Some(event) = owners.next().await {
                 let args = event.args().unwrap();
-                if args.name().as_str() == BUS_NAME && args.new_owner().is_some() { break; }
+                if args.name().as_str() == BUS_NAME && args.new_owner().is_some() {
+                    break;
+                }
             }
-        }).await.unwrap();
-        let _: ProjectInfo = manager.call("SetProjectIcon", &(&b.id, "AFTER_RESTART")).await.unwrap();
+        })
+        .await
+        .unwrap();
+        let _: ProjectInfo = manager
+            .call("SetProjectIcon", &(&b.id, "AFTER_RESTART"))
+            .await
+            .unwrap();
         expect(&mut icons, "AFTER_RESTART").await;
     });
 }

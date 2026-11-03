@@ -88,9 +88,17 @@ impl NotesClient {
 
 #[derive(Clone, Debug)]
 pub(crate) enum TaskAction {
-    Status { key: String, status: String },
-    Start { key: String, project: String },
-    Clear { project: String },
+    Status {
+        key: String,
+        status: String,
+    },
+    Start {
+        key: String,
+        project: String,
+    },
+    Clear {
+        project: String,
+    },
     Create {
         project: proj_model::ProjectInfo,
         parent: String,
@@ -105,7 +113,7 @@ pub(crate) enum TaskAction {
 }
 
 pub(crate) async fn task_action(action: TaskAction) -> Result<(), String> {
-    use proj_model::{GoalInfo, BUS_NAME, MANAGER_INTERFACE, ROOT_PATH};
+    use proj_model::{BUS_NAME, GoalInfo, MANAGER_INTERFACE, ROOT_PATH};
     let conn = zbus::Connection::session().await.map_err(error)?;
     let proxy = zbus::Proxy::new(&conn, BUS_NAME, ROOT_PATH, MANAGER_INTERFACE)
         .await
@@ -153,7 +161,11 @@ pub(crate) async fn task_action(action: TaskAction) -> Result<(), String> {
             };
             let _: GoalInfo = proxy.call("CreateGoal", &(goal,)).await.map_err(error)?;
         }
-        TaskAction::Edit { key, title, description } => {
+        TaskAction::Edit {
+            key,
+            title,
+            description,
+        } => {
             let fields =
                 std::collections::HashMap::from([("title", title), ("description", description)]);
             let _: GoalInfo = proxy
