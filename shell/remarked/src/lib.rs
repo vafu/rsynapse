@@ -160,6 +160,10 @@ impl RemarkedWindow {
     }
 
     fn reconcile(&mut self, sender: &ComponentSender<Self>) {
+        self.reconcile_catalog(sender);
+    }
+
+    fn reconcile_catalog(&mut self, sender: &ComponentSender<Self>) {
         if let Some(project) = self.catalog.project() {
             self.header_subtitle.set_label(&project.name);
             let cwd = &project.cwd;
@@ -175,6 +179,10 @@ impl RemarkedWindow {
         }
 
         self.rebuild_task_list(sender);
+        self.refresh_panes(sender);
+    }
+
+    fn reconcile_notes(&mut self, sender: &ComponentSender<Self>) {
         self.refresh_panes(sender);
     }
 
@@ -632,7 +640,13 @@ impl SimpleComponent for RemarkedWindow {
         match message {
             RemarkedInput::Source(message) => {
                 Self::update(self, message);
-                self.reconcile(&sender);
+                if self.changed(sources::Field::Catalog) {
+                    self.reconcile_catalog(&sender);
+                } else if self.changed(sources::Field::Notes) {
+                    self.reconcile_notes(&sender);
+                } else {
+                    self.clear_changed();
+                }
             }
             RemarkedInput::Show => self.show(),
             RemarkedInput::Hide => self.hide(),
