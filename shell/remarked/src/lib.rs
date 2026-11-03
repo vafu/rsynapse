@@ -19,6 +19,7 @@ pub enum RemarkedInput {
     Show,
     Hide,
     Toggle,
+    SetProject(Option<String>),
     SelectTask(String),
     ClearTask,
     SelectNote(String),
@@ -65,9 +66,11 @@ pub struct RemarkedWindow {
     editor_status_page: adw::StatusPage,
     show_finished_switch: gtk::Switch,
     clear_filter_button: gtk::Button,
+    header_subtitle: gtk::Label,
     selected_task: StateSignal<Option<String>>,
     selected_note: StateSignal<Option<String>>,
     notebook: StateSignal<Option<source::Notebook>>,
+    project_id: StateSignal<Option<String>>,
     show_finished: bool,
     note_filter: String,
     note_text: String,
@@ -75,8 +78,7 @@ pub struct RemarkedWindow {
     note_dirty: bool,
     note_busy: bool,
     visible: bool,
-    project_id: Option<String>,
-    #[source(source::catalog(shell_core::source::once(project_id.clone())))]
+    #[source(source::catalog(project_id.observable()))]
     catalog: source::Catalog,
     #[source(source::notes(notebook.observable(), selected_task.observable()))]
     notes: source::Notes,
@@ -126,6 +128,7 @@ impl RemarkedWindow {
 
     fn reconcile(&mut self, sender: &ComponentSender<Self>) {
         if let Some(project) = self.catalog.project() {
+            self.header_subtitle.set_label(&project.name);
             let cwd = &project.cwd;
             if !cwd.is_empty() {
                 self.notebook.set(Some(source::Notebook {
@@ -134,7 +137,15 @@ impl RemarkedWindow {
                 }));
             }
         } else {
+            self.header_subtitle.set_label("No project");
             self.notebook.set(None);
+        }
+
+        if let Some(id) = self.selected_task.get() {
+            let tasks = self.catalog.tasks();
+            if !tasks.iter().any(|task| task.instance_id == id) {
+                self.selected_task.set(None);
+            }
         }
 
         self.rebuild_task_list(sender);
@@ -431,7 +442,12 @@ impl SimpleComponent for RemarkedWindow {
             .label("Tasks & Notes")
             .css_classes(["heading"])
             .build();
+        let header_subtitle = gtk::Label::builder()
+            .label("")
+            .css_classes(["dim-label", "caption"])
+            .build();
         title_box.append(&title_label);
+        title_box.append(&header_subtitle);
         header.set_title_widget(Some(&title_box));
         toolbar.add_top_bar(&header);
 
@@ -502,9 +518,11 @@ impl SimpleComponent for RemarkedWindow {
             editor_status_page,
             show_finished_switch,
             clear_filter_button,
+            header_subtitle,
             StateSignal::new(None),
             StateSignal::new(None),
             StateSignal::new(None),
+            StateSignal::new(project_id),
             false,
             String::new(),
             String::new(),
@@ -512,7 +530,6 @@ impl SimpleComponent for RemarkedWindow {
             false,
             false,
             false,
-            project_id,
         );
         let widgets = view_output!();
         model.reconcile(&sender);
@@ -533,6 +550,16 @@ impl SimpleComponent for RemarkedWindow {
                 } else {
                     self.show();
                 }
+            }
+            RemarkedInput::SetProject(project_id) => {
+                self.project_id.set(project_id);
+                self.selected_task.set(None);
+                self.select_note(None);
+                self.source_view.buffer().set_text("");
+                self.tags_entry.set_text("");
+                self.note_filter = String::new();
+                self.note_filter_entry.set_text("");
+                self.reconcile(&sender);
             }
             RemarkedInput::SelectTask(id) => {
                 self.select_task(Some(id));

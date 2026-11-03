@@ -1556,9 +1556,10 @@ impl MainBar {
             }
             let builder = RemarkedWindow::builder();
             relm4::main_application().add_window(&builder.root);
-            self._remarked = Some(builder.launch(project).detach());
+            self._remarked = Some(builder.launch(project.clone()).detach());
         }
         if let Some(window) = &self._remarked {
+            window.emit(RemarkedInput::SetProject(project));
             window.emit(match action {
                 request::ToggleAction::Set(true) => RemarkedInput::Show,
                 request::ToggleAction::Set(false) => RemarkedInput::Hide,
