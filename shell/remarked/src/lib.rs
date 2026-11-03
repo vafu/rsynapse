@@ -258,11 +258,7 @@ impl RemarkedWindow {
             hbox.append(&vbox);
 
             row.set_child(Some(&hbox));
-            let instance_id = task.instance_id.clone();
-            let tx = sender.input_sender().clone();
-            row.connect_activate(move |_| {
-                let _ = tx.send(RemarkedInput::SelectTask(instance_id.clone()));
-            });
+            row.set_widget_name(&task.instance_id);
             self.task_list.append(&row);
         }
         if self.task_list.observe_children().n_items() == 0 {
@@ -539,6 +535,15 @@ impl SimpleComponent for RemarkedWindow {
         ) = build_task_pane(&sender);
         task_split.set_hexpand(false);
         task_split.set_width_request(400);
+        let tx = sender.input_sender().clone();
+        task_list.connect_row_selected(move |_, row| {
+            if let Some(row) = row {
+                let name = row.widget_name();
+                if !name.is_empty() {
+                    let _ = tx.send(RemarkedInput::SelectTask(name.to_string()));
+                }
+            }
+        });
 
         let (
             note_split,
