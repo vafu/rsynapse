@@ -140,6 +140,17 @@ impl RemarkedWindow {
         self.rebuild_task_list(sender);
         self.update_task_details();
         self.rebuild_note_list(sender);
+        if let Some(id) = self.selected_note.get() {
+            let notes = match &self.notes {
+                source::Notes::Ready(_, notes) => notes.as_slice(),
+                _ => &[],
+            };
+            if !notes.iter().any(|note| note.id.to_string() == id) {
+                self.select_note(None);
+                self.source_view.buffer().set_text("");
+                self.tags_entry.set_text("");
+            }
+        }
         self.update_editor_state();
         self.clear_changed();
     }
