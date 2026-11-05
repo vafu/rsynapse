@@ -63,20 +63,33 @@ fn selected_workspace_id(output_name: Option<String>) -> Observable<Option<Strin
 pub(super) fn selected_workspace_windows(
     output_name: Option<String>,
 ) -> Observable<Vec<WindowNode>> {
+    let trace_output = output_name.clone();
     selected_workspace_id(output_name)
-        .combine_latest(window_snapshots(), |selected_workspace_id, windows| {
+        .combine_latest(window_snapshots(), move |selected_workspace_id, windows| {
+            let input_windows = windows.len();
             let _span = tracing::trace_span!(
                 "bar.selected_workspace_windows",
                 selected_workspace_id,
-                input_windows = windows.len()
+                input_windows
             )
             .entered();
+            let selected_for_log = selected_workspace_id.clone();
             let windows = selected_workspace_sorted_windows(selected_workspace_id, windows)
                 .into_iter()
                 .map(|window| window.window)
                 .collect::<Vec<_>>();
-
-            tracing::trace!(output_windows = windows.len(), "selected workspace windows");
+            let listed = windows
+                .iter()
+                .map(|window| window.path_key().to_owned())
+                .collect::<Vec<_>>();
+            tracing::trace!(
+                output = ?trace_output,
+                selected = ?selected_for_log,
+                input = input_windows,
+                listed = ?listed,
+                output_windows = windows.len(),
+                "selected workspace windows"
+            );
             windows
         })
         .distinct_until_changed()

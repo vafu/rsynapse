@@ -1,5 +1,8 @@
 mod box_container;
 
+#[cfg(test)]
+mod test;
+
 use relm4::Component;
 
 pub struct ComponentListUpdate<'a, C>

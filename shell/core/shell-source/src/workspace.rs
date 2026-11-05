@@ -148,6 +148,23 @@ pub fn windows() -> Observable<Vec<WindowObject>> {
         .box_it()
 }
 
+/// The Manager object's authoritative live window path list.
+///
+/// This is a single PropertiesChanged-backed list, so consumers do not need to
+/// reconstruct membership from ObjectManager deltas.
+pub fn window_objects() -> Observable<Vec<WindowObject>> {
+    dbus::property::<Vec<OwnedObjectPath>>(root_property("Windows"))
+        .map(|paths| {
+            paths
+                .unwrap_or_default()
+                .into_iter()
+                .map(WindowObject::at)
+                .collect::<Vec<_>>()
+        })
+        .distinct_until_changed()
+        .box_it()
+}
+
 pub fn focused_workspace() -> Observable<Option<WorkspaceObject>> {
     model_optional(root_property("FocusedWorkspace"), WorkspaceObject::at)
         .distinct_until_changed()

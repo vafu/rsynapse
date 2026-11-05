@@ -15,9 +15,14 @@ pub(in crate::widgets::bar) struct WindowSnapshot {
 
 pub(in crate::widgets::bar) fn window_snapshots() -> Observable<Vec<WindowSnapshot>> {
     source::shared_by_key("rsynapse.window-snapshots", "all", || {
-        source::switch_map_list(workspace::windows(), window_snapshot)
-            .distinct_until_changed()
-            .box_it()
+        source::materialize_list(|| {
+            source::keyed_list(
+                workspace::window_objects,
+                |window| window.path_key().to_owned(),
+                window_snapshot,
+            )
+        })
+        .box_it()
     })
 }
 
@@ -28,13 +33,24 @@ fn window_snapshot(window: WindowObject) -> Observable<WindowSnapshot> {
         window.column_index().map(|column| column.unwrap_or(u64::MAX)),
         window.row_index().map(|row| row.unwrap_or(u64::MAX)),
         window.app_id().map(|app_id| app_id.and_then(non_empty))
-            => move |(id, workspace_id, column, row, app_id)| WindowSnapshot {
-                window: window.clone(),
-                workspace_id,
-                column,
-                row,
-                id,
-                app_id,
+            => move |(id, workspace_id, column, row, app_id)| {
+                tracing::trace!(
+                    path = window.path_key(),
+                    id = %id,
+                    workspace = ?workspace_id,
+                    column,
+                    row,
+                    app = ?app_id,
+                    "window snapshot"
+                );
+                WindowSnapshot {
+                    window: window.clone(),
+                    workspace_id,
+                    column,
+                    row,
+                    id,
+                    app_id,
+                }
             },
     )
     .distinct_until_changed()

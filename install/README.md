@@ -88,6 +88,7 @@ Example Umbriel bindings:
 "Mod+Alt+K" = { action = "spawn:$HOME/.config/scripts/umbriel-workspace-new above", repeat = false }
 "Mod+Alt+J" = { action = "spawn:$HOME/.config/scripts/umbriel-workspace-new below", repeat = false }
 "Mod+Alt+BackSpace" = { action = "workspace-focus-last", repeat = false }
+"Mod+Shift+M" = { action = "spawn:$HOME/.local/bin/rsynapse-shell request workspace-selector toggle", repeat = false }
 ```
 
 The Backspace binding returns to the previous workspace. An unused inserted

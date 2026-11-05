@@ -4,6 +4,7 @@ use gtk::glib::Quark;
 use gtk::prelude::{BoxExt, Cast, IsA, ObjectExt, WidgetExt};
 use relm4::component::ComponentController;
 use relm4::{Component, Controller};
+use shell_source::{ListChange, diff_slices};
 
 use super::{ComponentListBoxExt, ComponentListUpdate};
 
@@ -17,6 +18,10 @@ where
         C::Init: Clone + PartialEq + 'static,
         C::Root: AsRef<gtk::Widget> + Clone + std::fmt::Debug,
     {
+        debug_assert!(
+            gtk::glib::MainContext::default().is_owner(),
+            "component list updates must run on the GTK main context"
+        );
         let container = self.upcast_ref::<gtk::Box>();
         let key = component_list_key::<C>();
         let host = component_list_host::<C>(container, key);
@@ -74,46 +79,57 @@ where
             return;
         }
 
-        let mut reused = 0usize;
+        let previous_items = self
+            .rows
+            .iter()
+            .map(|row| row.item.clone())
+            .collect::<Vec<_>>();
+        let diff = diff_slices(&previous_items, items);
+        let mut rows = std::mem::take(&mut self.rows);
         let mut created = 0usize;
+        let mut removed = 0usize;
+        let mut moved = 0usize;
 
-        let mut old_rows = std::mem::take(&mut self.rows);
-        let mut rows = Vec::with_capacity(items.len());
-
-        for (new_index, item) in items.iter().enumerate() {
-            let row = match old_rows.iter().position(|row| &row.item == item) {
-                Some(old_index) => {
-                    reused += 1;
-                    let row = old_rows.remove(old_index);
-                    trace_list_event::<C>(
-                        container,
-                        format_args!(
-                            "reuse id={} old_index={} new_index={}",
-                            row.id, old_index, new_index
-                        ),
-                    );
-                    row
-                }
-                None => {
+        for change in diff.changes {
+            match change {
+                ListChange::Insert { index, item } => {
                     created += 1;
                     let id = self.next_row_id;
                     self.next_row_id += 1;
+                    let index = index.min(rows.len());
                     trace_list_event::<C>(
                         container,
-                        format_args!("create id={} new_index={}", id, new_index),
+                        format_args!("create id={} index={}", id, index),
                     );
-                    ComponentListRow::new(item.clone(), id)
+                    rows.insert(index, ComponentListRow::new(item, id));
                 }
-            };
-            rows.push(row);
+                ListChange::Remove { index } => {
+                    if index < rows.len() {
+                        removed += 1;
+                        let row = rows.remove(index);
+                        trace_list_event::<C>(
+                            container,
+                            format_args!("remove id={} index={}", row.id, index),
+                        );
+                        container.remove(row.widget());
+                    }
+                }
+                ListChange::Move { from, to } => {
+                    if from < rows.len() {
+                        moved += 1;
+                        let row = rows.remove(from);
+                        let to = to.min(rows.len());
+                        trace_list_event::<C>(
+                            container,
+                            format_args!("move id={} from={} to={}", row.id, from, to),
+                        );
+                        rows.insert(to, row);
+                    }
+                }
+            }
         }
 
-        let removed = old_rows.len();
-        for row in &old_rows {
-            trace_list_event::<C>(container, format_args!("remove id={}", row.id));
-            container.remove(row.widget());
-        }
-
+        let reused = items.len().saturating_sub(created);
         reconcile_widget_order(container, &rows);
 
         tracing::trace!(
@@ -122,6 +138,7 @@ where
             reused,
             created,
             removed,
+            moved,
             "list reconciled"
         );
         trace_list_lifecycle::<C>(

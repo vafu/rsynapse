@@ -39,27 +39,24 @@ GTK4/Relm4 framework crates plus concrete Rsynapse UI surfaces.
   The current combined `rsynapse-shell` package. It owns the bar, OSD,
   notifications bridge, request socket, styles, and Rsynapse-specific UI
   policy.
-   The workspace icon and title use Adwaita ButtonContent to open a Workspace
-   popup. An Adwaita InlineViewSwitcher switches between **Workspace** name
-   editing and **Project** selection, defaulting to the current association.
-   The Project view separates the current association from the project catalog.
-   The current-project row has direct remove and inline name-editing icons. **Choose project**
-    opens a searchable catalog with a tile and direct remove icon for each
-    project. Each checkout/worktree is a separate project. Clicking a tile assigns it;
-   the directory picker is inside this selector popup.
-   The current row's edit icon opens a text field with apply/cancel controls.
-   Remove permanently deletes project metadata from projd. Workspace-only
-   unassignment lives in the Workspace view.
-   The selector stays open while removing entries, including the currently
-   assigned project, so multiple registrations can be cleaned up in one pass.
-    Remove applies to the project and its optional checkout; the same
-   action is available on the current project and catalog entries.
-   Project files and directories are untouched. Unassigning restores the saved workspace name and disables
-   automatic reassociation until an explicit project assignment.
-   The editor's "Keep after restart" checkbox reads and sets explicit relation
-   persistence; new names start session-only. Icon overrides explicitly opt
-   into persistence. `locus persist ... true|false` can toggle an
-    existing relation without replacing its contents (see `../locus/README.md`).
+   Clicking the workspace title or using the compositor shortcut opens a
+   centered, keyboard-first Adwaita layer-shell workspace selector for the
+   focused workspace. The search field filters registered projects; arrow keys
+   move the selection and Enter applies it. Typing a name also appends a
+   **Rename to …** row, still selected with the arrows and applied with Enter.
+   The current project is marked and selected first, and an **Unassign project**
+   row appears while the workspace has an association. Pressing Delete on a
+   project row asks for confirmation before deleting project metadata; the
+   checkout and its files are not touched. The previous workspace popover and
+   inline editor have been removed.
+   Selecting a project assigns it through steward; project files and directories
+   are untouched. Renaming stores an explicit persistent manual workspace name.
+   Each checkout/worktree is a separate project.
+   `rsynapse-shell request workspace-selector show|hide|toggle` controls the
+   selector (alias `workspace-picker`); bind
+   `spawn:$HOME/.local/bin/rsynapse-shell request workspace-selector toggle` in
+   Umbriel. `rsynapse-shell request project-init` keeps opening the directory
+   picker for registering a new project checkout.
     Associated icons subscribe to the project's initial/live `Icon` property;
     changing the association switches subscriptions. Only unset icons use shell
     heuristics, persisted conditionally so manual selections always win. Project
@@ -67,11 +64,7 @@ GTK4/Relm4 framework crates plus concrete Rsynapse UI surfaces.
     workspace icon overrides remain persistent locus relations.
    Automatic titles use the stored `Project.Name`, or `empty` without a
   project; preferred names are preserved by steward.
-  Unassigned workspace buttons have a leading folder-plus icon. **Assign project**
-  selects a directory to register with projd and associate through steward.
-  The popup and picker target the workspace clicked, even if focus changes.
-  `rsynapse-shell request project-init` opens the same picker for the focused
-   workspace and can be used as a compositor shortcut command.
+  Unassigned workspace buttons have a leading folder-plus icon.
    The bar also shows the project's active goal as a button (or **Choose goal**).
    The button shows only the current subgoal title when one is being worked on,
    otherwise the main goal title. Parent context stays in the tooltip.
@@ -113,6 +106,12 @@ The bar consumes the independent `workspace-dbus-api` contract at
 properties; object paths are addresses, never parsed as IDs. Niri/Umbriel
 protocols and normalization stay in the projection service. Steward owns Locus
 association cleanup; project/goal data stay in projd.
+
+Window tiles, the workspace rail, tray items, GitHub rows, and other
+`#[bind_list]` surfaces reconcile through the shell-core diff list host. Equal
+row components are retained across insertions, deletions, and reorders instead
+of rebuilding the whole list. The workspace selector uses the same diff logic
+through `source::diff`.
 
 The bar's corner indicator follows its output's selected workspace `Layout`
 property, including live changes and workspace switches. Scrolling retains the

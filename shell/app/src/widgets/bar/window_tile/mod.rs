@@ -118,11 +118,36 @@ impl SimpleComponent for WindowTile {
         root: Self::Root,
         _sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
+        tracing::trace!(path = init.path_key(), "window tile init");
         let model = WindowTile::new(init);
         let unseen_badge = super::bar_item::unseen_badge();
         let widgets = view_output!();
 
         ComponentParts { model, widgets }
+    }
+
+    fn update(&mut self, message: Self::Input, _sender: ComponentSender<Self>) {
+        let before = self
+            .vm
+            .as_ref()
+            .map(|vm| (vm.active, vm.urgent, vm.tooltip.clone()));
+        WindowTile::update(self, message);
+        let after = self
+            .vm
+            .as_ref()
+            .map(|vm| (vm.active, vm.urgent, vm.tooltip.clone()));
+        if before != after {
+            tracing::trace!(
+                path = self.window.path_key(),
+                before = ?before,
+                after = ?after,
+                "window tile vm"
+            );
+        }
+    }
+
+    fn shutdown(&mut self, _widgets: &mut Self::Widgets, _output: relm4::Sender<Self::Output>) {
+        tracing::trace!(path = self.window.path_key(), "window tile shutdown");
     }
 }
 

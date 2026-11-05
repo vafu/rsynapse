@@ -21,14 +21,6 @@ trait Associations {
     ) -> zbus::Result<shell_core::source::proj::ProjectInfo>;
 }
 
-pub(super) async fn unassign_workspace(workspace: String) -> zbus::Result<()> {
-    let connection = zbus::Connection::session().await?;
-    AssociationsProxy::new(&connection)
-        .await?
-        .unassign_workspace_project(&workspace)
-        .await
-}
-
 pub(super) async fn bind_workspace(
     workspace: String,
     path: &str,
@@ -45,12 +37,12 @@ pub(super) async fn bind_workspace(
 
 #[derive(Clone)]
 pub(in crate::widgets::bar) struct ProjectInitializer {
-    button: gtk::glib::WeakRef<gtk::MenuButton>,
+    button: gtk::glib::WeakRef<gtk::Button>,
     active: Rc<Cell<bool>>,
 }
 
 impl ProjectInitializer {
-    pub(in crate::widgets::bar) fn new(button: &gtk::MenuButton) -> Self {
+    pub(in crate::widgets::bar) fn new(button: &gtk::Button) -> Self {
         Self {
             button: button.downgrade(),
             active: Rc::new(Cell::new(false)),
@@ -87,10 +79,6 @@ impl ProjectInitializer {
                 Err(_) => {}
             }
         });
-    }
-
-    pub(super) fn open_binding(&self, workspace: String, name: &str, initialize: bool) {
-        self.open(workspace, name, initialize);
     }
 
     fn open(&self, workspace: String, name: &str, initialize: bool) {

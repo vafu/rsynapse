@@ -1,0 +1,44 @@
+$workspace-selector-elevation: 3 !default;
+
+window.workspace-selector-window {
+  background-color: transparent;
+}
+
+.workspace-selector {
+  @include rsx-surface(
+    $container: $rsx-surface-container-high,
+    $radius: $rsx-surface-radius-large,
+    $elevation: $workspace-selector-elevation
+  );
+  padding: 18px;
+
+  .workspace-selector-header {
+    padding: 0 4px 4px;
+  }
+
+  .workspace-selector-title {
+    font-size: 1.15em;
+    font-weight: 700;
+  }
+
+  .workspace-selector-subtitle {
+    color: $rsx-on-surface-variant;
+  }
+
+  searchentry {
+    border-radius: $rsx-surface-radius-small;
+  }
+
+  .workspace-selector-list {
+    background: transparent;
+  }
+
+  .workspace-selector-row {
+    padding: 8px 12px;
+  }
+
+  .workspace-selector-hint {
+    padding-top: 2px;
+    font-size: 0.9em;
+  }
+}

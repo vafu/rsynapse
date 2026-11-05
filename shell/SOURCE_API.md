@@ -284,6 +284,16 @@ Useful operators for shell authors:
   when fixed-arity heterogeneous composition would otherwise require repeated
   tuple mapper functions
 - `switch_map` or equivalent dynamic dependency support
+- `source::diff` turns `Observable<Vec<T>>` into `Observable<ListDiff<T>>` with
+  sequential insert/remove/move edits, so lists update rows in place instead of
+  clearing and rebuilding; `ListDiff::apply` applies the same edits to a plain
+  `Vec<T>`. `shell_core::list` also uses `diff_slices` to reconcile
+  `#[bind_list]` row components, preserving equal rows across reorders.
+- `source::keyed_list` maintains a dynamic keyed collection with one live
+  subscription per key. Outer list changes add/remove keys without
+  re-subscribing existing keys, and value changes emit incremental
+  `ListDiff`s. `source::materialize_list` applies those diffs for consumers
+  that need a replaying full-list value such as a shared source.
 - `debounce` and throttling where widget behavior needs transient timing
 - `Observable::create` for low-level custom sources
 

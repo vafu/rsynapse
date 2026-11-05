@@ -30,6 +30,7 @@ impl RequestTarget {
 pub enum ShellRequest {
     ProjectInit,
     Workspace(ToggleAction),
+    WorkspaceSelector(ToggleAction),
     Remarked(ToggleAction),
     Hints(ToggleAction),
     Notifications(ToggleAction),
@@ -38,9 +39,11 @@ pub enum ShellRequest {
 impl ShellRequest {
     pub const fn target(&self) -> RequestTarget {
         match self {
-            Self::Hints(_) | Self::ProjectInit | Self::Workspace(_) | Self::Remarked(_) => {
-                RequestTarget::Shell
-            }
+            Self::Hints(_)
+            | Self::ProjectInit
+            | Self::Workspace(_)
+            | Self::WorkspaceSelector(_)
+            | Self::Remarked(_) => RequestTarget::Shell,
             Self::Notifications(_) => RequestTarget::Notifications,
         }
     }
@@ -259,6 +262,10 @@ fn parse_request(args: &[String]) -> Result<ShellRequest, String> {
         "workspace" | "notes" => {
             parse_toggle_request(&args[1..], "workspace", true).map(ShellRequest::Workspace)
         }
+        "workspace-selector" | "workspace-picker" => {
+            parse_toggle_request(&args[1..], "workspace-selector", true)
+                .map(ShellRequest::WorkspaceSelector)
+        }
         "remarked" => {
             parse_toggle_request(&args[1..], "remarked", true).map(ShellRequest::Remarked)
         }
@@ -420,6 +427,14 @@ mod tests {
         assert_eq!(
             parse_request(&args(&["workspace", "hide"])).unwrap(),
             ShellRequest::Workspace(ToggleAction::Set(false))
+        );
+        assert_eq!(
+            parse_request(&args(&["workspace-selector", "show"])).unwrap(),
+            ShellRequest::WorkspaceSelector(ToggleAction::Set(true))
+        );
+        assert_eq!(
+            parse_request(&args(&["workspace-picker"])).unwrap(),
+            ShellRequest::WorkspaceSelector(ToggleAction::Toggle)
         );
         assert_eq!(
             parse_request(&args(&["notes", "toggle"])).unwrap().target(),

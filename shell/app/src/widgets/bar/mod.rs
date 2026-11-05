@@ -67,7 +67,8 @@ use self::window_tile::WindowTile;
 use self::workspace_bar::{WorkspaceBar, WorkspaceBarInit};
 use self::workspaces::{WorkspaceNode, selected_workspace_windows};
 use super::{
-    OsdAudioView, OsdBrightnessView, OsdInit, OsdInput, OsdWindow, has_notification_items,
+    OsdAudioView, OsdBrightnessView, OsdInit, OsdInput, OsdWindow, WorkspaceSelector,
+    WorkspaceSelectorInput, has_notification_items,
 };
 use crate::{hints, request};
 
@@ -129,6 +130,7 @@ pub enum MainBarInput {
     CopyBranch,
     MonitorsChanged,
     OpenWorkspace,
+    OpenWorkspaceSelector,
     WorkspaceProject(String),
     Request(request::PendingRequest),
 }
@@ -154,6 +156,7 @@ struct SecondaryBar {
 #[shell_macros::model]
 pub struct MainBar {
     _workspace: Option<Controller<rsynapse_workspace::WorkspaceWindow>>,
+    _workspace_selector: Option<Controller<WorkspaceSelector>>,
     _remarked: Option<Controller<rsynapse_remarked::RemarkedWindow>>,
     _osd: Option<AsyncController<OsdWindow>>,
     _request_server: Option<request::RequestServer>,
@@ -218,14 +221,10 @@ pub struct MainBar {
     #[source(source_error_items())]
     source_error_items: Vec<SourceError>,
 
-    _workspace_popup: Option<selected_project::WorkspacePopup>,
     _project_initializer: Option<selected_project::ProjectInitializer>,
 
     #[source(shell_core::source::switch_map(output_scope.observable(), goals::goal_bar))]
     goals: goals::GoalBarVm,
-
-    #[source(selected_project::project_catalog())]
-    project_catalog: selected_project::ProjectCatalog,
 }
 
 #[shell_macros::component(model = MainBar)]
@@ -350,12 +349,11 @@ impl SimpleAsyncComponent for MainBar {
                         set_orientation: gtk::Orientation::Horizontal,
 
                         #[name = "workspace_title_button"]
-                        gtk::MenuButton {
+                        gtk::Button {
                             add_css_class: "flat",
                             add_css_class: "selected-project-branch-button",
                             set_has_frame: false,
-                            set_always_show_arrow: false,
-                            set_tooltip_text: Some("Workspace settings"),
+                            set_tooltip_text: Some("Workspace selector"),
                             #[wrap(Some)]
                             set_child = &adw::ButtonContent {
                             add_css_class: "selected-project-segment",
@@ -1182,6 +1180,7 @@ impl SimpleAsyncComponent for MainBar {
         let mut model = MainBar::new(
             None,
             None,
+            None,
             osd,
             request_server,
             workspace_bar,
@@ -1192,7 +1191,6 @@ impl SimpleAsyncComponent for MainBar {
             output_name.clone(),
             shell_core::source::StateSignal::new(output_name),
             root.downgrade(),
-            None,
             None,
         );
         let system_stats_item = bar_item::container(&["system-stats-widget"]);
@@ -1209,14 +1207,11 @@ impl SimpleAsyncComponent for MainBar {
 
         let initializer =
             selected_project::ProjectInitializer::new(&widgets.workspace_title_button);
-        let popup = selected_project::WorkspacePopup::new(
-            &widgets.workspace_title_button,
-            initializer.clone(),
-        );
-        popup.set_catalog(&model.project_catalog);
-        popup.set_target(&model.selected_project);
-        model._workspace_popup = Some(popup);
         model._project_initializer = Some(initializer);
+        let input_sender = sender.input_sender().clone();
+        widgets.workspace_title_button.connect_clicked(move |_| {
+            input_sender.emit(MainBarInput::OpenWorkspaceSelector);
+        });
         let input_sender = sender.input_sender().clone();
         widgets.goal_button.connect_clicked(move |_| {
             input_sender.emit(MainBarInput::OpenWorkspace);
@@ -1319,10 +1314,6 @@ impl SimpleAsyncComponent for MainBar {
                 let previous_audio = self.audio.clone();
                 let previous_brightness = self.brightness.clone();
                 MainBar::update(self, msg);
-                if let Some(popup) = &self._workspace_popup {
-                    popup.set_catalog(&self.project_catalog);
-                    popup.set_target(&self.selected_project);
-                }
                 self.maybe_show_audio_osd(previous_audio);
                 self.maybe_show_brightness_osd(previous_brightness);
             }
@@ -1341,6 +1332,9 @@ impl SimpleAsyncComponent for MainBar {
                     .unwrap_or_default();
                 relm4::main_application()
                     .activate_action("task-notes", Some(&project.to_variant()));
+            }
+            MainBarInput::OpenWorkspaceSelector => {
+                self.workspace_selector_action(request::ToggleAction::Set(true))
             }
             MainBarInput::WorkspaceProject(project) => {
                 self.workspace_action(request::ToggleAction::Set(true), Some(project))
@@ -1483,6 +1477,7 @@ fn main_bar_input_name(msg: &MainBarInput) -> &'static str {
         MainBarInput::CopyBranch => "copy-branch",
         MainBarInput::MonitorsChanged => "monitors_changed",
         MainBarInput::OpenWorkspace => "open-workspace",
+        MainBarInput::OpenWorkspaceSelector => "open-workspace-selector",
         MainBarInput::WorkspaceProject(_) => "workspace-project",
         MainBarInput::Request(_) => "request",
     }
@@ -1501,6 +1496,10 @@ impl MainBar {
             }
             request::ShellRequest::Hints(action) => {
                 hints::apply(action);
+                request::RequestResponse::Ok
+            }
+            request::ShellRequest::WorkspaceSelector(action) => {
+                self.workspace_selector_action(action);
                 request::RequestResponse::Ok
             }
             request::ShellRequest::Workspace(action) => {
@@ -1539,6 +1538,24 @@ impl MainBar {
                 request::ToggleAction::Set(true) => WorkspaceInput::Open(project),
                 request::ToggleAction::Set(false) => WorkspaceInput::Hide,
                 request::ToggleAction::Toggle => WorkspaceInput::Toggle(project),
+            });
+        }
+    }
+
+    fn workspace_selector_action(&mut self, action: request::ToggleAction) {
+        if self._workspace_selector.is_none() {
+            if action == request::ToggleAction::Set(false) {
+                return;
+            }
+            let builder = WorkspaceSelector::builder();
+            relm4::main_application().add_window(&builder.root);
+            self._workspace_selector = Some(builder.launch(()).detach());
+        }
+        if let Some(selector) = &self._workspace_selector {
+            selector.emit(match action {
+                request::ToggleAction::Set(true) => WorkspaceSelectorInput::Show,
+                request::ToggleAction::Set(false) => WorkspaceSelectorInput::Hide,
+                request::ToggleAction::Toggle => WorkspaceSelectorInput::Toggle,
             });
         }
     }

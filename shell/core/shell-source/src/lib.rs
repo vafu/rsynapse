@@ -8,6 +8,8 @@ use rxrust::prelude::{
 
 pub mod dbus;
 pub mod github;
+mod keyed_list;
+mod list_diff;
 pub mod proj;
 pub mod session;
 mod state;
@@ -18,6 +20,8 @@ pub mod workspace;
 pub mod workspace_name;
 pub mod workspace_project;
 
+pub use keyed_list::{keyed_list, materialize_list};
+pub use list_diff::{ListChange, ListDiff, diff, diff_slices};
 pub use rxrust;
 pub use rxrust::prelude as rx;
 pub use state::StateSignal;

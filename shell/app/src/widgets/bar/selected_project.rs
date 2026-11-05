@@ -4,14 +4,9 @@ use super::project::ProjectDetails;
 
 mod git;
 mod init;
-mod picker;
-mod popup;
-mod rename;
 mod source;
 mod workspace;
 pub(super) use init::ProjectInitializer;
-pub(super) use picker::{ProjectCatalog, project_catalog};
-pub(super) use popup::WorkspacePopup;
 pub(super) use source::{selected_project_context, selected_project_status};
 
 use git::{GitStatus, summary as git_summary};
