@@ -3,10 +3,12 @@ members = [
     "rsynapse-daemon",
     "rsynapse-cli", 
     "rsynapse-plugin", 
+    "rsynapse-launcher-api",
     "rsynapse-plugin-launcher",
     "rsynapse-plugin-shell",
     "rsynapse-plugin-calc",
     "rsynapse-plugin-commands",
+    "rsynapse-plugin-workspaces",
     "rsynapse-ui",
 ]
 resolver = "3"

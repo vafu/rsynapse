@@ -151,7 +151,10 @@ impl SimpleComponent for WorkspaceSelector {
         hint.set_xalign(0.0);
         content.append(&hint);
 
-        root.set_content(Some(&content));
+        let frame = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        frame.add_css_class("workspace-selector-frame");
+        frame.append(&content);
+        root.set_content(Some(&frame));
 
         let input = sender.input_sender().clone();
         search.connect_changed(move |search| {

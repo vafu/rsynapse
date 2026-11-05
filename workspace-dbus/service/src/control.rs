@@ -51,7 +51,7 @@ impl Control {
         .map_err(|_| anyhow::anyhow!("compositor did not acknowledge placement"))?
     }
 
-    async fn action(&self, generation: u64, action: String) -> anyhow::Result<()> {
+    async fn action(&self, generation: u64, action: serde_json::Value) -> anyhow::Result<()> {
         self.snapshot(generation).await?;
         anyhow::ensure!(
             self.kind == BackendKind::Umbriel,
@@ -59,7 +59,7 @@ impl Control {
         );
         tokio::time::timeout(
             Duration::from_secs(5),
-            umbriel::command(self.socket.as_deref(), &action),
+            umbriel::command(self.socket.as_deref(), action),
         )
         .await??;
         self.snapshot(generation).await?;
@@ -84,18 +84,52 @@ impl Control {
         let position = snapshot.workspaces[&target].index;
         // Selection is idempotent, unlike the compositor's optional
         // back-and-forth shortcut for reselecting an active workspace.
-        if snapshot.outputs[output].current_workspace == vec![workspace_path(&target)] {
-            return Ok(target);
-        }
-        self.action(generation, format!("workspace-switch:{position}/{output}"))
+        let already_selected =
+            snapshot.outputs[output].current_workspace == vec![workspace_path(&target)];
+        let focused_output_before = snapshot.manager.focused_output.clone();
+        if !already_selected {
+            self.action(
+                generation,
+                serde_json::json!({
+                    "cmd": "action",
+                    "action": "workspace-switch",
+                    "workspace": position,
+                    "output": output,
+                }),
+            )
             .await?;
-        self.wait(generation, |s| {
-            s.outputs
-                .get(output)
-                .filter(|o| o.current_workspace == vec![workspace_path(&target)])
-                .map(|_| target.clone())
-        })
-        .await
+            self.wait(generation, |s| {
+                s.outputs
+                    .get(output)
+                    .filter(|o| o.current_workspace == vec![workspace_path(&target)])
+                    .map(|_| target.clone())
+            })
+            .await?;
+        }
+
+        // Selecting a workspace on another output must also move global focus
+        // there, even when that workspace is already active on its output.
+        if focused_output_before != vec![workspace_dbus_api::output_path(output)] {
+            let after = self.snapshot(generation).await?;
+            if let Some(window) = active_window_id(&after, &target) {
+                self.action(
+                    generation,
+                    serde_json::json!({
+                        "cmd": "action",
+                        "action": "window-focus-warp",
+                        "window": window,
+                    }),
+                )
+                .await?;
+                self.wait(generation, |s| {
+                    (s.manager.focused_output == vec![workspace_dbus_api::output_path(output)])
+                        .then_some(())
+                })
+                .await?;
+            }
+        }
+
+        Ok(target)
     }
 
     async fn focus_workspace(&self, generation: u64, workspace: &str) -> anyhow::Result<()> {
@@ -116,6 +150,19 @@ impl Control {
         anyhow::ensure!(selected == workspace, "workspace changed during selection");
         Ok(())
     }
+}
+
+fn active_window_id(snapshot: &Projection, workspace: &str) -> Option<String> {
+    let workspace = snapshot.workspaces.get(workspace)?;
+    let path = workspace
+        .active_window
+        .first()
+        .or_else(|| workspace.windows.first())?;
+    snapshot
+        .windows
+        .keys()
+        .find(|id| workspace_dbus_api::window_path(id.as_str()).as_str() == path.as_str())
+        .cloned()
 }
 
 fn failed(error: anyhow::Error) -> fdo::Error {
@@ -150,8 +197,15 @@ impl Control {
                     .contains_key(&window),
                 "window no longer exists"
             );
-            self.action(generation, format!("window-focus-warp:{window}"))
-                .await?;
+            self.action(
+                generation,
+                serde_json::json!({
+                    "cmd": "action",
+                    "action": "window-focus-warp",
+                    "window": window,
+                }),
+            )
+            .await?;
             self.wait(generation, |s| {
                 (s.manager.focused_window == vec![workspace_dbus_api::window_path(&window)])
                     .then_some(())
@@ -212,8 +266,15 @@ impl Control {
                 })
                 .map(|(id, _)| id.clone());
             if let Some(anchor) = anchor {
-                self.action(generation, format!("window-focus-warp:{anchor}"))
-                    .await?;
+                self.action(
+                    generation,
+                    serde_json::json!({
+                        "cmd": "action",
+                        "action": "window-focus-warp",
+                        "window": anchor,
+                    }),
+                )
+                .await?;
                 self.wait(generation, |s| {
                     (s.manager.focused_window == vec![workspace_dbus_api::window_path(&anchor)])
                         .then_some(())
@@ -232,8 +293,15 @@ impl Control {
                 Layout::Dwindle => "dwindle",
                 _ => unreachable!(),
             };
-            self.action(generation, format!("workspace-set-layout:{name}"))
-                .await?;
+            self.action(
+                generation,
+                serde_json::json!({
+                    "cmd": "action",
+                    "action": "workspace-set-layout",
+                    "layout": name,
+                }),
+            )
+            .await?;
             self.wait(generation, |s| {
                 s.workspaces
                     .get(&workspace)
@@ -261,8 +329,15 @@ impl Control {
                 .get(&window)
                 .ok_or_else(|| anyhow::anyhow!("window no longer exists"))?;
             if current.workspace != vec![workspace_path(&workspace)] {
-                self.action(generation, format!("window-focus-warp:{window}"))
-                    .await?;
+                self.action(
+                    generation,
+                    serde_json::json!({
+                        "cmd": "action",
+                        "action": "window-focus-warp",
+                        "window": window,
+                    }),
+                )
+                .await?;
                 self.wait(generation, |s| {
                     (s.manager.focused_window == vec![workspace_dbus_api::window_path(&window)])
                         .then_some(())
@@ -291,7 +366,12 @@ impl Control {
                 // Global focus is a separate optional control.
                 self.action(
                     generation,
-                    format!("window-move-to-workspace-silent:{}/{output}", target.index),
+                    serde_json::json!({
+                        "cmd": "action",
+                        "action": "window-move-to-workspace-silent",
+                        "workspace": target.index,
+                        "output": output,
+                    }),
                 )
                 .await?;
                 self.wait(generation, |s| {
@@ -308,8 +388,15 @@ impl Control {
                 .get(&window)
                 .is_some_and(|w| w.floating != floating)
             {
-                self.action(generation, format!("window-toggle-floating:{window}"))
-                    .await?;
+                self.action(
+                    generation,
+                    serde_json::json!({
+                        "cmd": "action",
+                        "action": "window-toggle-floating",
+                        "window": window,
+                    }),
+                )
+                .await?;
                 self.wait(generation, |s| {
                     s.windows
                         .get(&window)

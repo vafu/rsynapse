@@ -1,7 +1,12 @@
 $workspace-selector-elevation: 3 !default;
+$workspace-selector-window-padding: 40px !default;
 
 window.workspace-selector-window {
   background-color: transparent;
+}
+
+.workspace-selector-frame {
+  padding: $workspace-selector-window-padding;
 }
 
 .workspace-selector {

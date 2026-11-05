@@ -13,7 +13,8 @@ dynamic plugin API, and bundled plugins.
 | `rsynapse-daemon` | Binary | Owns `org.rsynapse.Engine`, loads plugins, serves search/execute over D-Bus. |
 | `rsynapse-cli` | Binary | CLI client for querying and executing launcher results. |
 | `rsynapse-ui` | Binary | GTK4/Relm4 launcher UI client. |
-| `rsynapse-plugin` | Library | Plugin trait and result item types. |
+| `rsynapse-plugin` | Library | Plugin trait, groups, query/key context, and result item types. |
+| `rsynapse-launcher-api` | Library | Shared D-Bus wire types and generated engine/toggle proxies. |
 | `rsynapse-plugin-launcher` | `cdylib` | Indexes `.desktop` applications from XDG application directories. |
 | `rsynapse-plugin-shell` | `cdylib` | Offers syntactically valid shell commands as low-priority results. |
 | `rsynapse-plugin-calc` | `cdylib` | Evaluates calculator expressions with `meval`. |
@@ -29,12 +30,55 @@ The daemon owns:
 
 Methods:
 
-- `Search(query: String) -> Vec<(id, title, description, icon, data)>`
+- `Search(request: SearchRequest) -> SearchResponse`
+- `Describe() -> DescribeResponse`
+- `HandleKey(request: KeyRequest) -> KeyResponse`
 - `Execute(id: String) -> String`
 
+`SearchRequest` carries invocation params, the query, and the current selection.
+The first param selects a plugin group by id/alias; remaining params and the
+query are forwarded to that group's plugin. If no group matches, all plugins are
+queried and all params are forwarded as filters. `SearchResponse` includes the
+dynamic launcher view (title, subtitle, placeholder, hints) and result rows.
+
+`Describe` returns the default view plus all plugin groups and aliases.
+
+`HandleKey` forwards non-navigation keys (for example `Delete`) to the plugin
+that owns the selected result. Plugins can perform an action directly and return
+`refresh`, `close`, and `message` flags.
+
 `Execute` uses the daemon's cached result list from the latest search. Plugins
-can provide a default execute template, and users can override plugin execute
-templates in `~/.config/rsynapse/config.toml`.
+can handle execution directly, provide a default execute template, or users can
+override plugin execute templates in `~/.config/rsynapse/config.toml`.
+
+Plugins declare one or more param-selectable groups. Built-in groups are `apps`
+(aliases: app, applications, launch), `projects` (project, proj), `workspaces`
+(workspace, ws), `shell` (sh, run, command), `calc` (calculator, =), and
+`commands` (cmd, command).
+
+The UI accepts positional launcher params:
+
+```sh
+rsynapse-ui
+rsynapse-ui workspaces
+rsynapse-ui workspaces --hold
+rsynapse-ui apps firefox
+```
+
+`--hold` opens the launcher for modifier-held cycling: Tab/Shift+Tab move
+the selection while the launcher keeps focus, and releasing Mod or Alt applies
+the selection. Bind it in the compositor with `repeat = false`, for example
+`Mod+Tab`.
+
+For the workspace group, `--current-output` (or the `current-output` param)
+limits results to the focused output. Omit it to list workspaces on every
+enabled output:
+
+```sh
+rsynapse-ui workspaces --hold --current-output
+rsynapse-ui workspaces --hold
+```
+
 
 ## Build And Run
 
@@ -45,7 +89,9 @@ under `./target/debug`:
 cargo build --workspace
 cargo run -p rsynapse-daemon
 cargo run -p rsynapse-cli -- search firefox
-cargo run -p rsynapse-ui
+cargo run -p rsynapse-cli -- search --param workspaces
+cargo run -p rsynapse-cli -- describe
+cargo run -p rsynapse-ui -- workspaces
 ```
 
 From the repository root, use the nested manifest explicitly:

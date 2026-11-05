@@ -4,7 +4,7 @@ use tokio::{
     net::UnixStream,
 };
 
-pub(crate) async fn command(path: Option<&Path>, action: &str) -> anyhow::Result<()> {
+pub(crate) async fn command(path: Option<&Path>, action: serde_json::Value) -> anyhow::Result<()> {
     let path = super::socket::socket_path(
         path,
         std::env::var_os("UMBRIEL_SOCKET").as_deref(),
@@ -12,7 +12,7 @@ pub(crate) async fn command(path: Option<&Path>, action: &str) -> anyhow::Result
         std::env::var_os("WAYLAND_DISPLAY").as_deref(),
     )?;
     let mut stream = UnixStream::connect(path).await?;
-    let mut bytes = serde_json::to_vec(&serde_json::json!({"cmd":"msg", "arg":action}))?;
+    let mut bytes = serde_json::to_vec(&action)?;
     bytes.push(b'\n');
     stream.write_all(&bytes).await?;
     let mut reply = String::new();

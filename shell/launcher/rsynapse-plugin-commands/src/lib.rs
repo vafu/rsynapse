@@ -3,7 +3,7 @@ use std::process::{Command, Stdio};
 use std::sync::RwLock;
 
 use regex::Regex;
-use rsynapse_plugin::{Plugin, ResultItem};
+use rsynapse_plugin::{Plugin, PluginGroup, PluginResponse, QueryContext, ResultItem};
 use serde::Deserialize;
 
 #[derive(Deserialize, Default)]
@@ -216,6 +216,7 @@ impl JsonResultItem {
             icon: Some(final_icon),
             data: Some(final_data),
             score: -(index as f64),
+            current: false,
         }
     }
 }
@@ -225,18 +226,27 @@ impl Plugin for CommandsPlugin {
         "Commands"
     }
 
+    fn groups(&self) -> Vec<PluginGroup> {
+        vec![PluginGroup {
+            id: "commands".to_owned(),
+            title: "Commands".to_owned(),
+            description: Some("Run configured command queries".to_owned()),
+            aliases: vec!["cmd".to_owned(), "command".to_owned()],
+        }]
+    }
+
     fn reload(&self) {
         eprintln!("[Commands Plugin] Reloading configuration...");
         let new_commands = Self::compile_commands();
         *self.commands.write().unwrap() = new_commands;
     }
 
-    fn query(&self, query: &str) -> Vec<ResultItem> {
+    fn query(&self, context: &QueryContext<'_>) -> PluginResponse {
         let commands = self.commands.read().unwrap();
         let mut results = Vec::new();
 
         for cmd in commands.iter() {
-            if let Some(captures) = cmd.pattern.captures(query) {
+            if let Some(captures) = cmd.pattern.captures(context.query) {
                 results.extend(Self::execute_command(
                     &cmd.command,
                     &captures,
@@ -245,7 +255,10 @@ impl Plugin for CommandsPlugin {
             }
         }
 
-        results
+        PluginResponse {
+            view: None,
+            results,
+        }
     }
 }
 

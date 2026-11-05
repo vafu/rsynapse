@@ -2,7 +2,7 @@ $rsx-surface: $bg_tint !default;
 $rsx-surface-container: $bg_tint !default;
 $rsx-surface-container-high: $bg_tint !default;
 $rsx-on-surface: $fg !default;
-$rsx-on-surface-variant: "color-mix(in srgb, #{$fg} 68%, transparent)" !default;
+$rsx-on-surface-variant: color-mix(in srgb, #{$fg} 68%, transparent) !default;
 $rsx-primary: $accent_color !default;
 $rsx-error: $sys_danger !default;
 $rsx-outline: "color-mix(in srgb, #{$fg} 22%, transparent)" !default;

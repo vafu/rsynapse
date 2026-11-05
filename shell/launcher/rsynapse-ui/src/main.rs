@@ -1,38 +1,66 @@
 mod dbus;
 
-use gtk4_layer_shell::{Edge, KeyboardMode, Layer, LayerShell};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+    time::Duration,
+};
+
+use gtk4_layer_shell::{KeyboardMode, Layer, LayerShell};
 use relm4::adw;
 use relm4::adw::prelude::*;
 use relm4::gtk;
 use relm4::gtk::gdk;
 use relm4::gtk::glib;
 use relm4::prelude::*;
+use rsynapse_launcher_api::{
+    KeyEvent as LauncherKeyEvent, KeyRequest, KeyResponse, LauncherHint, LauncherResult,
+    LauncherView, SearchRequest, SearchResponse, ShowRequest,
+};
 
 const MAX_ITEMS: usize = 10;
 const RSYNAPSE_UI_CSS_PRIORITY: u32 = gtk::STYLE_PROVIDER_PRIORITY_USER + 1;
 
 struct App {
     window: gtk::Window,
+    revealer: gtk::Revealer,
+    transition_generation: Rc<Cell<u64>>,
+    title: gtk::Label,
+    subtitle: gtk::Label,
     search_entry: gtk::SearchEntry,
     list_box: gtk::ListBox,
     scrolled: gtk::ScrolledWindow,
-    results: Vec<dbus::SearchResult>,
+    hints: gtk::Label,
+    params: Rc<RefCell<Vec<String>>>,
+    results: Vec<LauncherResult>,
     selected: i32,
+    hold: bool,
 }
 
 #[derive(Debug)]
 enum Msg {
-    SearchResults(Vec<dbus::SearchResult>),
+    SearchResults(SearchResponse),
     SelectNext,
     SelectPrev,
+    Cycle(i32),
     Activate,
+    ModifierReleased,
     Hide,
-    Toggle,
+    Show(ShowRequest),
+    Toggle(ShowRequest),
+    ForwardKey(LauncherKeyEvent),
+    KeyResponse(KeyResponse),
+}
+
+enum UiCommand {
+    Show(ShowRequest),
+    Toggle(ShowRequest),
+    Hide,
 }
 
 #[relm4::component]
 impl SimpleComponent for App {
-    type Init = ();
+    type Init = (Vec<String>, bool);
     type Input = Msg;
     type Output = ();
 
@@ -42,7 +70,7 @@ impl SimpleComponent for App {
     }
 
     fn init(
-        _init: Self::Init,
+        (params, hold): Self::Init,
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
@@ -50,74 +78,95 @@ impl SimpleComponent for App {
         root.set_namespace(Some("rsynapse-ui"));
         root.set_layer(Layer::Overlay);
         root.set_keyboard_mode(KeyboardMode::Exclusive);
-        root.set_anchor(Edge::Top, true);
-        root.set_anchor(Edge::Bottom, true);
-        root.set_anchor(Edge::Left, false);
-        root.set_anchor(Edge::Right, false);
         root.set_decorated(false);
-        root.add_css_class("rsynapse-window");
+        root.add_css_class("workspace-selector-window");
 
         let widgets = view_output!();
 
-        let search_entry = gtk::SearchEntry::builder()
-            .css_classes(["rsynapse-search"])
-            .build();
+        let title = gtk::Label::new(Some("Rsynapse"));
+        title.add_css_class("workspace-selector-title");
+        title.set_xalign(0.0);
+
+        let subtitle = gtk::Label::new(None);
+        subtitle.add_css_class("workspace-selector-subtitle");
+        subtitle.set_xalign(0.0);
+        subtitle.set_ellipsize(gtk::pango::EllipsizeMode::End);
+        subtitle.set_max_width_chars(72);
+        subtitle.set_visible(false);
+
+        let header = gtk::Box::new(gtk::Orientation::Vertical, 2);
+        header.add_css_class("workspace-selector-header");
+        header.append(&title);
+        header.append(&subtitle);
+
+        let search_entry = gtk::SearchEntry::new();
         search_entry.set_property("search-delay", 0u32);
+        search_entry.set_placeholder_text(Some("Search"));
 
         let list_box = gtk::ListBox::builder()
             .selection_mode(gtk::SelectionMode::Single)
-            .css_classes(["navigation-sidebar"])
+            .activate_on_single_click(true)
+            .css_classes(["boxed-list", "workspace-selector-list"])
             .build();
 
         let scrolled = gtk::ScrolledWindow::builder()
             .hscrollbar_policy(gtk::PolicyType::Never)
-            .vscrollbar_policy(gtk::PolicyType::Never)
+            .vscrollbar_policy(gtk::PolicyType::Automatic)
             .propagate_natural_height(true)
-            .css_classes(["rsynapse-items"])
+            .max_content_height(380)
             .build();
         scrolled.set_child(Some(&list_box));
         scrolled.set_visible(false);
 
-        let container = gtk::Box::builder()
-            .orientation(gtk::Orientation::Vertical)
-            .valign(gtk::Align::End)
-            .css_classes(["rsynapse"])
+        let hints = gtk::Label::new(None);
+        hints.add_css_class("dim-label");
+        hints.add_css_class("workspace-selector-hint");
+        hints.set_xalign(0.0);
+        hints.set_visible(false);
+
+        let card = gtk::Box::new(gtk::Orientation::Vertical, 10);
+        card.add_css_class("workspace-selector");
+        card.set_width_request(560);
+        card.append(&header);
+        card.append(&search_entry);
+        card.append(&scrolled);
+        card.append(&hints);
+
+        let frame = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        frame.add_css_class("workspace-selector-frame");
+        frame.set_halign(gtk::Align::Center);
+        frame.set_valign(gtk::Align::Center);
+        frame.append(&card);
+
+        let revealer = gtk::Revealer::builder()
+            .transition_type(gtk::RevealerTransitionType::Crossfade)
+            .transition_duration(100)
+            .reveal_child(true)
             .build();
-        container.append(&scrolled);
-        container.append(&search_entry);
+        revealer.set_child(Some(&frame));
+        root.set_child(Some(&revealer));
 
-        root.set_child(Some(&container));
-
-        // Search changed — run D-Bus call in background thread
+        let params = Rc::new(RefCell::new(params));
         let s = sender.clone();
+        let search_params = params.clone();
         search_entry.connect_search_changed(move |entry| {
-            let query = entry.text().to_string();
-            let s2 = s.clone();
-            std::thread::spawn(move || {
-                let results = if query.trim().is_empty() {
-                    Vec::new()
-                } else {
-                    dbus::search(&query).unwrap_or_default()
-                };
-                glib::idle_add_once(move || {
-                    s2.input(Msg::SearchResults(results));
-                });
-            });
+            search_async(
+                s.clone(),
+                search_params.borrow().clone(),
+                entry.text().to_string(),
+            );
         });
 
-        // Activate on Enter
         let s = sender.clone();
         search_entry.connect_activate(move |_| {
             s.input(Msg::Activate);
         });
 
-        // Stop search on Escape
         let s = sender.clone();
         search_entry.connect_stop_search(move |_| {
             s.input(Msg::Hide);
         });
 
-        // Arrow keys for selection
         let s = sender.clone();
         search_entry.connect_next_match(move |_| {
             s.input(Msg::SelectNext);
@@ -127,26 +176,55 @@ impl SimpleComponent for App {
             s.input(Msg::SelectPrev);
         });
 
-        // Wire Up/Down to next-match/previous-match
-        let shortcuts = gtk::ShortcutController::new();
-        shortcuts.add_shortcut(gtk::Shortcut::new(
-            Some(gtk::KeyvalTrigger::new(
-                gdk::Key::Down,
-                gdk::ModifierType::empty(),
-            )),
-            Some(gtk::SignalAction::new("next-match")),
-        ));
-        shortcuts.add_shortcut(gtk::Shortcut::new(
-            Some(gtk::KeyvalTrigger::new(
-                gdk::Key::Up,
-                gdk::ModifierType::empty(),
-            )),
-            Some(gtk::SignalAction::new("previous-match")),
-        ));
-        search_entry.add_controller(shortcuts);
+        let keys = gtk::EventControllerKey::new();
+        keys.set_propagation_phase(gtk::PropagationPhase::Capture);
+        let s = sender.clone();
+        keys.connect_key_pressed(move |_, key, _, modifiers| {
+            if key == gdk::Key::Up {
+                s.input(Msg::Cycle(-1));
+                return glib::Propagation::Stop;
+            }
+            if key == gdk::Key::Down {
+                s.input(Msg::Cycle(1));
+                return glib::Propagation::Stop;
+            }
+            if matches!(key, gdk::Key::Tab | gdk::Key::ISO_Left_Tab) {
+                let delta = if key == gdk::Key::ISO_Left_Tab
+                    || modifiers.contains(gdk::ModifierType::SHIFT_MASK)
+                {
+                    -1
+                } else {
+                    1
+                };
+                s.input(Msg::Cycle(delta));
+                return glib::Propagation::Stop;
+            }
+            let forward =
+                matches!(key, gdk::Key::Delete) || modifiers.contains(gdk::ModifierType::ALT_MASK);
+            if !forward {
+                return glib::Propagation::Proceed;
+            }
+            s.input(Msg::ForwardKey(LauncherKeyEvent {
+                key: key_name(key),
+                ctrl: modifiers.contains(gdk::ModifierType::CONTROL_MASK),
+                alt: modifiers.contains(gdk::ModifierType::ALT_MASK),
+                shift: modifiers.contains(gdk::ModifierType::SHIFT_MASK),
+            }));
+            glib::Propagation::Stop
+        });
+        let s = sender.clone();
+        keys.connect_key_released(move |_, key, _, _| {
+            if matches!(
+                key,
+                gdk::Key::Super_L | gdk::Key::Super_R | gdk::Key::Alt_L | gdk::Key::Alt_R
+            ) {
+                s.input(Msg::ModifierReleased);
+            }
+        });
+        root.add_controller(keys);
 
         // D-Bus toggle interface
-        let (dbus_tx, dbus_rx) = std::sync::mpsc::channel::<()>();
+        let (dbus_tx, dbus_rx) = std::sync::mpsc::channel::<UiCommand>();
         std::thread::spawn(move || {
             let rt = tokio::runtime::Builder::new_current_thread()
                 .enable_all()
@@ -181,69 +259,142 @@ impl SimpleComponent for App {
 
         let toggle_sender = sender.clone();
         glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
-            if dbus_rx.try_recv().is_ok() {
-                toggle_sender.input(Msg::Toggle);
+            match dbus_rx.try_recv() {
+                Ok(UiCommand::Show(request)) => {
+                    let _ = toggle_sender.input(Msg::Show(request));
+                }
+                Ok(UiCommand::Toggle(request)) => {
+                    let _ = toggle_sender.input(Msg::Toggle(request));
+                }
+                Ok(UiCommand::Hide) => {
+                    let _ = toggle_sender.input(Msg::Hide);
+                }
+                Err(_) => {}
             }
             glib::ControlFlow::Continue
         });
 
         root.present();
-        search_entry.grab_focus();
+        list_box.set_focusable(true);
+        if hold {
+            search_entry.set_visible(false);
+            let list_box = list_box.clone();
+            glib::idle_add_local_once(move || {
+                list_box.grab_focus();
+            });
+        } else {
+            search_entry.grab_focus();
+        }
 
         let model = App {
             window: root.clone(),
+            revealer,
+            transition_generation: Rc::new(Cell::new(0)),
+            title,
+            subtitle,
             search_entry,
             list_box,
             scrolled,
+            hints,
+            params: params.clone(),
             results: Vec::new(),
             selected: 0,
+            hold,
         };
+        model.start_search(&sender);
 
         ComponentParts { model, widgets }
     }
 
-    fn update(&mut self, msg: Self::Input, _sender: ComponentSender<Self>) {
+    fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>) {
         match msg {
-            Msg::SearchResults(mut results) => {
+            Msg::SearchResults(response) => {
+                self.apply_view(&response.view);
+                let mut results = response.results;
                 results.truncate(MAX_ITEMS);
                 self.results = results;
-                self.selected = 0;
+                // In hold/cycle mode, start on the previous item so releasing
+                // the modifier immediately switches to the last-used target.
+                self.selected = if self.hold && self.results.len() > 1 {
+                    1
+                } else {
+                    0
+                };
                 self.refresh_list();
             }
             Msg::SelectNext => {
                 if !self.results.is_empty() {
-                    self.selected = (self.selected + 1).min(self.results.len() as i32 - 1);
+                    let count = self.results.len() as i32;
+                    self.selected = (self.selected + 1).rem_euclid(count);
                     self.update_selection();
                 }
             }
             Msg::SelectPrev => {
                 if !self.results.is_empty() {
-                    self.selected = (self.selected - 1).max(0);
+                    let count = self.results.len() as i32;
+                    self.selected = (self.selected - 1).rem_euclid(count);
                     self.update_selection();
                 }
             }
-            Msg::Activate => {
-                if let Some(result) = self.results.get(self.selected as usize) {
-                    eprintln!("[rsynapse-ui] Executing: {} ({})", result.title, result.id);
-                    match dbus::execute(&result.id) {
-                        Ok(r) => eprintln!("[rsynapse-ui] Execute result: {:?}", r),
-                        Err(e) => eprintln!("[rsynapse-ui] Execute error: {}", e),
-                    }
-                    self.search_entry.set_text("");
-                    self.window.set_visible(false);
+            Msg::Cycle(delta) => self.cycle(delta),
+            Msg::Activate => self.activate_selected(),
+            Msg::ModifierReleased => {
+                if self.hold {
+                    self.activate_selected();
                 }
             }
-            Msg::Hide => {
-                self.search_entry.set_text("");
-                self.window.set_visible(false);
-            }
-            Msg::Toggle => {
+            Msg::Hide => self.hide(),
+            Msg::Show(request) => self.show_request(request, &sender),
+            Msg::Toggle(request) => {
                 if self.window.is_visible() {
-                    self.search_entry.set_text("");
-                    self.window.set_visible(false);
+                    if request.hold {
+                        self.hold = true;
+                        self.inhibit_shortcuts();
+                        if *self.params.borrow() == request.params {
+                            self.cycle(1);
+                        } else {
+                            *self.params.borrow_mut() = request.params;
+                            self.start_search(&sender);
+                        }
+                    } else {
+                        self.hide();
+                    }
                 } else {
-                    self.window.set_visible(true);
-                    self.search_entry.grab_focus();
+                    self.show_request(request, &sender);
+                }
+            }
+            Msg::ForwardKey(event) => {
+                let request = KeyRequest {
+                    params: self.params.borrow().clone(),
+                    query: self.search_entry.text().to_string(),
+                    selected: self
+                        .results
+                        .get(self.selected as usize)
+                        .map(|result| result.id.clone())
+                        .unwrap_or_default(),
+                    event,
+                };
+                let s = sender.clone();
+                std::thread::spawn(move || {
+                    let result = dbus::handle_key(request).unwrap_or_default();
+                    glib::idle_add_once(move || {
+                        s.input(Msg::KeyResponse(result));
+                    });
+                });
+            }
+            Msg::KeyResponse(response) => {
+                if !response.handled {
+                    return;
+                }
+                if !response.message.is_empty() {
+                    self.subtitle.set_text(&response.message);
+                    self.subtitle.set_visible(true);
+                }
+                if response.refresh {
+                    self.start_search(&sender);
+                }
+                if response.close {
+                    self.hide();
                 }
             }
         }
@@ -251,8 +402,117 @@ impl SimpleComponent for App {
 }
 
 impl App {
+    fn start_search(&self, sender: &ComponentSender<Self>) {
+        search_async(
+            sender.clone(),
+            self.params.borrow().clone(),
+            self.search_entry.text().to_string(),
+        );
+    }
+
+    fn show_request(&mut self, request: ShowRequest, sender: &ComponentSender<Self>) {
+        *self.params.borrow_mut() = request.params;
+        self.hold = request.hold;
+        let query = request.query;
+        let changed = self.search_entry.text() != query;
+        self.search_entry.set_text(&query);
+        self.transition_generation
+            .set(self.transition_generation.get().wrapping_add(1));
+        self.window.set_keyboard_mode(KeyboardMode::Exclusive);
+        self.window.set_visible(true);
+        self.revealer.set_reveal_child(true);
+        self.search_entry.set_visible(!self.hold);
+        if self.hold {
+            self.inhibit_shortcuts();
+            self.list_box.grab_focus();
+        } else {
+            self.search_entry.grab_focus();
+        }
+        if !changed {
+            self.start_search(sender);
+        }
+    }
+
+    fn hide(&mut self) {
+        self.hold = false;
+        self.transition_generation
+            .set(self.transition_generation.get().wrapping_add(1));
+        let generation = self.transition_generation.get();
+        self.window.set_keyboard_mode(KeyboardMode::None);
+        self.search_entry.set_text("");
+        self.revealer.set_reveal_child(false);
+        let window = self.window.downgrade();
+        let current = self.transition_generation.clone();
+        glib::timeout_add_local_once(Duration::from_millis(110), move || {
+            if current.get() == generation {
+                if let Some(window) = window.upgrade() {
+                    window.set_visible(false);
+                }
+            }
+        });
+    }
+
+    fn cycle(&mut self, delta: i32) {
+        if self.results.is_empty() {
+            return;
+        }
+        let count = self.results.len() as i32;
+        self.selected = (self.selected + delta).rem_euclid(count);
+        self.update_selection();
+    }
+
+    fn activate_selected(&mut self) {
+        let Some(result) = self.results.get(self.selected as usize).cloned() else {
+            return;
+        };
+        // Release the layer-shell keyboard grab before activating another
+        // output's workspace or window. The compositor must be free to move
+        // focus away from this launcher.
+        self.hide();
+        eprintln!("[rsynapse-ui] Executing: {} ({})", result.title, result.id);
+        std::thread::spawn(move || match dbus::execute(&result.id) {
+            Ok(r) => eprintln!("[rsynapse-ui] Execute result: {:?}", r),
+            Err(e) => eprintln!("[rsynapse-ui] Execute error: {}", e),
+        });
+    }
+
+    fn inhibit_shortcuts(&self) {
+        if let Some(surface) = self.window.surface() {
+            if let Ok(toplevel) = surface.downcast::<gdk::Toplevel>() {
+                toplevel.inhibit_system_shortcuts(None::<&gdk::Event>);
+            }
+        }
+    }
+
+    fn apply_view(&self, view: &LauncherView) {
+        self.title.set_text(if view.title.is_empty() {
+            "Rsynapse"
+        } else {
+            &view.title
+        });
+        self.subtitle.set_text(&view.subtitle);
+        self.subtitle.set_visible(!view.subtitle.is_empty());
+        self.search_entry
+            .set_placeholder_text(Some(if view.placeholder.is_empty() {
+                "Search"
+            } else {
+                &view.placeholder
+            }));
+        self.apply_hints(&view.hints);
+    }
+
+    fn apply_hints(&self, hints: &[LauncherHint]) {
+        let text = hints
+            .iter()
+            .map(|hint| format!("{} {}", hint.key, hint.label))
+            .collect::<Vec<_>>()
+            .join(" · ");
+        self.hints.set_text(&text);
+        self.hints.set_visible(!hints.is_empty());
+        self.window.queue_resize();
+    }
+
     fn refresh_list(&mut self) {
-        // Clear
         while let Some(child) = self.list_box.first_child() {
             self.list_box.remove(&child);
         }
@@ -261,50 +521,135 @@ impl App {
             let row = adw::ActionRow::builder()
                 .title(&result.title)
                 .subtitle(&result.description)
+                .title_lines(1)
+                .subtitle_lines(1)
+                .activatable(true)
                 .build();
+            row.add_css_class("workspace-selector-row");
 
             if !result.icon.is_empty() {
-                row.add_prefix(&gtk::Image::from_icon_name(&result.icon));
+                row.add_prefix(&result_icon(&result.icon));
+            }
+            if result.current {
+                let check = gtk::Image::from_icon_name("object-select-symbolic");
+                check.add_css_class("accent");
+                check.set_valign(gtk::Align::Center);
+                row.add_suffix(&check);
             }
 
             self.list_box.append(&row);
         }
 
-        self.scrolled.set_visible(!self.results.is_empty());
         self.update_selection();
+        self.scrolled.set_visible(!self.results.is_empty());
+        self.window.queue_resize();
     }
 
     fn update_selection(&self) {
         if let Some(row) = self.list_box.row_at_index(self.selected) {
             self.list_box.select_row(Some(&row));
+            self.scroll_to_row(&row);
+        } else {
+            self.list_box.unselect_all();
+        }
+    }
+
+    fn scroll_to_row(&self, row: &gtk::ListBoxRow) {
+        let Some(bounds) = row.compute_bounds(&self.list_box) else {
+            return;
+        };
+        let adjustment = self.scrolled.vadjustment();
+        let top = bounds.y() as f64;
+        let bottom = top + bounds.height() as f64;
+        if top < adjustment.value() {
+            adjustment.set_value(top);
+        } else if bottom > adjustment.value() + adjustment.page_size() {
+            adjustment.set_value(bottom - adjustment.page_size());
         }
     }
 }
 
+fn search_async(sender: ComponentSender<App>, params: Vec<String>, query: String) {
+    std::thread::spawn(move || {
+        let response = dbus::search(SearchRequest {
+            params,
+            query,
+            selected: String::new(),
+        })
+        .ok();
+        if let Some(response) = response {
+            glib::idle_add_once(move || {
+                sender.input(Msg::SearchResults(response));
+            });
+        }
+    });
+}
+
+fn result_icon(icon: &str) -> gtk::Widget {
+    if is_theme_icon(icon) {
+        gtk::Image::from_icon_name(icon).upcast()
+    } else {
+        let label = gtk::Label::new(Some(icon));
+        label.add_css_class("launcher-icon");
+        label.set_valign(gtk::Align::Center);
+        label.upcast()
+    }
+}
+
+fn is_theme_icon(icon: &str) -> bool {
+    !icon.is_empty()
+        && icon
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '+'))
+}
+
+fn key_name(key: gdk::Key) -> String {
+    match key {
+        gdk::Key::Delete => "Delete".to_owned(),
+        gdk::Key::BackSpace => "Backspace".to_owned(),
+        gdk::Key::Tab => "Tab".to_owned(),
+        gdk::Key::Return | gdk::Key::KP_Enter => "Enter".to_owned(),
+        gdk::Key::Escape => "Escape".to_owned(),
+        other => other
+            .name()
+            .map(|name| name.to_string())
+            .unwrap_or_default(),
+    }
+}
+
 struct UiDbus {
-    sender: std::sync::mpsc::Sender<()>,
+    sender: std::sync::mpsc::Sender<UiCommand>,
 }
 
 #[zbus::interface(name = "org.rsynapse.UIToggle1")]
 impl UiDbus {
-    fn toggle(&self) {
-        self.sender.send(()).ok();
+    fn show(&self, request: ShowRequest) {
+        let _ = self.sender.send(UiCommand::Show(request));
+    }
+
+    fn toggle(&self, request: ShowRequest) {
+        let _ = self.sender.send(UiCommand::Toggle(request));
+    }
+
+    fn hide(&self) {
+        let _ = self.sender.send(UiCommand::Hide);
     }
 }
 
-fn try_toggle_existing() -> bool {
-    std::process::Command::new("busctl")
-        .args([
-            "--user",
-            "call",
-            "org.rsynapse.UIToggle",
-            "/org/rsynapse/UI",
-            "org.rsynapse.UIToggle1",
-            "Toggle",
-        ])
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
+fn try_toggle_existing(params: &[String], hold: bool) -> bool {
+    let Ok(connection) = zbus::blocking::Connection::session() else {
+        return false;
+    };
+    let Ok(proxy) = rsynapse_launcher_api::UiToggleProxyBlocking::new(&connection) else {
+        return false;
+    };
+    proxy
+        .toggle(ShowRequest {
+            params: params.to_vec(),
+            query: String::new(),
+            hold,
+        })
+        .is_ok()
 }
 
 fn install_css() {
@@ -319,7 +664,18 @@ fn install_css() {
 }
 
 fn main() {
-    if try_toggle_existing() {
+    let mut params = Vec::new();
+    let mut hold = false;
+    for arg in std::env::args().skip(1) {
+        if arg == "--hold" {
+            hold = true;
+        } else if matches!(arg.as_str(), "--current-output" | "--current-monitor") {
+            params.push("current-output".to_owned());
+        } else {
+            params.push(arg);
+        }
+    }
+    if try_toggle_existing(&params, hold) {
         return;
     }
 
@@ -327,5 +683,5 @@ fn main() {
 
     let app = RelmApp::new("org.rsynapse.UI");
     install_css();
-    app.run::<App>(());
+    app.run::<App>((params, hold));
 }

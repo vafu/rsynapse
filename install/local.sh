@@ -60,7 +60,8 @@ cargo build \
     -p rsynapse-plugin-launcher \
     -p rsynapse-plugin-shell \
     -p rsynapse-plugin-calc \
-    -p rsynapse-plugin-commands
+    -p rsynapse-plugin-commands \
+    -p rsynapse-plugin-workspaces
 
 install -d "$plugin_dir"
 plugin_target="${CARGO_TARGET_DIR:-"$repo_root/shell/launcher/target"}/release"

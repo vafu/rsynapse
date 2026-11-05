@@ -12,4 +12,5 @@ serde = { version = "1.0", features = ["derive"] }
 dirs = "5.0"
 toml = "0.8"
 notify = "6"
+rsynapse-launcher-api = { path = "../rsynapse-launcher-api" }
 rsynapse-plugin = { path = "../rsynapse-plugin" }

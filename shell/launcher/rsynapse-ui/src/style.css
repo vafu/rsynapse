@@ -1,28 +1,50 @@
-window.rsynapse-window,
-window.rsynapse-window.background,
-.rsynapse-window.background {
-  background: transparent;
+@define-color bg @theme_bg_color;
+@define-color fg @theme_fg_color;
+@define-color shadow #22262d8a;
+
+window.workspace-selector-window {
   background-color: transparent;
-  background-image: none;
-  box-shadow: none;
 }
 
-.rsynapse {
-  background: color-mix(in srgb, @theme_bg_color 88%, @theme_fg_color);
-  background-color: color-mix(in srgb, @theme_bg_color 88%, @theme_fg_color);
-  color: @theme_fg_color;
-  border: 0.5px solid alpha(@theme_fg_color, 0.12);
-  box-shadow: 0px 2px 6px 1px rgba(0, 0, 0, 0.15);
-  margin: 80px;
-  padding: 16px;
-  border-radius: 12px;
+.workspace-selector-frame {
+  padding: 40px;
 }
 
-.rsynapse-search {
-  min-width: 500px;
+.workspace-selector {
+  background-color: alpha(@bg, 1);
+  color: @fg;
+  border-radius: 24px;
+  border: 0.5px solid color-mix(in srgb, @fg 14%, transparent);
+  box-shadow: 0px 8px 32px 8px @shadow;
+  padding: 18px;
+}
+.workspace-selector .workspace-selector-header {
+  padding: 0 4px 4px;
+}
+.workspace-selector .workspace-selector-title {
+  font-size: 1.15em;
+  font-weight: 700;
+}
+.workspace-selector .workspace-selector-subtitle {
+  color: color-mix(in srgb, @fg 68%, transparent);
+}
+.workspace-selector searchentry {
+  border-radius: 8px;
+}
+.workspace-selector .workspace-selector-list {
+  background: transparent;
+}
+.workspace-selector .workspace-selector-row {
+  padding: 8px 12px;
+}
+.workspace-selector .workspace-selector-hint {
+  padding-top: 2px;
+  font-size: 0.9em;
 }
 
-.rsynapse-items {
-  padding: 12px;
-  min-width: 500px;
+.launcher-icon {
+  font-family: "FiraCode Nerd Font Mono";
+  font-size: 18pt;
+  min-width: 20px;
+  color: inherit;
 }

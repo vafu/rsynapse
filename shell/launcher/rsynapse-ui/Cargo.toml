@@ -13,3 +13,4 @@ gtk4-layer-shell = "0.8"
 zbus = { version = "4", default-features = false, features = ["tokio"] }
 tokio = { version = "1", features = ["rt-multi-thread"] }
 anyhow = "1"
+rsynapse-launcher-api = { path = "../rsynapse-launcher-api" }

@@ -7,6 +7,8 @@ Run from `shell/launcher`:
 
 ```sh
 cargo run -p rsynapse-cli -- search firefox
+cargo run -p rsynapse-cli -- search --param workspaces
+cargo run -p rsynapse-cli -- describe
 cargo run -p rsynapse-cli -- exec firefox.desktop
 ```
 
@@ -14,6 +16,8 @@ Installed usage:
 
 ```sh
 rsynapse-cli search firefox
+rsynapse-cli search --param workspaces
+rsynapse-cli describe
 rsynapse-cli exec firefox.desktop
 ```
 

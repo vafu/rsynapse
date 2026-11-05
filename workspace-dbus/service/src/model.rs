@@ -12,6 +12,8 @@ pub struct Manager {
     pub focused_output: Vec<OwnedObjectPath>,
     pub focused_workspace: Vec<OwnedObjectPath>,
     pub focused_window: Vec<OwnedObjectPath>,
+    /// Workspace paths in most-recently-used order, current first.
+    pub workspace_mru: Vec<OwnedObjectPath>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -126,5 +128,8 @@ impl Projection {
         self.manager
             .focused_window
             .retain(|p| self.manager.windows.contains(p));
+        self.manager
+            .workspace_mru
+            .retain(|p| self.manager.workspaces.contains(p));
     }
 }

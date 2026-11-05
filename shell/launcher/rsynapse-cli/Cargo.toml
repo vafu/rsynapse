@@ -9,3 +9,4 @@ zbus = "4"
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 tabled = "0.15"
+rsynapse-launcher-api = { path = "../rsynapse-launcher-api" }

@@ -2,7 +2,7 @@ use freedesktop_desktop_entry::{DesktopEntry, Iter};
 use fuzzy_matcher::FuzzyMatcher;
 use fuzzy_matcher::skim::SkimMatcherV2;
 use notify::{RecursiveMode, Watcher};
-use rsynapse_plugin::{Plugin, ResultItem};
+use rsynapse_plugin::{Plugin, PluginGroup, PluginResponse, QueryContext, ResultItem};
 use std::{
     collections::HashSet,
     fs,
@@ -158,18 +158,32 @@ impl Plugin for LauncherPlugin {
         "Application Launcher"
     }
 
+    fn groups(&self) -> Vec<PluginGroup> {
+        vec![PluginGroup {
+            id: "apps".to_owned(),
+            title: "Applications".to_owned(),
+            description: Some("Launch installed applications".to_owned()),
+            aliases: vec![
+                "app".to_owned(),
+                "applications".to_owned(),
+                "launch".to_owned(),
+            ],
+        }]
+    }
+
     fn default_execute(&self) -> Option<&'static str> {
         Some("{data}")
     }
 
-    fn query(&self, query: &str) -> Vec<ResultItem> {
+    fn query(&self, context: &QueryContext<'_>) -> PluginResponse {
+        let query = context.query;
         if query.is_empty() {
-            return Vec::new();
+            return PluginResponse::default();
         }
 
         let index = self.index.lock().unwrap();
 
-        index
+        let results = index
             .apps
             .iter()
             .filter_map(|app| {
@@ -185,8 +199,14 @@ impl Plugin for LauncherPlugin {
                 icon: app.icon.clone(),
                 data: app.exec.clone(),
                 score: score as f64,
+                current: false,
             })
-            .collect()
+            .collect();
+
+        PluginResponse {
+            view: None,
+            results,
+        }
     }
 }
 

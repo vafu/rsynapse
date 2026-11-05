@@ -1,9 +1,10 @@
+use crate::model::Workspace;
 use crate::{
     backend::{Backend, BackendKind},
     dbus::{self, State},
     model::Projection,
 };
-use std::{path::PathBuf, sync::Arc, time::Duration};
+use std::{collections::BTreeMap, path::PathBuf, sync::Arc, time::Duration};
 use tokio::sync::RwLock;
 use workspace_dbus_api::{BUS_NAME, ROOT_PATH, output_path, window_path, workspace_path};
 use zbus::{Connection, connection::Builder};
@@ -55,6 +56,51 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
     }
 }
 
+fn mru_ids(snapshot: &Projection) -> Vec<String> {
+    snapshot
+        .manager
+        .workspace_mru
+        .iter()
+        .filter_map(|path| {
+            snapshot
+                .workspaces
+                .keys()
+                .find(|id| workspace_path(id.as_str()) == *path)
+                .cloned()
+        })
+        .collect()
+}
+
+fn focused_workspace_id(snapshot: &Projection) -> Option<String> {
+    let path = snapshot.manager.focused_workspace.first()?;
+    snapshot
+        .workspaces
+        .keys()
+        .find(|id| workspace_path(id.as_str()) == *path)
+        .cloned()
+}
+
+fn update_workspace_mru(
+    previous: Vec<String>,
+    focused: Option<&str>,
+    workspaces: &BTreeMap<String, Workspace>,
+) -> Vec<String> {
+    let mut mru = previous
+        .into_iter()
+        .filter(|id| workspaces.contains_key(id))
+        .collect::<Vec<_>>();
+    if let Some(focused) = focused {
+        mru.retain(|id| id != focused);
+        mru.insert(0, focused.to_owned());
+    }
+    for id in workspaces.keys() {
+        if !mru.iter().any(|existing| existing == id) {
+            mru.push(id.clone());
+        }
+    }
+    mru
+}
+
 struct Host {
     connection: Connection,
     state: State,
@@ -78,12 +124,16 @@ impl Host {
         }
     }
 
-    async fn publish(&self, next: Projection) -> anyhow::Result<()> {
+    async fn publish(&self, mut next: Projection) -> anyhow::Result<()> {
         let before = self.state.read().await.clone();
+        let focused = focused_workspace_id(&next);
+        let mru = update_workspace_mru(mru_ids(&before), focused.as_deref(), &next.workspaces);
+        next.manager.workspace_mru = mru.iter().map(|id| workspace_path(id)).collect();
         if before == next {
             return Ok(());
         }
-        let staged = before.stage_additions(&next);
+        let mut staged = before.stage_additions(&next);
+        staged.manager.workspace_mru = next.manager.workspace_mru.clone();
         *self.state.write().await = staged.clone();
         for id in next
             .outputs
@@ -212,7 +262,49 @@ impl Host {
             .await?;
         let iface = r.get().await;
         let ctx = r.signal_context();
-        changed!(&before.manager, &after.manager, iface, ctx, generation => generation_changed, outputs => outputs_changed, workspaces => workspaces_changed, windows => windows_changed, focused_output => focused_output_changed, focused_workspace => focused_workspace_changed, focused_window => focused_window_changed, connected => connected_changed);
+        changed!(&before.manager, &after.manager, iface, ctx, generation => generation_changed, outputs => outputs_changed, workspaces => workspaces_changed, windows => windows_changed, focused_output => focused_output_changed, focused_workspace => focused_workspace_changed, focused_window => focused_window_changed, workspace_mru => workspace_mru_changed, connected => connected_changed);
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn workspaces(ids: &[&str]) -> BTreeMap<String, Workspace> {
+        ids.iter()
+            .map(|id| ((*id).to_owned(), Workspace::default()))
+            .collect()
+    }
+
+    #[test]
+    fn mru_moves_focused_workspace_to_front() {
+        let mru = update_workspace_mru(
+            vec!["a".into(), "b".into(), "c".into()],
+            Some("b"),
+            &workspaces(&["a", "b", "c"]),
+        );
+        assert_eq!(mru, vec!["b", "a", "c"]);
+    }
+
+    #[test]
+    fn mru_drops_missing_workspaces_and_appends_new_ones() {
+        let mru = update_workspace_mru(
+            vec!["old".into(), "b".into()],
+            None,
+            &workspaces(&["a", "b", "c"]),
+        );
+        assert_eq!(mru, vec!["b", "a", "c"]);
+    }
+
+    #[test]
+    fn mru_current_workspace_is_always_first() {
+        let mru = update_workspace_mru(
+            vec!["a".into(), "b".into(), "c".into()],
+            Some("c"),
+            &workspaces(&["a", "b", "c"]),
+        );
+        assert_eq!(mru.first().map(String::as_str), Some("c"));
+        assert_eq!(mru, vec!["c", "a", "b"]);
     }
 }

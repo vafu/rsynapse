@@ -1,6 +1,6 @@
 use std::process::{Command, Stdio};
 
-use rsynapse_plugin::{Plugin, ResultItem};
+use rsynapse_plugin::{Plugin, PluginGroup, PluginResponse, QueryContext, ResultItem};
 
 struct ShellPlugin;
 
@@ -28,29 +28,42 @@ impl Plugin for ShellPlugin {
         "Shell Executor"
     }
 
+    fn groups(&self) -> Vec<PluginGroup> {
+        vec![PluginGroup {
+            id: "shell".to_owned(),
+            title: "Shell".to_owned(),
+            description: Some("Run a shell command".to_owned()),
+            aliases: vec!["sh".to_owned(), "run".to_owned(), "command".to_owned()],
+        }]
+    }
+
     fn default_execute(&self) -> Option<&'static str> {
         Some("{data}")
     }
 
-    fn query(&self, query: &str) -> Vec<ResultItem> {
-        let command = query;
+    fn query(&self, context: &QueryContext<'_>) -> PluginResponse {
+        let command = context.query;
         if command.trim().is_empty() {
-            return Vec::new();
+            return PluginResponse::default();
         }
 
-        if !is_valid_shell_syntax(query) {
-            return Vec::new();
+        if !is_valid_shell_syntax(command) {
+            return PluginResponse::default();
         }
         let full_command = format!("sh -c '{}'", command);
 
-        vec![ResultItem {
-            id: format!("shell-exec-{}", command),
-            title: command.to_string(),
-            description: Some("Execute as shell command".to_string()),
-            icon: Some("utilities-terminal".to_string()),
-            data: Some(full_command),
-            score: std::f64::MIN,
-        }]
+        PluginResponse {
+            view: None,
+            results: vec![ResultItem {
+                id: format!("shell-exec-{}", command),
+                title: command.to_string(),
+                description: Some("Execute as shell command".to_string()),
+                icon: Some("utilities-terminal".to_string()),
+                data: Some(full_command),
+                score: std::f64::MIN,
+                current: false,
+            }],
+        }
     }
 }
 

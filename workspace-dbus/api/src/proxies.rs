@@ -36,6 +36,10 @@ pub trait Manager {
     /// The window holding application keyboard focus, or an empty array.
     #[zbus(property)]
     fn focused_window(&self) -> zbus::Result<Vec<OwnedObjectPath>>;
+
+    /// Workspace object paths ordered most-recently-used first.
+    #[zbus(property)]
+    fn workspace_mru(&self) -> zbus::Result<Vec<OwnedObjectPath>>;
 }
 
 #[proxy(

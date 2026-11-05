@@ -1,21 +1,8 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use rsynapse_launcher_api::{EngineProxy, SearchRequest};
 use tabled::{Table, Tabled};
-use zbus::{Connection, proxy};
-
-#[proxy(
-    interface = "org.rsynapse.Engine1",
-    default_service = "org.rsynapse.Engine",
-    default_path = "/org/rsynapse/Engine1"
-)]
-trait Engine {
-    async fn search(
-        &self,
-        query: &str,
-    ) -> zbus::Result<Vec<(String, String, String, String, String)>>;
-
-    async fn execute(&self, id: &str) -> zbus::Result<String>;
-}
+use zbus::Connection;
 
 #[derive(Tabled)]
 struct ResultRow {
@@ -29,6 +16,18 @@ struct ResultRow {
     data: String,
 }
 
+#[derive(Tabled)]
+struct GroupRow {
+    #[tabled(rename = "ID")]
+    id: String,
+    #[tabled(rename = "Title")]
+    title: String,
+    #[tabled(rename = "Aliases")]
+    aliases: String,
+    #[tabled(rename = "Plugin")]
+    plugin: String,
+}
+
 #[derive(Parser, Debug)]
 #[command(version, about = "A command-line interface for the rsynapse daemon.")]
 struct Args {
@@ -40,6 +39,9 @@ struct Args {
 enum Commands {
     /// Search for an item.
     Search {
+        /// Launcher params, e.g. --param workspaces
+        #[arg(long = "param", value_name = "PARAM")]
+        params: Vec<String>,
         /// The search term
         query: String,
     },
@@ -48,6 +50,8 @@ enum Commands {
         /// The ID of the item to execute
         id: String,
     },
+    /// List launcher groups and aliases.
+    Describe,
 }
 
 #[tokio::main]
@@ -57,18 +61,25 @@ async fn main() -> Result<()> {
     let proxy = EngineProxy::new(&connection).await?;
 
     match args.command {
-        Commands::Search { query } => {
-            let results = proxy.search(&query).await?;
-            if results.is_empty() {
-                println!("No results found for '{}'", query);
+        Commands::Search { params, query } => {
+            let response = proxy
+                .search(SearchRequest {
+                    params,
+                    query,
+                    selected: String::new(),
+                })
+                .await?;
+            if response.results.is_empty() {
+                println!("No results found");
             } else {
-                let table_data: Vec<ResultRow> = results
+                let table_data: Vec<ResultRow> = response
+                    .results
                     .into_iter()
-                    .map(|(id, title, description, _icon, data)| ResultRow {
-                        id,
-                        title,
-                        description,
-                        data,
+                    .map(|result| ResultRow {
+                        id: result.id,
+                        title: result.title,
+                        description: result.description,
+                        data: result.data,
                     })
                     .collect();
                 println!("{}", Table::new(table_data));
@@ -79,6 +90,20 @@ async fn main() -> Result<()> {
             if !result.is_empty() {
                 eprintln!("{}", result);
             }
+        }
+        Commands::Describe => {
+            let response = proxy.describe().await?;
+            let groups = response
+                .groups
+                .into_iter()
+                .map(|group| GroupRow {
+                    id: group.id,
+                    title: group.title,
+                    aliases: group.aliases.join(", "),
+                    plugin: group.plugin,
+                })
+                .collect::<Vec<_>>();
+            println!("{}", Table::new(groups));
         }
     }
 

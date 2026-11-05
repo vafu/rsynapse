@@ -83,6 +83,7 @@ All are read-only and emit changes.
 | `FocusedOutput` | `ao` | Zero or one globally selected output |
 | `FocusedWorkspace` | `ao` | Zero or one globally selected workspace |
 | `FocusedWindow` | `ao` | Zero or one application with global keyboard focus |
+| `WorkspaceMru` | `ao` | Live workspaces ordered most-recently-used first, current first |
 
 ## Output properties
 

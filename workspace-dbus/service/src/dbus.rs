@@ -40,6 +40,10 @@ impl Manager {
     async fn focused_window(&self) -> Vec<OwnedObjectPath> {
         self.0.read().await.manager.focused_window.clone()
     }
+    #[zbus(property)]
+    async fn workspace_mru(&self) -> Vec<OwnedObjectPath> {
+        self.0.read().await.manager.workspace_mru.clone()
+    }
 }
 
 pub struct Output {
