@@ -302,7 +302,7 @@ impl RemarkedWindow {
             source::Catalog::Ready { active, .. } => active,
             _ => &[],
         };
-        for (task, _depth, has_children) in
+        for (task, depth, has_children) in
             model::task_rows(tasks, self.show_finished, &self.collapsed_tasks)
         {
             let escaped_title = glib::markup_escape_text(model::task_title(&task.goal.title));
@@ -329,6 +329,13 @@ impl RemarkedWindow {
             click.connect_released(move |_, _, _, _| menu_for_click.popup());
             row.add_controller(click);
             row.add_prefix(&menu);
+            if depth > 0 {
+                let spacer = gtk::Box::builder()
+                    .width_request(depth as i32 * 16)
+                    .valign(gtk::Align::Center)
+                    .build();
+                row.add_prefix(&spacer);
+            }
 
             if has_children {
                 let icon = if self.collapsed_tasks.contains(&task.key) {
