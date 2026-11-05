@@ -1,11 +1,14 @@
 # Widget And Source Instructions
 
-Widgets own their view models and source providers locally.
+Widgets own their view models and display policy. Reusable D-Bus -> Observable
+adapters live in `shell-source` and are consumed directly.
 
 - Keep each widget module self-contained. `mod.rs` declares the Relm4/GTK
   component and the public-facing model/init types for that widget module.
-- Source provider files live beside the widget that consumes them. Do not add a
-  top-level `src/sources` module.
+- Widget-local source files compose `shell-source` adapters into view models.
+  Do not add a top-level `src/sources` module.
+- Declare reusable D-Bus descriptors, signal watchers, or service adapters in
+  `shell-source`, not in a widget crate; widget files keep only display policy.
 - A source provider declares one view model shape near the top of the file and
   exposes provider functions returning `Observable<ViewModel>` or
   `Observable<Option<ViewModel>>` for component `#[source(...)]` bindings.
@@ -17,13 +20,14 @@ Widgets own their view models and source providers locally.
   submodel instead.
 - Keep helper structs, source composition, D-Bus descriptor construction,
   decoding policy, and formatting helpers private in the same widget module
-  unless another widget actually needs them.
+  unless another widget actually needs them. Generic adapters another crate
+  needs belong in `shell-source`.
 - Prefer composing `shell_core::source` observables with Rx operators directly.
   Do not introduce local mini source APIs around property, signal, or object
   manager sources; source-level behavior belongs in `shell_core::source`.
-- Consumer sources must depend on shell-core observable helpers or typed service
-  clients. Do not add filesystem watch clients to `rsynapse-shell`; request or
-  add a shell-core observable primitive instead.
+- Consumer sources must depend on shell-source observable helpers or typed
+  service clients. Do not add filesystem watch clients to `rsynapse-shell`;
+  request or add a shell-source observable primitive instead.
 - Prefer Rx-native operators and shell-exposed helpers/types over custom
   implementations. If a source needs a truly custom observable, parser,
   watcher, cache, or adapter, document why existing Rx operators or

@@ -19,6 +19,11 @@ D-Bus source function / user source function
 `ObservableSource<T>` is not part of the target design. Source composition uses
 RxRust operators and the shell-owned `Observable<T, E = String>` alias.
 
+Reusable D-Bus -> Observable adapters (workspace projection, workspace/project
+association, workspace names, projd, Github, session, Wayland) live in
+`shell-source`. Consumer widgets compose those adapters into view models and
+keep display policy local.
+
 ## Authoring Model
 
 Model fields keep the existing binding syntax:

@@ -207,12 +207,15 @@ Responsibilities:
 - Re-export `rxrust` and the shell-owned `Observable<T, E = String>` alias.
 - Expose reusable Observable source primitives for D-Bus properties, signals,
   ObjectManager object lists, and consumer-defined source functions.
+- Declare the reusable D-Bus -> Observable adapters (workspace projection,
+  workspace/project association, workspace names, projd, Github, session,
+  Wayland). These are the shared contract consumers build on.
 - Keep backend-specific clients behind source implementation files.
 
-D-Bus source binding is owned by Observable source helpers. Consumer crates
-compose typed service helpers with shell-source primitives (via the
-`shell_core::source` re-export in UI code); the framework
-does not expose product-specific object descriptors.
+Generic service adapters live in `shell-source`, not in widget crates. Consumer
+crates use them directly (via the `shell_core::source` re-export in UI code) and
+compose them into view models and display policy such as `ProjectDetails`,
+`WorkspaceNode`, or `WindowSnapshot`.
 
 ### `shell-rx-macros`
 

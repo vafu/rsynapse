@@ -14,6 +14,9 @@ mod state;
 mod stream;
 mod support;
 pub mod wayland;
+pub mod workspace;
+pub mod workspace_name;
+pub mod workspace_project;
 
 pub use rxrust;
 pub use rxrust::prelude as rx;

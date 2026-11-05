@@ -25,8 +25,12 @@ framework-boundary work.
 ## Workspace Boundaries
 
 - `core/shell-core` owns generic GTK/layer-shell app setup, window primitives,
-  stylesheet loading, reusable Observable source primitives, and D-Bus source
-  helpers.
+  stylesheet loading, and the re-export of `shell-source` as
+  `shell_core::source`.
+- `core/shell-source` owns UI-free D-Bus -> Observable adapters and source
+  primitives (workspace projection, workspace/project association, projd,
+  Github, session, Wayland). Consumer crates use these adapters directly and
+  keep only view models and display policy.
 - `core/macros` owns Relm4/model/source binding macros.
 - `core/rx-macros` owns small RxRust composition macros only.
 - `app` owns the current combined bar, OSD, notifications, request CLI/server,
@@ -73,7 +77,9 @@ Sharing rules:
 Consumer source rules:
 
 - Consumers compose `shell_core::source` observables.
-- Add a shell-core observable primitive when a backend capability is generally
+- Reusable D-Bus adapters belong in `shell-source`; add them there rather than
+  in a widget crate.
+- Add a shell-source observable primitive when a backend capability is generally
   reusable.
 - Keep concrete widget view models and display policy in app or surface crates.
 - Prefer typed D-Bus descriptors and service helpers over raw string traversal at
@@ -94,6 +100,11 @@ Consumer source rules:
   vertical size; child widgets should use padding, alignment, and natural size.
 - Do not solve visual behavior by adding ad hoc graph traversal inside GTK
   component lifecycle methods.
+- The remarked overlay composes projd tasks with zk notes. When a task is first
+  selected it seeds a main zk note tagged `task/<instance-id>` plus
+  `task-main/<instance-id>` from the projd description; the zk note is
+  authoritative after creation. The shell owns this convention; neither projd
+  nor remarked may depend on the other for it.
 
 ## Request CLI/Server
 

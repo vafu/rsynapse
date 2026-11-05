@@ -2148,6 +2148,7 @@ version = "0.1.0"
 dependencies = [
  "async-channel",
  "futures-util",
+ "locus",
  "rsynapse-projd-model",
  "rxrust",
  "serde",
@@ -2157,6 +2158,7 @@ dependencies = [
  "tracing",
  "wayland-client",
  "wayland-protocols",
+ "workspace-dbus-api",
  "zbus",
 ]
 

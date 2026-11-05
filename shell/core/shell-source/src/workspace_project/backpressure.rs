@@ -47,7 +47,7 @@ fn locus_burst_cannot_freeze_project_assignment_display() {
     if std::env::var_os("SHELL_PROJECT_BACKPRESSURE_WORKER").is_none() {
         assert!(std::process::Command::new("dbus-run-session").arg("--")
             .arg(std::env::current_exe().unwrap())
-            .args(["--exact", "widgets::bar::project::backpressure::locus_burst_cannot_freeze_project_assignment_display", "--nocapture"])
+            .args(["--exact", "workspace_project::backpressure::locus_burst_cannot_freeze_project_assignment_display", "--nocapture"])
             .env("SHELL_PROJECT_BACKPRESSURE_WORKER", "1").status().unwrap().success());
         return;
     }

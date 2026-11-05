@@ -1,9 +1,10 @@
-use super::{ProjectDetails, non_empty};
-use shell_core::source::{self, Observable, rx::Observable as _};
-pub(super) fn resolve(details: Observable<ProjectDetails>) -> Observable<ProjectDetails> {
+use super::{WorkspaceProject, non_empty};
+use crate::{Observable, proj, rx::Observable as _};
+
+pub(super) fn resolve(details: Observable<WorkspaceProject>) -> Observable<WorkspaceProject> {
     details
-        .combine_latest(source::proj::checkouts(), |d, c| (d, c))
-        .combine_latest(source::proj::projects(), |(mut d, checkouts), projects| {
+        .combine_latest(proj::checkouts(), |d, c| (d, c))
+        .combine_latest(proj::projects(), |(mut d, checkouts), projects| {
             let checkout = checkouts
                 .iter()
                 .find(|c| Some(c.root_path.as_str()) == d.path.as_deref());
@@ -20,18 +21,15 @@ pub(super) fn resolve(details: Observable<ProjectDetails>) -> Observable<Project
                         .find(|p| Some(p.cwd.as_str()) == d.path.as_deref())
                 });
             if let Some(p) = project {
-                d.project_id = Some(p.id.clone());
-                d.name = Some(p.name.clone());
-                d.display_main = Some(p.name.clone());
-                d.cwd = Some(p.cwd.clone());
                 let checkout = checkouts.iter().find(|c| c.id == p.checkout_id);
+                d.project_id = Some(p.id.clone());
                 d.branch = checkout.and_then(|c| non_empty(Some(c.branch.clone())));
-                d.display_secondary = d.branch.clone();
                 d.path = Some(
                     checkout
                         .map(|c| c.root_path.clone())
                         .unwrap_or_else(|| p.cwd.clone()),
                 );
+                d.project = Some(p.clone());
             }
             d
         })
