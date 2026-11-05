@@ -1,10 +1,19 @@
 //! View-model helpers for tasks and notes.
 use std::collections::HashSet;
 
+use notebook_api::note::Note;
 use proj_model::GoalIdentityInfo;
 
 pub(crate) fn task_tag(instance: &str) -> String {
     format!("task/{instance}")
+}
+
+pub(crate) fn main_note_tag(instance: &str) -> String {
+    format!("task-main/{instance}")
+}
+
+pub(crate) fn is_main_note(note: &Note, instance: &str) -> bool {
+    note.tags.iter().any(|tag| tag == &main_note_tag(instance))
 }
 
 pub(crate) fn task_title(title: &str) -> &str {

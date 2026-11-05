@@ -9,6 +9,7 @@ use shell_core::source::{
 };
 
 use crate::client::{NOTES_IFACE, NOTES_ROOT, NotesClient, SERVICE};
+use crate::model;
 
 #[derive(Clone, Debug, Default)]
 pub(crate) enum Catalog {
@@ -101,11 +102,93 @@ pub(crate) enum Notes {
     Loading,
     NoNotebook,
     Error(String),
-    Ready(String, Vec<Note>),
+    Ready {
+        path: String,
+        task: Option<String>,
+        notes: Vec<Note>,
+    },
 }
 
-pub(crate) fn task_tag(instance: &str) -> String {
-    format!("task/{instance}")
+#[derive(Clone, Debug, Default)]
+pub(crate) enum TagCounts {
+    #[default]
+    Loading,
+    Error(String),
+    Ready(std::collections::HashMap<String, u32>),
+}
+
+impl TagCounts {
+    pub(crate) fn count(&self, tag: &str) -> Option<u32> {
+        match self {
+            TagCounts::Ready(counts) => Some(*counts.get(tag).unwrap_or(&0)),
+            _ => None,
+        }
+    }
+}
+
+/// Returns note counts per tag for the notebook. One `zk tag list` call; the
+/// scope's tag filter is irrelevant because tag counts are notebook-wide.
+pub(crate) fn tag_counts(notebook: Observable<Option<Notebook>>) -> Observable<TagCounts> {
+    source::switch_map(notebook, |notebook| {
+        let Some(notebook) = notebook else {
+            return source::once(TagCounts::Loading);
+        };
+        source::switch_map(dbus::service_owner(Bus::Session, SERVICE), move |owner| {
+            let path = notebook.path.clone();
+            if owner.is_none() {
+                return source::once(TagCounts::Error("Remarked is unavailable".into()));
+            }
+            source::from_task(move |sender| {
+                let path = path.clone();
+                async move {
+                    let run = async {
+                        let conn = zbus::Connection::session()
+                            .await
+                            .map_err(|e| e.to_string())?;
+                        let root = zbus::Proxy::new(&conn, SERVICE, NOTES_ROOT, NOTES_IFACE)
+                            .await
+                            .map_err(|e| e.to_string())?;
+                        let mut changes = root
+                            .receive_signal("NotebookChanged")
+                            .await
+                            .map_err(|e| e.to_string())?;
+                        let client = NotesClient::open(&path, Vec::new()).await?;
+                        loop {
+                            let value = match client.tag_counts().await {
+                                Ok(counts) => TagCounts::Ready(
+                                    counts
+                                        .into_iter()
+                                        .map(|tag| (tag.name, tag.count))
+                                        .collect(),
+                                ),
+                                Err(error) => TagCounts::Error(error),
+                            };
+                            if sender.send(Ok(value)).await.is_err() {
+                                return Ok::<_, String>(());
+                            }
+                            loop {
+                                let event = changes
+                                    .next()
+                                    .await
+                                    .ok_or("Remarked change stream closed")?;
+                                let (changed_path,): (String,) =
+                                    event.body().deserialize().map_err(|e| e.to_string())?;
+                                if changed_path == path {
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    .await;
+                    if let Err(error) = run {
+                        let _ = sender.send(Ok(TagCounts::Error(error))).await;
+                    }
+                }
+            })
+            .start_with(vec![TagCounts::Loading])
+            .box_it()
+        })
+    })
 }
 
 /// Returns a live notes snapshot scoped to a notebook and optional task tag.
@@ -121,7 +204,10 @@ pub(crate) fn notes(
             let Some(notebook) = notebook else {
                 return source::once(Notes::NoNotebook);
             };
-            let tags = task.map(|t| vec![task_tag(&t)]).unwrap_or_default();
+            let tags = task
+                .as_ref()
+                .map(|t| vec![model::task_tag(t)])
+                .unwrap_or_default();
             source::switch_map(dbus::service_owner(Bus::Session, SERVICE), move |owner| {
                 if owner.is_none() {
                     let path = notebook.path.clone();
@@ -140,9 +226,11 @@ pub(crate) fn notes(
                 }
                 let path = notebook.path.clone();
                 let tags = tags.clone();
+                let task = task.clone();
                 source::from_task(move |sender| {
                     let path = path.clone();
                     let tags = tags.clone();
+                    let task = task.clone();
                     async move {
                         let run = async {
                             let conn = zbus::Connection::session()
@@ -159,7 +247,11 @@ pub(crate) fn notes(
                             client.initialize().await?;
                             loop {
                                 let value = match client.list().await {
-                                    Ok(notes) => Notes::Ready(path.clone(), notes),
+                                    Ok(notes) => Notes::Ready {
+                                        path: path.clone(),
+                                        task: task.clone(),
+                                        notes,
+                                    },
                                     Err(e) => Notes::Error(e),
                                 };
                                 if sender.send(Ok(value)).await.is_err() {

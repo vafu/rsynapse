@@ -1,6 +1,6 @@
 //! Typed D-Bus client for the remarked note service.
 use notebook_api::{
-    note::{CommandResult, Note, NoteBody, NoteId, NoteRevision, PatchResult},
+    note::{CommandResult, Note, NoteBody, NoteId, NoteRevision, PatchResult, TagCount},
     notebook_scope::{NotebookHandle, NotebookScope},
 };
 
@@ -61,6 +61,10 @@ impl NotesClient {
 
     pub(crate) async fn list(&self) -> Result<Vec<Note>, String> {
         self.proxy.call("ListScopeNotes", &()).await.map_err(error)
+    }
+
+    pub(crate) async fn tag_counts(&self) -> Result<Vec<TagCount>, String> {
+        self.proxy.call("ListTagCounts", &()).await.map_err(error)
     }
 
     pub(crate) async fn body(&self, id: &NoteId) -> Result<NoteBody, String> {
