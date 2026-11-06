@@ -2,6 +2,7 @@ mod dbus;
 
 use std::{
     cell::{Cell, RefCell},
+    path::PathBuf,
     rc::Rc,
     time::Duration,
 };
@@ -628,6 +629,16 @@ impl App {
 }
 
 fn result_icon(icon: &str) -> gtk::Widget {
+    if let Some(path) = icon_file_path(icon) {
+        if path.is_file() {
+            let image = gtk::Image::from_file(&path);
+            image.set_pixel_size(24);
+            image.add_css_class("launcher-icon");
+            image.set_valign(gtk::Align::Center);
+            return image.upcast();
+        }
+        return gtk::Image::from_icon_name("application-x-executable-symbolic").upcast();
+    }
     if is_theme_icon(icon) {
         gtk::Image::from_icon_name(icon).upcast()
     } else {
@@ -636,6 +647,12 @@ fn result_icon(icon: &str) -> gtk::Widget {
         label.set_valign(gtk::Align::Center);
         label.upcast()
     }
+}
+
+fn icon_file_path(icon: &str) -> Option<PathBuf> {
+    let path = icon.strip_prefix("file://").unwrap_or(icon);
+    let path = path.strip_prefix("localhost").unwrap_or(path);
+    path.starts_with('/').then(|| PathBuf::from(path))
 }
 
 fn is_theme_icon(icon: &str) -> bool {
