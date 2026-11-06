@@ -118,10 +118,17 @@ impl HoldWatcher {
     pub fn start(&self) {
         self.active.set(true);
         self.press.set_enabled(true);
-        // The invoking modifier can be released between the shortcut dispatch
-        // and component startup. Release events are not replayed, so check the
-        // current modifier state instead of waiting for an event that may
-        // already have happened.
+    }
+
+    /// Starts a selector that should close if its modifier was already released.
+    ///
+    /// The invoking modifier can be released between shortcut dispatch and
+    /// component startup. Release events are not replayed, so check the current
+    /// modifier state instead of waiting for an event that may already have
+    /// happened. Use plain [`Self::start`] for hold-to-show surfaces such as
+    /// the MPRIS overlay.
+    pub fn start_checking_release(&self) {
+        self.start();
         if !self.modifiers_held() {
             (self.action)(HoldAction::ModifierReleased);
         }
