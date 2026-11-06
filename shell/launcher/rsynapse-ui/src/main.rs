@@ -396,6 +396,7 @@ impl SimpleComponent for App {
                     if request.mode == LauncherMode::Cycle {
                         self.mode = request.mode;
                         self._hold_watcher.start();
+                        self.inhibit_shortcuts();
                         if *self.params.borrow() == request.params {
                             self.cycle(1);
                         } else {
@@ -473,6 +474,7 @@ impl App {
         self.search_entry.set_visible(!cycle);
         if cycle {
             self._hold_watcher.start();
+            self.inhibit_shortcuts();
             self.list_box.grab_focus();
         } else {
             self._hold_watcher.stop();
@@ -501,6 +503,14 @@ impl App {
                 }
             }
         });
+    }
+
+    fn inhibit_shortcuts(&self) {
+        if let Some(surface) = self.window.surface() {
+            if let Ok(toplevel) = surface.downcast::<gdk::Toplevel>() {
+                toplevel.inhibit_system_shortcuts(None::<&gdk::Event>);
+            }
+        }
     }
 
     fn cycle(&mut self, delta: i32) {
