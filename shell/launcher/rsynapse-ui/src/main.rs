@@ -224,11 +224,7 @@ impl SimpleComponent for App {
 
         let hold_sender = sender.clone();
         let hold_bindings = HoldBindings {
-            next: vec![
-                KeyChord::plain(gdk::Key::a),
-                KeyChord::new(gdk::Key::a, gdk::ModifierType::SUPER_MASK),
-                KeyChord::new(gdk::Key::a, gdk::ModifierType::ALT_MASK),
-            ],
+            next: Vec::new(),
             previous: Vec::new(),
             ..HoldBindings::default()
         };
@@ -257,6 +253,12 @@ impl SimpleComponent for App {
                 let backwards = key == gdk::Key::ISO_Left_Tab
                     || modifiers.contains(gdk::ModifierType::SHIFT_MASK);
                 s.input(Msg::Cycle(if backwards { -1 } else { 1 }));
+                return glib::Propagation::Stop;
+            }
+            if matches!(key, gdk::Key::a | gdk::Key::A)
+                && modifiers.intersects(gdk::ModifierType::SUPER_MASK | gdk::ModifierType::ALT_MASK)
+            {
+                s.input(Msg::Cycle(1));
                 return glib::Propagation::Stop;
             }
             let forward =
