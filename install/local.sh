@@ -62,6 +62,7 @@ install -m 0755 "$repo_root/install/bin/ghostty-project-window" "$script_dir/gho
 ln -sfn "$script_dir/ghostty-project-window" "$local_bin/ghostty-project-window"
 install -m 0755 "$repo_root/install/bin/umbriel-workspace-new" "$script_dir/umbriel-workspace-new"
 ln -sfn "$script_dir/umbriel-workspace-new" "$local_bin/umbriel-workspace-new"
+install -m 0755 "$repo_root/scripts/sone-cli" "$local_bin/sone-cli"
 
 # Launcher plugins are compiled into rsynapse-daemon (static registration);
 # no plugin .so files are installed.
