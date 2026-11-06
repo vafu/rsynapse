@@ -11,6 +11,7 @@ mod github_status;
 mod goals;
 mod icon_resolver;
 mod layout_indicator;
+mod media;
 mod monitors;
 mod network;
 mod overlays;
@@ -52,6 +53,7 @@ use self::brightness::{BrightnessView, brightness_status};
 use self::format::{
     battery_icon_name, battery_tooltip, source_error_count_label, source_error_tooltip,
 };
+use self::media::{MediaView, media_status};
 use self::monitors::{primary_output, secondary_bar_changes};
 
 use self::network::{NetworkView, network_status};
@@ -125,6 +127,7 @@ impl std::fmt::Debug for MainBarInit {
 pub enum MainBarInput {
     Source(sources::Msg),
     ToggleBluetooth,
+    ToggleMedia,
     CyclePowerProfile,
     ToggleNotificationCenter,
     CopyBranch,
@@ -181,6 +184,9 @@ pub struct MainBar {
 
     #[source(audio_status())]
     audio: AudioView,
+
+    #[source(media_status())]
+    media: MediaView,
 
     #[source(brightness_status())]
     brightness: BrightnessView,
@@ -675,6 +681,7 @@ impl SimpleAsyncComponent for MainBar {
                                 gtk::Overlay {
                                     gtk::Label {
                                         set_css_classes: &["nerdicon", bar_item::ICON_CLASS],
+                                        set_halign: gtk::Align::Center,
                                         #[watch]
                                         set_nerd_icon: model.bluetooth.status.icon.clone(),
                                     },
@@ -703,8 +710,33 @@ impl SimpleAsyncComponent for MainBar {
                             gtk::Image {
                                 add_css_class: bar_item::ICON_CLASS,
                                 add_css_class: "audio-icon",
+                                set_halign: gtk::Align::Center,
+                                set_hexpand: true,
                                 #[watch]
                                 set_icon_name: Some(model.audio.icon.as_str()),
+                            }
+                        },
+
+                        gtk::Box {
+                            set_css_classes: &bar_item::classes(&[
+                                bar_item::SQUARE_CLASS,
+                                "media-item",
+                            ]),
+                            #[watch]
+                            set_visible: model.media.visible,
+                            #[watch]
+                            set_tooltip_text: Some(model.media.tooltip),
+
+                            gtk::Button {
+                                set_css_classes: &bar_item::action_classes(&["media-button"]),
+                                connect_clicked => MainBarInput::ToggleMedia,
+
+                                gtk::Image {
+                                    set_css_classes: &[bar_item::ICON_CLASS, "media-icon"],
+                                    set_halign: gtk::Align::Center,
+                                    #[watch]
+                                    set_icon_name: Some(model.media.icon),
+                                }
                             }
                         },
 
@@ -721,6 +753,8 @@ impl SimpleAsyncComponent for MainBar {
                                     "network-icon",
                                     "ethernet-icon",
                                 ],
+                                set_halign: gtk::Align::Center,
+                                set_hexpand: true,
                                 #[watch]
                                 set_icon_name: Some(model.network.ethernet.icon.as_str()),
                             }
@@ -739,6 +773,8 @@ impl SimpleAsyncComponent for MainBar {
                                     "network-icon",
                                     "wifi-icon",
                                 ],
+                                set_halign: gtk::Align::Center,
+                                set_hexpand: true,
                                 #[watch]
                                 set_icon_name: Some(model.network.wifi.icon.as_str()),
                             }
@@ -753,6 +789,8 @@ impl SimpleAsyncComponent for MainBar {
 
                             gtk::Image {
                                 set_css_classes: &[bar_item::ICON_CLASS, "battery-icon"],
+                                set_halign: gtk::Align::Center,
+                                set_hexpand: true,
                                 #[watch]
                                 set_icon_name: Some(battery_icon_name(&model.battery).as_str()),
                             }
@@ -821,6 +859,7 @@ impl SimpleAsyncComponent for MainBar {
                             gtk::Overlay {
                                 gtk::Label {
                                     add_css_class: "clock-label",
+                                    set_halign: gtk::Align::Center,
                                     #[watch]
                                     set_label: model.clock.time.as_str(),
                                 },
@@ -987,6 +1026,7 @@ impl SimpleAsyncComponent for MainBar {
                 self.maybe_show_brightness_osd(previous_brightness);
             }
             MainBarInput::ToggleBluetooth => bluetooth::toggle_power(&self.bluetooth.status),
+            MainBarInput::ToggleMedia => self.mpris_action(request::ToggleAction::Toggle, false),
             MainBarInput::CyclePowerProfile => {
                 power_profile::cycle_power_profile(&self.power_profile.profile)
             }
@@ -1141,6 +1181,7 @@ fn main_bar_input_name(msg: &MainBarInput) -> &'static str {
     match msg {
         MainBarInput::Source(_) => "source",
         MainBarInput::ToggleBluetooth => "toggle-bluetooth",
+        MainBarInput::ToggleMedia => "toggle-media",
         MainBarInput::CyclePowerProfile => "cycle-power-profile",
         MainBarInput::ToggleNotificationCenter => "toggle-notification-center",
         MainBarInput::CopyBranch => "copy-branch",
