@@ -1,4 +1,4 @@
-use crate::model::{self, Projection};
+use crate::model::{self, Projection, ProjectionBuilder};
 use niri_ipc::{
     Event, Output, Request, Response,
     state::{EventStreamState, EventStreamStatePart},
@@ -82,8 +82,6 @@ impl Niri {
     }
 
     fn project(&self) -> Projection {
-        let mut result = Projection::default();
-        result.manager.connected = true;
         let workspaces = &self.state.workspaces.workspaces;
         let windows = &self.state.windows.windows;
         let focused_window = windows.values().find(|w| w.is_focused);
@@ -92,15 +90,15 @@ impl Niri {
             None => workspaces.values().find(|ws| ws.is_focused),
         };
         let focused_output = focused_workspace.and_then(|ws| ws.output.as_deref());
-        result.manager.focused_window = focused_window
-            .map(|w| window_path(&w.id.to_string()))
-            .into_iter()
-            .collect();
-        result.manager.focused_workspace = focused_workspace
-            .map(|ws| workspace_path(&ws.id.to_string()))
-            .into_iter()
-            .collect();
-        result.manager.focused_output = focused_output.map(output_path).into_iter().collect();
+        let focused_window_id = focused_window.map(|w| w.id.to_string());
+        let focused_workspace_id = focused_workspace.map(|ws| ws.id.to_string());
+        let mut result = ProjectionBuilder::new()
+            .focus(
+                focused_window_id.as_deref(),
+                focused_workspace_id.as_deref(),
+                focused_output,
+            )
+            .build();
         for name in self.outputs.keys() {
             let mut members: Vec<_> = workspaces
                 .values()

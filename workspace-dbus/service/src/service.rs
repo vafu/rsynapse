@@ -41,9 +41,14 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
         changed,
     };
     tracing::info!(?backend, "owning {BUS_NAME}");
+    let mut backoff = Duration::from_secs(1);
     loop {
-        if let Err(error) = host.session(&config, backend).await {
-            tracing::warn!("source connection ended: {error:#}");
+        match host.session(&config, backend).await {
+            Ok(()) => backoff = Duration::from_secs(1),
+            Err(error) => {
+                tracing::warn!("source connection ended: {error:#}; retrying in {backoff:?}");
+                backoff = (backoff * 2).min(Duration::from_secs(30));
+            }
         }
         let current = host.state.read().await.clone();
         if current.manager.connected {
@@ -52,7 +57,7 @@ pub async fn run(config: Config) -> anyhow::Result<()> {
             host.publish(empty).await?;
         }
         // Retry backoff only after transport loss; live state is event-driven.
-        tokio::time::sleep(Duration::from_secs(1)).await;
+        tokio::time::sleep(backoff).await;
     }
 }
 

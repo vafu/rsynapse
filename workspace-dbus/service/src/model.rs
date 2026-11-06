@@ -59,6 +59,43 @@ pub struct Projection {
     pub windows: BTreeMap<String, Window>,
 }
 
+/// Shared assembly for backend projections. Backends keep their own focus
+/// policy; this only factors the optional-path manager fields.
+pub struct ProjectionBuilder {
+    projection: Projection,
+}
+
+impl ProjectionBuilder {
+    pub fn new() -> Self {
+        let mut projection = Projection::default();
+        projection.manager.connected = true;
+        Self { projection }
+    }
+
+    pub fn focus(
+        mut self,
+        window: Option<&str>,
+        workspace: Option<&str>,
+        output: Option<&str>,
+    ) -> Self {
+        self.projection.manager.focused_window = window.map(window_path).into_iter().collect();
+        self.projection.manager.focused_workspace =
+            workspace.map(workspace_path).into_iter().collect();
+        self.projection.manager.focused_output = output.map(output_path).into_iter().collect();
+        self
+    }
+
+    pub fn build(self) -> Projection {
+        self.projection
+    }
+}
+
+impl Default for ProjectionBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Projection {
     /// New objects are registered without references before the final projection
     /// is published. Cyclic workspace/window links cannot dangle during bootstrap.

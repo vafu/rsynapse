@@ -6,12 +6,14 @@ mod bluetooth;
 mod brightness;
 mod bzbus;
 mod context_zone;
+mod format;
 mod github_status;
 mod goals;
 mod icon_resolver;
 mod layout_indicator;
 mod monitors;
 mod network;
+mod overlays;
 mod popovers;
 mod power_profile;
 mod project;
@@ -53,6 +55,9 @@ use self::bluetooth::{
     BluetoothDeviceGroup, BluetoothGroupPopover, BluetoothView, bluetooth_status,
 };
 use self::brightness::{BrightnessView, brightness_status};
+use self::format::{
+    battery_icon_name, battery_tooltip, source_error_count_label, source_error_tooltip,
+};
 use self::monitors::{primary_output, secondary_bar_changes};
 
 use self::network::{NetworkView, network_status};
@@ -1418,67 +1423,6 @@ impl MainBar {
         };
         request.respond(response);
     }
-
-    fn workspace_selector_action(&mut self, action: request::ToggleAction) {
-        if self._workspace_selector.is_none() {
-            if action == request::ToggleAction::Set(false) {
-                return;
-            }
-            let builder = WorkspaceSelector::builder();
-            relm4::main_application().add_window(&builder.root);
-            self._workspace_selector = Some(builder.launch(()).detach());
-        }
-        if let Some(selector) = &self._workspace_selector {
-            selector.emit(match action {
-                request::ToggleAction::Set(true) => WorkspaceSelectorInput::Show,
-                request::ToggleAction::Set(false) => WorkspaceSelectorInput::Hide,
-                request::ToggleAction::Toggle => WorkspaceSelectorInput::Toggle,
-            });
-        }
-    }
-
-    fn remarked_action(&mut self, action: request::ToggleAction) {
-        use rsynapse_remarked::{RemarkedInput, RemarkedWindow};
-        if self._remarked.is_none() {
-            if action == request::ToggleAction::Set(false) {
-                return;
-            }
-            let builder = RemarkedWindow::builder();
-            relm4::main_application().add_window(&builder.root);
-            self._remarked = Some(builder.launch(()).detach());
-        }
-        if let Some(window) = &self._remarked {
-            window.emit(match action {
-                request::ToggleAction::Set(true) => RemarkedInput::Show,
-                request::ToggleAction::Set(false) => RemarkedInput::Hide,
-                request::ToggleAction::Toggle => RemarkedInput::Toggle,
-            });
-        }
-    }
-
-    fn mpris_action(&mut self, action: request::ToggleAction, hold: bool) {
-        use crate::widgets::{MprisInput, MprisWindow};
-
-        if self._media_overlay.is_none() {
-            if action == request::ToggleAction::Set(false) {
-                return;
-            }
-            let builder = MprisWindow::builder();
-            relm4::main_application().add_window(&builder.root);
-            self._media_overlay = Some(
-                builder
-                    .launch(shell_core::source::StateSignal::new(false))
-                    .detach(),
-            );
-        }
-        if let Some(overlay) = &self._media_overlay {
-            overlay.emit(match action {
-                request::ToggleAction::Set(true) => MprisInput::Show { hold },
-                request::ToggleAction::Set(false) => MprisInput::Hide,
-                request::ToggleAction::Toggle => MprisInput::Toggle { hold },
-            });
-        }
-    }
 }
 
 fn request_notification_center_toggle() {
@@ -1530,35 +1474,6 @@ fn copy_branch_to_clipboard(branch: String) {
             }
         }
     });
-}
-
-fn battery_tooltip(battery: &BatteryView) -> String {
-    format!("{}%", battery.percent)
-}
-
-fn battery_icon_name(battery: &BatteryView) -> String {
-    if !battery.present {
-        return "battery-missing-symbolic".to_owned();
-    }
-
-    let charging = battery.state.is_charging();
-
-    if battery.percent >= 95 && charging {
-        return "battery-level-100-charged-symbolic".to_owned();
-    }
-
-    let level = (((battery.percent.min(100) as u16) + 5) / 10) * 10;
-    let state = if charging { "-charging" } else { "" };
-
-    format!("battery-level-{level}{state}-symbolic")
-}
-
-fn source_error_tooltip(count: u64) -> String {
-    format!("{count} source error(s) caught")
-}
-
-fn source_error_count_label(count: u64) -> String {
-    count.to_string()
 }
 
 #[cfg(test)]

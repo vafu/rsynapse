@@ -1,5 +1,5 @@
 use super::protocol::{Event, Layer, Output, Window, Workspace};
-use crate::model::{self, Projection};
+use crate::model::{self, Projection, ProjectionBuilder};
 use std::collections::{BTreeMap, BTreeSet};
 use workspace_dbus_api::{output_path, window_path, workspace_path};
 mod coherence;
@@ -130,16 +130,14 @@ fn project(
     } else {
         focused_output.and_then(|output| active_workspace(output, workspaces))
     };
-    let mut result = Projection::default();
-    result.manager.connected = true;
-    result.manager.focused_window = focused_window
-        .map(|w| window_path(&w.id))
-        .into_iter()
-        .collect();
-    result.manager.focused_output = focused_output
-        .map(|o| output_path(&o.name))
-        .into_iter()
-        .collect();
+    let focused_workspace_id = focused_workspace.map(|w| w.id.clone());
+    let mut result = ProjectionBuilder::new()
+        .focus(
+            focused_window.map(|w| w.id.as_str()),
+            focused_workspace_id.as_deref(),
+            focused_output.map(|o| o.name.as_str()),
+        )
+        .build();
     result.manager.focused_workspace = focused_workspace
         .map(|w| workspace_path(&workspace_ids[&w.id]))
         .into_iter()

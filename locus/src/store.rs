@@ -36,6 +36,10 @@ impl std::ops::DerefMut for StoredRecord {
 #[derive(Debug)]
 pub struct RelationStore {
     path: PathBuf,
+    // In-memory `(subject, relation)` indexing is intentionally deferred: session
+    // relation counts are small (tens), every mutation already rewrites the
+    // atomic JSON snapshot, and an index would need to stay in sync with the
+    // existing remove/replace paths. Revisit with a benchmark if counts grow.
     records: Vec<StoredRecord>,
 }
 
