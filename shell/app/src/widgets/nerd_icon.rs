@@ -50,7 +50,6 @@ pub(crate) mod md {
     pub(crate) const MD_MOUSE_VARIANT: &str = "\u{f037f}";
     pub(crate) const MD_ROBOT: &str = "\u{f06a9}";
     pub(crate) const MD_SPEEDOMETER: &str = "\u{f04c5}";
-    pub(crate) const MD_SPEAKER: &str = "\u{f04c3}";
     pub(crate) const MD_VIEW_DASHBOARD: &str = "\u{f056e}";
     pub(crate) const MD_WRENCH: &str = "\u{f05b7}";
 }

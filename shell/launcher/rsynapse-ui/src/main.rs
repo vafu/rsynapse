@@ -207,29 +207,28 @@ impl SimpleComponent for App {
             ));
         });
 
+        let activate_sender = sender.clone();
+        search_entry.connect_activate(move |_| activate_sender.input(Msg::Activate));
+        let activate_sender = sender.clone();
+        list_box.connect_row_activated(move |_, _| activate_sender.input(Msg::Activate));
+
         let nav_sender = sender.clone();
         let nav_watcher = KeybindWatcher::install(
             &root,
             [
                 Keybind::new(KeyChord::plain(gdk::Key::Up), Msg::Cycle(-1)),
                 Keybind::new(KeyChord::plain(gdk::Key::Down), Msg::Cycle(1)),
-                Keybind::new(KeyChord::plain(gdk::Key::Tab), Msg::Cycle(1)),
-                Keybind::new(
-                    KeyChord::new(gdk::Key::Tab, gdk::ModifierType::SHIFT_MASK),
-                    Msg::Cycle(-1),
-                ),
-                Keybind::new(KeyChord::plain(gdk::Key::ISO_Left_Tab), Msg::Cycle(-1)),
-                Keybind::new(
-                    KeyChord::new(gdk::Key::ISO_Left_Tab, gdk::ModifierType::SHIFT_MASK),
-                    Msg::Cycle(-1),
-                ),
             ],
             move |message| nav_sender.input(message),
         );
 
         let hold_sender = sender.clone();
         let hold_bindings = HoldBindings {
-            next: Vec::new(),
+            next: vec![
+                KeyChord::plain(gdk::Key::a),
+                KeyChord::new(gdk::Key::a, gdk::ModifierType::SUPER_MASK),
+                KeyChord::new(gdk::Key::a, gdk::ModifierType::ALT_MASK),
+            ],
             previous: Vec::new(),
             ..HoldBindings::default()
         };
@@ -250,6 +249,16 @@ impl SimpleComponent for App {
         keys.set_propagation_phase(gtk::PropagationPhase::Capture);
         let s = sender.clone();
         keys.connect_key_pressed(move |_, key, _, modifiers| {
+            if key == gdk::Key::Escape {
+                s.input(Msg::Hide);
+                return glib::Propagation::Stop;
+            }
+            if matches!(key, gdk::Key::Tab | gdk::Key::ISO_Left_Tab) {
+                let backwards = key == gdk::Key::ISO_Left_Tab
+                    || modifiers.contains(gdk::ModifierType::SHIFT_MASK);
+                s.input(Msg::Cycle(if backwards { -1 } else { 1 }));
+                return glib::Propagation::Stop;
+            }
             let forward =
                 matches!(key, gdk::Key::Delete) || modifiers.contains(gdk::ModifierType::ALT_MASK);
             if !forward {

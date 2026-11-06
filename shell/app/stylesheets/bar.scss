@@ -655,32 +655,6 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
   }
 }
 
-.audio-route-popover {
-  .audio-route {
-    min-width: 260px;
-    padding: 8px;
-  }
-
-  .audio-route-heading {
-    margin: 0 0 6px 2px;
-    font-weight: 700;
-  }
-
-  .audio-route-row {
-    padding: 6px 8px;
-    border-radius: 8px;
-  }
-
-  .audio-route-title {
-    font-weight: 600;
-  }
-
-  .audio-route-subtitle {
-    opacity: 0.62;
-    font-size: 0.86em;
-  }
-}
-
 .tray-menu-popover {
   .tray-menu {
     min-width: 220px;

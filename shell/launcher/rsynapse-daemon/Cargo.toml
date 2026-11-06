@@ -16,6 +16,7 @@ toml = "0.8"
 notify = "6.1.1"
 rsynapse-launcher-api = { path = "../rsynapse-launcher-api" }
 rsynapse-plugin = { path = "../rsynapse-plugin" }
+rsynapse-plugin-audio = { path = "../rsynapse-plugin-audio" }
 rsynapse-plugin-calc = { path = "../rsynapse-plugin-calc" }
 rsynapse-plugin-commands = { path = "../rsynapse-plugin-commands" }
 rsynapse-plugin-launcher = { path = "../rsynapse-plugin-launcher" }

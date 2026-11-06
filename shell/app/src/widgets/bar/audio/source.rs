@@ -1,4 +1,3 @@
-use crate::widgets::nerd_icon::md;
 use serde_json::Value;
 use shell_core::source::{self, Observable, rx::Observable as _};
 use tokio::{
@@ -6,41 +5,22 @@ use tokio::{
     process::{Child, Command},
 };
 
-use super::{AudioRouteView, AudioView};
-use crate::widgets::nerd_icon::NerdIcon;
+use super::AudioView;
 
 const AUDIO_SOURCE_KEY: &str = "default-output";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-struct AudioSnapshot {
-    status: AudioView,
-    routes: Vec<AudioRouteView>,
+struct Sink {
+    title: String,
+    subtitle: String,
+    is_default: bool,
 }
 
 pub(in crate::widgets::bar) fn audio_status() -> Observable<AudioView> {
-    audio_snapshot()
-        .map(|snapshot| snapshot.status)
-        .distinct_until_changed()
-        .box_it()
+    audio_snapshot().distinct_until_changed().box_it()
 }
 
-pub(in crate::widgets::bar) fn audio_routes() -> Observable<Vec<AudioRouteView>> {
-    audio_snapshot()
-        .map(|snapshot| snapshot.routes)
-        .distinct_until_changed()
-        .box_it()
-}
-
-pub(super) fn set_default_route(route_id: u32) {
-    std::thread::spawn(move || {
-        let _ = std::process::Command::new("wpctl")
-            .arg("set-default")
-            .arg(route_id.to_string())
-            .status();
-    });
-}
-
-fn audio_snapshot() -> Observable<AudioSnapshot> {
+fn audio_snapshot() -> Observable<AudioView> {
     source::shared_by_key("rsynapse.pipewire-audio", AUDIO_SOURCE_KEY, || {
         source::from_task(|sender| async move {
             let mut latest = None;
@@ -105,7 +85,7 @@ fn audio_snapshot() -> Observable<AudioSnapshot> {
 
 async fn read_next_line(
     reader: &mut tokio::io::Lines<BufReader<tokio::process::ChildStdout>>,
-    sender: &async_channel::Sender<Result<AudioSnapshot, String>>,
+    sender: &async_channel::Sender<Result<AudioView, String>>,
 ) -> Option<String> {
     match reader.next_line().await {
         Ok(Some(line)) => Some(line),
@@ -123,8 +103,8 @@ async fn read_next_line(
 }
 
 async fn emit_snapshot_if_changed(
-    sender: &async_channel::Sender<Result<AudioSnapshot, String>>,
-    latest: &mut Option<AudioSnapshot>,
+    sender: &async_channel::Sender<Result<AudioView, String>>,
+    latest: &mut Option<AudioView>,
     objects: &[Value],
 ) {
     let snapshot = snapshot_from_pipewire_objects(objects);
@@ -150,35 +130,34 @@ fn parse_pipewire_chunk(output: &str) -> Result<Vec<Value>, String> {
         .map_err(|error| format!("parse pw-dump output failed: {error}"))
 }
 
-fn snapshot_from_pipewire_objects(objects: &[Value]) -> AudioSnapshot {
+fn snapshot_from_pipewire_objects(objects: &[Value]) -> AudioView {
     let default_sink = default_audio_sink_name(objects);
-    let mut routes = objects
+    let mut sinks = objects
         .iter()
         .filter_map(|object| pipewire_sink_route(object, default_sink.as_deref()))
         .collect::<Vec<_>>();
-    if !routes.iter().any(|route| route.is_default)
-        && let Some(first) = routes.first_mut()
+    if !sinks.iter().any(|sink| sink.is_default)
+        && let Some(first) = sinks.first_mut()
     {
         first.is_default = true;
         first.subtitle = format!("Default output · {}", first.subtitle);
     }
 
-    let default_route = routes
+    let default_route = sinks
         .iter()
-        .find(|route| route.is_default)
-        .or_else(|| routes.first());
+        .find(|sink| sink.is_default)
+        .or_else(|| sinks.first());
     let percent = default_route
-        .and_then(|route| route.subtitle_percent())
+        .and_then(|sink| sink.subtitle_percent())
         .unwrap_or(0);
-    let muted = default_route.is_some_and(|route| route.subtitle.contains("muted"));
-    let status = AudioView {
-        visible: !routes.is_empty(),
+    let muted = default_route.is_some_and(|sink| sink.subtitle.contains("muted"));
+    AudioView {
+        visible: !sinks.is_empty(),
         icon: audio_icon(percent, muted).to_owned(),
         tooltip: audio_tooltip(default_route, percent, muted),
         percent,
         muted,
-    };
-    AudioSnapshot { status, routes }
+    }
 }
 
 fn default_audio_sink_name(objects: &[Value]) -> Option<String> {
@@ -199,13 +178,12 @@ fn default_audio_sink_name(objects: &[Value]) -> Option<String> {
         .map(ToOwned::to_owned)
 }
 
-fn pipewire_sink_route(object: &Value, default_sink: Option<&str>) -> Option<AudioRouteView> {
+fn pipewire_sink_route(object: &Value, default_sink: Option<&str>) -> Option<Sink> {
     if !object_is_audio_sink(object) {
         return None;
     }
 
     let props = object.pointer("/info/props")?;
-    let id = object.get("id").and_then(Value::as_u64)?.try_into().ok()?;
     let name = props.get("node.name").and_then(Value::as_str)?;
     let title = props
         .get("node.description")
@@ -219,12 +197,9 @@ fn pipewire_sink_route(object: &Value, default_sink: Option<&str>) -> Option<Aud
     let muted = sink_muted(object);
     let is_default = default_sink == Some(name);
 
-    Some(AudioRouteView {
-        id,
-        name: name.to_owned(),
+    Some(Sink {
         title: title.to_owned(),
         subtitle: route_subtitle(volume, muted, is_default),
-        icon: NerdIcon::new(md::MD_SPEAKER),
         is_default,
     })
 }
@@ -383,7 +358,7 @@ fn audio_icon(percent: u8, muted: bool) -> &'static str {
     }
 }
 
-fn audio_tooltip(default_route: Option<&AudioRouteView>, percent: u8, muted: bool) -> String {
+fn audio_tooltip(default_route: Option<&Sink>, percent: u8, muted: bool) -> String {
     let state = if muted { "muted" } else { "active" };
     match default_route {
         Some(route) => format!("{}: {percent}% ({state})", route.title),
@@ -395,7 +370,7 @@ trait AudioRoutePercent {
     fn subtitle_percent(&self) -> Option<u8>;
 }
 
-impl AudioRoutePercent for AudioRouteView {
+impl AudioRoutePercent for Sink {
     fn subtitle_percent(&self) -> Option<u8> {
         self.subtitle
             .split(|character: char| !character.is_ascii_digit())
@@ -447,7 +422,6 @@ mod tests {
         let route = pipewire_sink_route(&objects[1], default.as_deref()).unwrap();
 
         assert_eq!(default.as_deref(), Some("alsa_output.default"));
-        assert_eq!(route.id, 44);
         assert!(route.is_default);
         assert_eq!(route.title, "Speakers");
         assert_eq!(route.subtitle, "Default output · 50% · muted");

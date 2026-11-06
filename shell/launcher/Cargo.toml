@@ -4,6 +4,7 @@ members = [
     "rsynapse-cli", 
     "rsynapse-plugin", 
     "rsynapse-launcher-api",
+    "rsynapse-plugin-audio",
     "rsynapse-plugin-launcher",
     "rsynapse-plugin-shell",
     "rsynapse-plugin-calc",

@@ -173,7 +173,7 @@ impl SimpleComponent for WorkspaceSelector {
         keys.set_propagation_phase(gtk::PropagationPhase::Capture);
         let input = sender.input_sender().clone();
         let key_dialog_open = dialog_open.clone();
-        keys.connect_key_pressed(move |_, key, _, _| {
+        keys.connect_key_pressed(move |_, key, _, modifiers| {
             use gtk::gdk::Key;
 
             if key_dialog_open.get() {
@@ -191,6 +191,19 @@ impl SimpleComponent for WorkspaceSelector {
                 }
                 Key::Down | Key::KP_Down => {
                     let _ = input.send(WorkspaceSelectorInput::MoveSelection(1));
+                    gtk::glib::Propagation::Stop
+                }
+                Key::Tab => {
+                    let delta = if modifiers.contains(gtk::gdk::ModifierType::SHIFT_MASK) {
+                        -1
+                    } else {
+                        1
+                    };
+                    let _ = input.send(WorkspaceSelectorInput::MoveSelection(delta));
+                    gtk::glib::Propagation::Stop
+                }
+                Key::ISO_Left_Tab => {
+                    let _ = input.send(WorkspaceSelectorInput::MoveSelection(-1));
                     gtk::glib::Propagation::Stop
                 }
                 Key::Return | Key::KP_Enter => {

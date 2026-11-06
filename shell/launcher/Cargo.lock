@@ -1779,6 +1779,7 @@ dependencies = [
  "notify",
  "rsynapse-launcher-api",
  "rsynapse-plugin",
+ "rsynapse-plugin-audio",
  "rsynapse-plugin-calc",
  "rsynapse-plugin-commands",
  "rsynapse-plugin-launcher",
@@ -1804,6 +1805,14 @@ name = "rsynapse-plugin"
 version = "0.1.0"
 dependencies = [
  "rsynapse-launcher-api",
+]
+
+[[package]]
+name = "rsynapse-plugin-audio"
+version = "0.1.0"
+dependencies = [
+ "rsynapse-plugin",
+ "serde_json",
 ]
 
 [[package]]

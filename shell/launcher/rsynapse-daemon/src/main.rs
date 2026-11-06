@@ -336,21 +336,30 @@ impl Engine {
             return format!("Error: {}", msg);
         };
 
-        if let Some(plugin) = self
-            .manager
-            .plugins
-            .iter()
-            .find(|plugin| plugin.name() == plugin_name)
-        {
-            if let Some(result) = plugin.execute(&item) {
-                return match result {
-                    Ok(()) => String::new(),
-                    Err(error) => {
-                        eprintln!("[Daemon] {} execute failed: {}", plugin_name, error);
-                        format!("Error: {}", error)
-                    }
-                };
-            }
+        let plugin_result = {
+            let manager = self.manager.clone();
+            let plugin_name = plugin_name.clone();
+            let item = item.clone();
+            tokio::task::spawn_blocking(move || {
+                manager
+                    .plugins
+                    .iter()
+                    .find(|plugin| plugin.name() == plugin_name)
+                    .and_then(|plugin| plugin.execute(&item))
+            })
+            .await
+            .ok()
+            .flatten()
+        };
+
+        if let Some(result) = plugin_result {
+            return match result {
+                Ok(()) => String::new(),
+                Err(error) => {
+                    eprintln!("[Daemon] {} execute failed: {}", plugin_name, error);
+                    format!("Error: {}", error)
+                }
+            };
         }
 
         let template = {
@@ -419,6 +428,7 @@ fn non_empty(value: &str) -> Option<&str> {
 
 fn builtin_plugins() -> Vec<Box<dyn Plugin>> {
     vec![
+        rsynapse_plugin_audio::plugin(),
         rsynapse_plugin_calc::plugin(),
         rsynapse_plugin_commands::plugin(),
         rsynapse_plugin_launcher::plugin(),
@@ -623,6 +633,7 @@ mod tests {
             .map(|plugin| plugin.name())
             .collect::<Vec<_>>();
         for expected in [
+            "Audio",
             "Calculator",
             "Commands",
             "Application Launcher",
@@ -634,7 +645,7 @@ mod tests {
                 "missing plugin {expected}: {names:?}"
             );
         }
-        assert_eq!(names.len(), 5);
+        assert_eq!(names.len(), 6);
     }
 
     #[test]

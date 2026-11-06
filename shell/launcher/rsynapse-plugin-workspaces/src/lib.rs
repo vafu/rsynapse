@@ -459,6 +459,10 @@ impl Plugin for WorkspacesPlugin {
             };
         }
 
+        if context.group != Some("projects") {
+            return PluginResponse::default();
+        }
+
         let Some((workspace, _)) = Self::focused_workspace(&connection) else {
             return PluginResponse::default();
         };

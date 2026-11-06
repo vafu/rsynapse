@@ -1,13 +1,6 @@
-mod route_popover;
-mod route_row;
 mod source;
 
-pub(super) use route_popover::AudioRoutePopover;
-use route_row::AudioRouteRow;
-use source::audio_routes;
 pub(super) use source::audio_status;
-
-use crate::widgets::nerd_icon::NerdIcon;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct AudioView {
@@ -27,23 +20,5 @@ impl Default for AudioView {
             percent: 0,
             muted: false,
         }
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) struct AudioRouteView {
-    pub(super) id: u32,
-    pub(super) name: String,
-    pub(super) title: String,
-    pub(super) subtitle: String,
-    pub(super) icon: NerdIcon,
-    pub(super) is_default: bool,
-}
-
-pub(super) fn route_popover_tooltip(audio: &AudioView) -> &str {
-    if audio.tooltip.is_empty() {
-        "Audio Output"
-    } else {
-        audio.tooltip.as_str()
     }
 }

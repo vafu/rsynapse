@@ -30,7 +30,7 @@ mod workspace;
 mod workspace_bar;
 mod workspaces;
 
-use std::{cell::RefCell, rc::Rc, thread};
+use std::thread;
 
 use relm4::component::ComponentController;
 use relm4::prelude::*;
@@ -48,7 +48,7 @@ use crate::widgets::button_group::{
 use crate::widgets::nerd_icon::md;
 use crate::widgets::nerd_icon::{NerdIcon, NerdIconLabelExt};
 
-use self::audio::{AudioRoutePopover, AudioView, audio_status};
+use self::audio::{AudioView, audio_status};
 use self::battery::BatteryView;
 use self::battery::battery_status;
 use self::bluetooth::{
@@ -61,7 +61,7 @@ use self::format::{
 use self::monitors::{primary_output, secondary_bar_changes};
 
 use self::network::{NetworkView, network_status};
-use self::popovers::{mount_bluetooth_group_popover, mount_popover_component};
+use self::popovers::mount_bluetooth_group_popover;
 use self::power_profile::{PowerProfileView, power_profile_status};
 use self::secondary::{
     SecondaryBar, available_monitors, bar_window_config, launch_secondary_bar,
@@ -877,20 +877,14 @@ impl SimpleAsyncComponent for MainBar {
                             #[watch]
                             set_visible: model.audio.visible,
                             #[watch]
-                            set_tooltip_text: Some(audio::route_popover_tooltip(&model.audio)),
+                            set_tooltip_text: Some(model.audio.tooltip.as_str()),
 
-                            #[name = "audio_route_button"]
-                            gtk::MenuButton {
-                                set_css_classes: &bar_item::action_classes(&["audio-route-button"]),
-
-                            #[wrap(Some)]
-                            set_child = &gtk::Image {
+                            gtk::Image {
                                 add_css_class: bar_item::ICON_CLASS,
                                 add_css_class: "audio-icon",
                                 #[watch]
                                 set_icon_name: Some(model.audio.icon.as_str()),
                             }
-                        }
                         },
 
                         #[local_ref]
@@ -1157,35 +1151,6 @@ impl SimpleAsyncComponent for MainBar {
         widgets.power_profile_button.connect_clicked(move |_| {
             input_sender.emit(MainBarInput::CyclePowerProfile);
         });
-        let audio_route_popover = gtk::Popover::new();
-        audio_route_popover.add_css_class("menu");
-        audio_route_popover.add_css_class("audio-route-popover");
-        let audio_route_mount = gtk::Box::builder()
-            .orientation(gtk::Orientation::Vertical)
-            .build();
-        audio_route_popover.set_child(Some(&audio_route_mount));
-        widgets
-            .audio_route_button
-            .set_popover(Some(&audio_route_popover));
-        let audio_route_controller = Rc::new(RefCell::new(None));
-        mount_popover_component::<AudioRoutePopover>(
-            &audio_route_popover,
-            &audio_route_mount,
-            &audio_route_controller,
-            (),
-        );
-        let audio_route_controller = audio_route_controller.clone();
-        let audio_route_popover_for_signal = audio_route_popover.clone();
-        let audio_route_mount_for_signal = audio_route_mount.clone();
-        audio_route_popover.connect_visible_notify(move |_| {
-            mount_popover_component::<AudioRoutePopover>(
-                &audio_route_popover_for_signal,
-                &audio_route_mount_for_signal,
-                &audio_route_controller,
-                (),
-            );
-        });
-
         let keyboard_popover = widgets
             .bluetooth_keyboard_button
             .popover()
