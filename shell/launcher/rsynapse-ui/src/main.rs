@@ -394,14 +394,14 @@ impl SimpleComponent for App {
             Msg::Toggle(request) => {
                 if self.window.is_visible() {
                     if request.mode == LauncherMode::Cycle {
-                        self.mode = request.mode;
-                        self._hold_watcher.start();
-                        self.inhibit_shortcuts();
-                        if *self.params.borrow() == request.params {
+                        let same_request =
+                            self.mode == request.mode && *self.params.borrow() == request.params;
+                        if same_request {
+                            self._hold_watcher.start();
+                            self.inhibit_shortcuts();
                             self.cycle(1);
                         } else {
-                            *self.params.borrow_mut() = request.params;
-                            self.start_search(&sender);
+                            self.show_request(request, &sender);
                         }
                     } else {
                         self.hide();
