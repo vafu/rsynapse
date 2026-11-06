@@ -86,6 +86,13 @@ GTK4/Relm4 framework crates plus concrete Rsynapse UI surfaces.
    Markdown parsing. Active tasks can also be selected with `proj goal start`
    or `proj goal active`; cancelled tasks are closed and cannot remain selected.
 
+   A hold-to-show MPRIS media overlay is hosted by the same process. It follows
+   standard `org.mpris.MediaPlayer2` players over D-Bus, showing album art,
+   artist/title/album, playback progress and play/previous/next controls.
+   `rsynapse-shell request mpris show --hold` opens it and a Super/Alt release
+   dismisses it; Escape closes it when opened without hold. MPRIS property
+   subscriptions exist only while the overlay is visible.
+
 - `launcher`
   The launcher workspace. It owns the D-Bus launcher daemon, CLI, GTK launcher
   UI, plugin API, and bundled plugins.

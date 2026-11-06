@@ -278,7 +278,8 @@ impl NotificationsWindow {
             | request::ShellRequest::ProjectInit
             | request::ShellRequest::Workspace(_)
             | request::ShellRequest::WorkspaceSelector(_)
-            | request::ShellRequest::Remarked(_) => request::RequestResponse::Error(
+            | request::ShellRequest::Remarked(_)
+            | request::ShellRequest::Mpris { .. } => request::RequestResponse::Error(
                 "shell requests are handled by rsynapse-shell".to_owned(),
             ),
         };

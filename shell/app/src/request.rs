@@ -32,6 +32,7 @@ pub enum ShellRequest {
     Workspace(ToggleAction),
     WorkspaceSelector(ToggleAction),
     Remarked(ToggleAction),
+    Mpris { action: ToggleAction, hold: bool },
     Hints(ToggleAction),
     Notifications(ToggleAction),
 }
@@ -43,7 +44,8 @@ impl ShellRequest {
             | Self::ProjectInit
             | Self::Workspace(_)
             | Self::WorkspaceSelector(_)
-            | Self::Remarked(_) => RequestTarget::Shell,
+            | Self::Remarked(_)
+            | Self::Mpris { .. } => RequestTarget::Shell,
             Self::Notifications(_) => RequestTarget::Notifications,
         }
     }
@@ -269,6 +271,7 @@ fn parse_request(args: &[String]) -> Result<ShellRequest, String> {
         "remarked" => {
             parse_toggle_request(&args[1..], "remarked", true).map(ShellRequest::Remarked)
         }
+        "mpris" | "media" => parse_mpris_request(&args[1..]),
         "hints" => parse_toggle_request(&args[1..], "hints", false).map(ShellRequest::Hints),
         "notifications" | "notification-center" => {
             parse_toggle_request(&args[1..], "notifications", false)
@@ -276,6 +279,16 @@ fn parse_request(args: &[String]) -> Result<ShellRequest, String> {
         }
         _ => Err(format!("unknown request command: {command}")),
     }
+}
+
+fn parse_mpris_request(args: &[String]) -> Result<ShellRequest, String> {
+    let (args, hold) = match args {
+        [rest @ .., flag] if flag == "--hold" => (rest, true),
+        [rest @ .., flag] if flag == "--no-hold" => (rest, false),
+        _ => (args, true),
+    };
+    let action = parse_toggle_request(args, "mpris", true)?;
+    Ok(ShellRequest::Mpris { action, hold })
 }
 
 fn parse_toggle_request(
@@ -441,6 +454,32 @@ mod tests {
             RequestTarget::Shell
         );
         assert!(parse_request(&args(&["workspace", "invalid"])).is_err());
+    }
+
+    #[test]
+    fn parses_mpris_hold_requests() {
+        assert_eq!(
+            parse_request(&args(&["mpris", "show", "--hold"])).unwrap(),
+            ShellRequest::Mpris {
+                action: ToggleAction::Set(true),
+                hold: true,
+            }
+        );
+        assert_eq!(
+            parse_request(&args(&["media", "toggle", "--no-hold"])).unwrap(),
+            ShellRequest::Mpris {
+                action: ToggleAction::Toggle,
+                hold: false,
+            }
+        );
+        assert_eq!(
+            parse_request(&args(&["mpris"])).unwrap(),
+            ShellRequest::Mpris {
+                action: ToggleAction::Toggle,
+                hold: true,
+            }
+        );
+        assert!(parse_request(&args(&["mpris", "invalid"])).is_err());
     }
 
     #[test]

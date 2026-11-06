@@ -1,0 +1,62 @@
+window.mpris-window {
+  background-color: transparent;
+}
+
+.mpris-frame {
+  padding: 40px 40px 16px;
+}
+
+.mpris-overlay {
+  @include rsx-surface(
+    $container: $rsx-surface-container-high,
+    $radius: $rsx-surface-radius-large,
+    $elevation: 3
+  );
+  padding: 20px;
+}
+
+.mpris-art-frame {
+  border-radius: $rsx-surface-radius;
+  background-color: color-mix(in srgb, #{$fg} 8%, transparent);
+}
+
+.mpris-art-fallback {
+  color: $rsx-on-surface-variant;
+}
+
+.mpris-art {
+  border-radius: $rsx-surface-radius;
+}
+
+.mpris-title {
+  font-size: 1.35em;
+  font-weight: 700;
+}
+
+.mpris-artist {
+  font-size: 1.05em;
+}
+
+.mpris-album,
+.mpris-player {
+  color: $rsx-on-surface-variant;
+}
+
+.mpris-progress trough,
+.mpris-progress progress {
+  border-radius: $rsx-surface-radius-pill;
+}
+
+.mpris-time {
+  color: $rsx-on-surface-variant;
+  font-size: 0.9em;
+}
+
+.mpris-controls .mpris-control {
+  padding: 10px;
+  border-radius: $rsx-surface-radius-pill;
+}
+
+.mpris-play-pause {
+  padding: 13px;
+}

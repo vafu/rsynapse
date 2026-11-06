@@ -10,6 +10,7 @@ pub mod dbus;
 pub mod github;
 mod keyed_list;
 mod list_diff;
+pub mod mpris;
 pub mod proj;
 pub mod session;
 mod state;

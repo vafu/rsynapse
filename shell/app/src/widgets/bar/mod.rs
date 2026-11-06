@@ -158,6 +158,7 @@ pub struct MainBar {
     _workspace: Option<Controller<rsynapse_workspace::WorkspaceWindow>>,
     _workspace_selector: Option<Controller<WorkspaceSelector>>,
     _remarked: Option<Controller<rsynapse_remarked::RemarkedWindow>>,
+    _media_overlay: Option<Controller<crate::widgets::MprisWindow>>,
     _osd: Option<AsyncController<OsdWindow>>,
     _request_server: Option<request::RequestServer>,
     _workspace_bar: Option<Controller<WorkspaceBar>>,
@@ -1181,6 +1182,7 @@ impl SimpleAsyncComponent for MainBar {
             None,
             None,
             None,
+            None,
             osd,
             request_server,
             workspace_bar,
@@ -1510,6 +1512,10 @@ impl MainBar {
                 self.remarked_action(action);
                 request::RequestResponse::Ok
             }
+            request::ShellRequest::Mpris { action, hold } => {
+                self.mpris_action(action, hold);
+                request::RequestResponse::Ok
+            }
             request::ShellRequest::Notifications(_) => request::RequestResponse::Error(
                 "notification requests are handled by rsynapse-notifications".to_owned(),
             ),
@@ -1575,6 +1581,30 @@ impl MainBar {
                 request::ToggleAction::Set(true) => RemarkedInput::Show,
                 request::ToggleAction::Set(false) => RemarkedInput::Hide,
                 request::ToggleAction::Toggle => RemarkedInput::Toggle,
+            });
+        }
+    }
+
+    fn mpris_action(&mut self, action: request::ToggleAction, hold: bool) {
+        use crate::widgets::{MprisInput, MprisWindow};
+
+        if self._media_overlay.is_none() {
+            if action == request::ToggleAction::Set(false) {
+                return;
+            }
+            let builder = MprisWindow::builder();
+            relm4::main_application().add_window(&builder.root);
+            self._media_overlay = Some(
+                builder
+                    .launch(shell_core::source::StateSignal::new(false))
+                    .detach(),
+            );
+        }
+        if let Some(overlay) = &self._media_overlay {
+            overlay.emit(match action {
+                request::ToggleAction::Set(true) => MprisInput::Show { hold },
+                request::ToggleAction::Set(false) => MprisInput::Hide,
+                request::ToggleAction::Toggle => MprisInput::Toggle { hold },
             });
         }
     }

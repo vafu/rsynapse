@@ -10,7 +10,8 @@ async-channel = "2.5.0"
 futures-util = "0.3.32"
 locus = { path = "../../../locus" }
 rxrust.workspace = true
-tokio = { version = "1.52.3", features = ["macros", "rt", "sync", "net"] }
+shell-rx-macros = { path = "../rx-macros" }
+tokio = { version = "1.52.3", features = ["macros", "rt", "sync", "net", "time"] }
 tracing.workspace = true
 wayland-client = "0.31"
 wayland-protocols = { version = "0.32", features = ["client", "staging"] }

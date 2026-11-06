@@ -81,6 +81,10 @@ Framework crates under `core/` own:
   One primary-shell controller serves all monitor buttons and workspace requests.
   Steward remains automation policy; the UI does not merge service ownership.
 
+- Completed: the shell hosts a hold-to-show MPRIS media overlay backed by
+  `shell-source` player discovery, live metadata/transport state and locally
+  interpolated playback position. Album art, progress/time and transport controls stay in
+  the app widget; Mod+M is a compositor hold binding.
 - Use `app/` as the current local consumer for framework ergonomics.
 - Keep widget policy, source composition, CSS, and AGS migration behavior in
   UI crates, not in framework crates.
