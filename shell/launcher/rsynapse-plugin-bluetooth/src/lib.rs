@@ -160,16 +160,40 @@ fn device(path: &OwnedObjectPath, interfaces: &Interfaces) -> Option<Device> {
     let name = string_property(props, "Alias")
         .or_else(|| string_property(props, "Name"))
         .unwrap_or_else(|| address.clone());
-    let icon = string_property(props, "Icon").unwrap_or_else(|| "bluetooth".to_owned());
+    let connected = bool_property(props, "Connected").unwrap_or(false);
+    let icon = symbolic_icon(string_property(props, "Icon").as_deref(), connected);
 
     Some(Device {
         path: path.as_str().to_owned(),
         name,
         address,
         icon,
-        connected: bool_property(props, "Connected").unwrap_or(false),
+        connected,
         connecting: bool_property(props, "Connecting").unwrap_or(false),
     })
+}
+
+fn symbolic_icon(bluez_icon: Option<&str>, connected: bool) -> String {
+    let icon = match bluez_icon.unwrap_or_default() {
+        "audio-headphones" | "audio-headset" => "audio-headphones-symbolic",
+        "audio-speakers" | "audio-card" => "audio-speakers-symbolic",
+        "input-keyboard" => "input-keyboard-symbolic",
+        "input-mouse" => "input-mouse-symbolic",
+        "input-gaming" => "input-gaming-symbolic",
+        "input-tablet" => "input-tablet-symbolic",
+        "phone" => "phone-symbolic",
+        "computer" => "computer-symbolic",
+        "camera-photo" => "camera-photo-symbolic",
+        "camera-video" => "camera-video-symbolic",
+        "printer" => "printer-symbolic",
+        "scanner" => "scanner-symbolic",
+        "video-display" => "video-display-symbolic",
+        "multimedia-player" => "multimedia-player-symbolic",
+        "network-wireless" => "network-wireless-symbolic",
+        _ if connected => "bluetooth-active-symbolic",
+        _ => "bluetooth-symbolic",
+    };
+    icon.to_owned()
 }
 
 fn string_property(props: &HashMap<String, OwnedValue>, key: &str) -> Option<String> {
@@ -208,6 +232,23 @@ mod tests {
             connected,
             connecting: false,
         }
+    }
+
+    #[test]
+    fn device_icons_are_symbolic() {
+        assert_eq!(
+            symbolic_icon(Some("audio-headphones"), false),
+            "audio-headphones-symbolic"
+        );
+        assert_eq!(
+            symbolic_icon(Some("input-keyboard"), true),
+            "input-keyboard-symbolic"
+        );
+        assert_eq!(
+            symbolic_icon(Some("unknown"), true),
+            "bluetooth-active-symbolic"
+        );
+        assert_eq!(symbolic_icon(None, false), "bluetooth-symbolic");
     }
 
     #[test]
