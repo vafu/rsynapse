@@ -113,6 +113,8 @@ pub struct ShowRequest {
     pub params: Vec<String>,
     pub query: String,
     pub mode: LauncherMode,
+    /// Start on the second result instead of the first.
+    pub preselect_next: bool,
 }
 
 #[zbus::proxy(

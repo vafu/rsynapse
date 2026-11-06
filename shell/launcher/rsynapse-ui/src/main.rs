@@ -38,6 +38,7 @@ struct App {
     results: Vec<LauncherResult>,
     selected: i32,
     mode: LauncherMode,
+    preselect_next: bool,
     search_generation: Rc<Cell<u64>>,
     search_tx: std::sync::mpsc::Sender<(u64, Vec<String>, String)>,
     _hold_watcher: HoldWatcher,
@@ -71,7 +72,7 @@ enum UiCommand {
 
 #[relm4::component]
 impl SimpleComponent for App {
-    type Init = (Vec<String>, LauncherMode);
+    type Init = (Vec<String>, LauncherMode, bool);
     type Input = Msg;
     type Output = ();
 
@@ -81,7 +82,7 @@ impl SimpleComponent for App {
     }
 
     fn init(
-        (params, mode): Self::Init,
+        (params, mode, preselect_next): Self::Init,
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
@@ -348,6 +349,7 @@ impl SimpleComponent for App {
             results: Vec::new(),
             selected: 0,
             mode,
+            preselect_next,
             search_generation: search_generation.clone(),
             search_tx: search_tx.clone(),
             _hold_watcher: hold_watcher,
@@ -384,7 +386,11 @@ impl SimpleComponent for App {
                 let mut results = response.results;
                 results.truncate(MAX_ITEMS);
                 self.results = results;
-                self.selected = 0;
+                self.selected = if self.preselect_next && self.results.len() > 1 {
+                    1
+                } else {
+                    0
+                };
                 self.refresh_list();
             }
             Msg::Cycle(delta) => self.cycle(delta),
@@ -394,8 +400,9 @@ impl SimpleComponent for App {
             Msg::Toggle(request) => {
                 if self.window.is_visible() {
                     if request.mode == LauncherMode::Cycle {
-                        let same_request =
-                            self.mode == request.mode && *self.params.borrow() == request.params;
+                        let same_request = self.mode == request.mode
+                            && self.preselect_next == request.preselect_next
+                            && *self.params.borrow() == request.params;
                         if same_request {
                             self._hold_watcher.start();
                             self.inhibit_shortcuts();
@@ -462,6 +469,7 @@ impl App {
     fn show_request(&mut self, request: ShowRequest, sender: &ComponentSender<Self>) {
         *self.params.borrow_mut() = request.params;
         self.mode = request.mode;
+        self.preselect_next = request.preselect_next;
         let cycle = self.mode == LauncherMode::Cycle;
         let query = request.query;
         let changed = self.search_entry.text() != query;
@@ -659,7 +667,7 @@ impl UiDbus {
     }
 }
 
-fn try_toggle_existing(params: &[String], mode: LauncherMode) -> bool {
+fn try_toggle_existing(params: &[String], mode: LauncherMode, preselect_next: bool) -> bool {
     let Ok(connection) = zbus::blocking::Connection::session() else {
         return false;
     };
@@ -671,6 +679,7 @@ fn try_toggle_existing(params: &[String], mode: LauncherMode) -> bool {
             params: params.to_vec(),
             query: String::new(),
             mode,
+            preselect_next,
         })
         .is_ok()
 }
@@ -689,16 +698,19 @@ fn install_css() {
 fn main() {
     let mut params = Vec::new();
     let mut mode = LauncherMode::Search;
+    let mut preselect_next = false;
     for arg in std::env::args().skip(1) {
         if matches!(arg.as_str(), "--hold" | "--cycle") {
             mode = LauncherMode::Cycle;
+        } else if arg == "--preselect-next" {
+            preselect_next = true;
         } else if matches!(arg.as_str(), "--current-output" | "--current-monitor") {
             params.push("current-output".to_owned());
         } else {
             params.push(arg);
         }
     }
-    if try_toggle_existing(&params, mode) {
+    if try_toggle_existing(&params, mode, preselect_next) {
         return;
     }
 
@@ -706,5 +718,5 @@ fn main() {
 
     let app = RelmApp::new("org.rsynapse.UI");
     install_css();
-    app.run::<App>((params, mode));
+    app.run::<App>((params, mode, preselect_next));
 }
