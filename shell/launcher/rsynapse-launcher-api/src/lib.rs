@@ -94,14 +94,25 @@ pub struct KeyResponse {
     pub message: String,
 }
 
+/// How the launcher reacts to the same open command while visible.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "lowercase")]
+#[zvariant(signature = "s")]
+pub enum LauncherMode {
+    /// Show on open, hide on the same command.
+    #[default]
+    Search,
+    /// Show on open, advance the selection on the same command, and activate
+    /// the highlighted item when the invoking modifier is released.
+    Cycle,
+}
+
 /// Parameters and initial query used when showing the launcher.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub struct ShowRequest {
     pub params: Vec<String>,
     pub query: String,
-    /// Keep the launcher open while the invoking modifier is held and activate
-    /// the selection when that modifier is released.
-    pub hold: bool,
+    pub mode: LauncherMode,
 }
 
 #[zbus::proxy(

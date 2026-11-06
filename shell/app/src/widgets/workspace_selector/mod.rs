@@ -185,11 +185,11 @@ impl SimpleComponent for WorkspaceSelector {
                     let _ = input.send(WorkspaceSelectorInput::Hide);
                     gtk::glib::Propagation::Stop
                 }
-                Key::Up | Key::KP_Up | Key::k => {
+                Key::Up | Key::KP_Up => {
                     let _ = input.send(WorkspaceSelectorInput::MoveSelection(-1));
                     gtk::glib::Propagation::Stop
                 }
-                Key::Down | Key::KP_Down | Key::j => {
+                Key::Down | Key::KP_Down => {
                     let _ = input.send(WorkspaceSelectorInput::MoveSelection(1));
                     gtk::glib::Propagation::Stop
                 }

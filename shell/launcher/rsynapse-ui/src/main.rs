@@ -14,8 +14,8 @@ use relm4::gtk::gdk;
 use relm4::gtk::glib;
 use relm4::prelude::*;
 use rsynapse_launcher_api::{
-    KeyEvent as LauncherKeyEvent, KeyRequest, KeyResponse, LauncherHint, LauncherResult,
-    LauncherView, SearchRequest, SearchResponse, ShowRequest,
+    KeyEvent as LauncherKeyEvent, KeyRequest, KeyResponse, LauncherHint, LauncherMode,
+    LauncherResult, LauncherView, SearchRequest, SearchResponse, ShowRequest,
 };
 use shell_core::keybind::{
     HoldAction, HoldBindings, HoldWatcher, KeyChord, Keybind, KeybindWatcher,
@@ -37,7 +37,7 @@ struct App {
     params: Rc<RefCell<Vec<String>>>,
     results: Vec<LauncherResult>,
     selected: i32,
-    hold: bool,
+    mode: LauncherMode,
     search_generation: Rc<Cell<u64>>,
     search_tx: std::sync::mpsc::Sender<(u64, Vec<String>, String)>,
     _hold_watcher: HoldWatcher,
@@ -71,7 +71,7 @@ enum UiCommand {
 
 #[relm4::component]
 impl SimpleComponent for App {
-    type Init = (Vec<String>, bool);
+    type Init = (Vec<String>, LauncherMode);
     type Input = Msg;
     type Output = ();
 
@@ -81,7 +81,7 @@ impl SimpleComponent for App {
     }
 
     fn init(
-        (params, hold): Self::Init,
+        (params, mode): Self::Init,
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
@@ -237,7 +237,7 @@ impl SimpleComponent for App {
             };
             hold_sender.input(message);
         });
-        if hold {
+        if mode == LauncherMode::Cycle {
             hold_watcher.start();
         }
 
@@ -245,12 +245,13 @@ impl SimpleComponent for App {
         keys.set_propagation_phase(gtk::PropagationPhase::Capture);
         let s = sender.clone();
         let key_params = params.clone();
+        let key_search_entry = search_entry.clone();
         keys.connect_key_pressed(move |_, key, _, modifiers| {
             if key == gdk::Key::Escape {
                 s.input(Msg::Hide);
                 return glib::Propagation::Stop;
             }
-            if !key_params.borrow().is_empty() {
+            if !key_search_entry.is_visible() && !key_params.borrow().is_empty() {
                 if key == gdk::Key::j {
                     s.input(Msg::Cycle(1));
                     return glib::Propagation::Stop;
@@ -323,7 +324,7 @@ impl SimpleComponent for App {
 
         root.present();
         list_box.set_focusable(true);
-        if hold {
+        if mode == LauncherMode::Cycle {
             search_entry.set_visible(false);
             let list_box = list_box.clone();
             glib::idle_add_local_once(move || {
@@ -346,7 +347,7 @@ impl SimpleComponent for App {
             params: params.clone(),
             results: Vec::new(),
             selected: 0,
-            hold,
+            mode,
             search_generation: search_generation.clone(),
             search_tx: search_tx.clone(),
             _hold_watcher: hold_watcher,
@@ -383,13 +384,7 @@ impl SimpleComponent for App {
                 let mut results = response.results;
                 results.truncate(MAX_ITEMS);
                 self.results = results;
-                // In hold/cycle mode, start on the previous item so releasing
-                // the modifier immediately switches to the last-used target.
-                self.selected = if self.hold && self.results.len() > 1 {
-                    1
-                } else {
-                    0
-                };
+                self.selected = 0;
                 self.refresh_list();
             }
             Msg::Cycle(delta) => self.cycle(delta),
@@ -398,8 +393,8 @@ impl SimpleComponent for App {
             Msg::Show(request) => self.show_request(request, &sender),
             Msg::Toggle(request) => {
                 if self.window.is_visible() {
-                    if request.hold {
-                        self.hold = true;
+                    if request.mode == LauncherMode::Cycle {
+                        self.mode = request.mode;
                         self._hold_watcher.start();
                         self.inhibit_shortcuts();
                         if *self.params.borrow() == request.params {
@@ -466,7 +461,8 @@ impl App {
 
     fn show_request(&mut self, request: ShowRequest, sender: &ComponentSender<Self>) {
         *self.params.borrow_mut() = request.params;
-        self.hold = request.hold;
+        self.mode = request.mode;
+        let cycle = self.mode == LauncherMode::Cycle;
         let query = request.query;
         let changed = self.search_entry.text() != query;
         self.search_entry.set_text(&query);
@@ -475,8 +471,8 @@ impl App {
         self.window.set_keyboard_mode(KeyboardMode::Exclusive);
         self.window.set_visible(true);
         self.revealer.set_reveal_child(true);
-        self.search_entry.set_visible(!self.hold);
-        if self.hold {
+        self.search_entry.set_visible(!cycle);
+        if cycle {
             self._hold_watcher.start();
             self.inhibit_shortcuts();
             self.list_box.grab_focus();
@@ -490,7 +486,7 @@ impl App {
     }
 
     fn hide(&mut self) {
-        self.hold = false;
+        self.mode = LauncherMode::Search;
         self._hold_watcher.stop();
         self.transition_generation
             .set(self.transition_generation.get().wrapping_add(1));
@@ -663,7 +659,7 @@ impl UiDbus {
     }
 }
 
-fn try_toggle_existing(params: &[String], hold: bool) -> bool {
+fn try_toggle_existing(params: &[String], mode: LauncherMode) -> bool {
     let Ok(connection) = zbus::blocking::Connection::session() else {
         return false;
     };
@@ -674,7 +670,7 @@ fn try_toggle_existing(params: &[String], hold: bool) -> bool {
         .toggle(ShowRequest {
             params: params.to_vec(),
             query: String::new(),
-            hold,
+            mode,
         })
         .is_ok()
 }
@@ -692,17 +688,17 @@ fn install_css() {
 
 fn main() {
     let mut params = Vec::new();
-    let mut hold = false;
+    let mut mode = LauncherMode::Search;
     for arg in std::env::args().skip(1) {
-        if arg == "--hold" {
-            hold = true;
+        if matches!(arg.as_str(), "--hold" | "--cycle") {
+            mode = LauncherMode::Cycle;
         } else if matches!(arg.as_str(), "--current-output" | "--current-monitor") {
             params.push("current-output".to_owned());
         } else {
             params.push(arg);
         }
     }
-    if try_toggle_existing(&params, hold) {
+    if try_toggle_existing(&params, mode) {
         return;
     }
 
@@ -710,5 +706,5 @@ fn main() {
 
     let app = RelmApp::new("org.rsynapse.UI");
     install_css();
-    app.run::<App>((params, hold));
+    app.run::<App>((params, mode));
 }
