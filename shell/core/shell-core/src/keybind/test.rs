@@ -17,6 +17,18 @@ fn chord_matching_ignores_lock_modifiers() {
 }
 
 #[test]
+fn any_modifiers_matches_navigation_while_hold_modifier_is_down() {
+    let chord = KeyChord::any_modifiers(gdk::Key::Down);
+    assert!(chord.matches(gdk::Key::Down, gdk::ModifierType::empty()));
+    assert!(chord.matches(gdk::Key::Down, gdk::ModifierType::SUPER_MASK));
+    assert!(chord.matches(
+        gdk::Key::Down,
+        gdk::ModifierType::SUPER_MASK | gdk::ModifierType::CONTROL_MASK
+    ));
+    assert!(!chord.matches(gdk::Key::Up, gdk::ModifierType::SUPER_MASK));
+}
+
+#[test]
 fn modifier_mask_maps_modifier_keys() {
     assert_eq!(
         modifier_mask(gdk::Key::Super_L),

@@ -9,19 +9,38 @@ use super::MODIFIER_MASK;
 pub struct KeyChord {
     pub key: gdk::Key,
     pub modifiers: gdk::ModifierType,
+    ignore_modifiers: bool,
 }
 
 impl KeyChord {
     pub const fn new(key: gdk::Key, modifiers: gdk::ModifierType) -> Self {
-        Self { key, modifiers }
+        Self {
+            key,
+            modifiers,
+            ignore_modifiers: false,
+        }
     }
 
     pub const fn plain(key: gdk::Key) -> Self {
         Self::new(key, gdk::ModifierType::empty())
     }
 
+    /// Matches the key regardless of which modifiers are held.
+    ///
+    /// Useful for navigation keys that should keep working while a hold
+    /// modifier is still down.
+    pub const fn any_modifiers(key: gdk::Key) -> Self {
+        Self {
+            key,
+            modifiers: gdk::ModifierType::empty(),
+            ignore_modifiers: true,
+        }
+    }
+
     pub(crate) fn matches(self, key: gdk::Key, modifiers: gdk::ModifierType) -> bool {
-        self.key == key && (self.modifiers & MODIFIER_MASK) == (modifiers & MODIFIER_MASK)
+        self.key == key
+            && (self.ignore_modifiers
+                || (self.modifiers & MODIFIER_MASK) == (modifiers & MODIFIER_MASK))
     }
 }
 

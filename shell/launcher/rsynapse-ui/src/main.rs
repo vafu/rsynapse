@@ -216,8 +216,8 @@ impl SimpleComponent for App {
         let nav_watcher = KeybindWatcher::install(
             &root,
             [
-                Keybind::new(KeyChord::plain(gdk::Key::Up), Msg::Cycle(-1)),
-                Keybind::new(KeyChord::plain(gdk::Key::Down), Msg::Cycle(1)),
+                Keybind::new(KeyChord::any_modifiers(gdk::Key::Up), Msg::Cycle(-1)),
+                Keybind::new(KeyChord::any_modifiers(gdk::Key::Down), Msg::Cycle(1)),
             ],
             move |message| nav_sender.input(message),
         );
@@ -244,22 +244,21 @@ impl SimpleComponent for App {
         let keys = gtk::EventControllerKey::new();
         keys.set_propagation_phase(gtk::PropagationPhase::Capture);
         let s = sender.clone();
+        let key_params = params.clone();
         keys.connect_key_pressed(move |_, key, _, modifiers| {
             if key == gdk::Key::Escape {
                 s.input(Msg::Hide);
                 return glib::Propagation::Stop;
             }
-            if matches!(key, gdk::Key::Tab | gdk::Key::ISO_Left_Tab) {
-                let backwards = key == gdk::Key::ISO_Left_Tab
-                    || modifiers.contains(gdk::ModifierType::SHIFT_MASK);
-                s.input(Msg::Cycle(if backwards { -1 } else { 1 }));
-                return glib::Propagation::Stop;
-            }
-            if matches!(key, gdk::Key::a | gdk::Key::A)
-                && modifiers.intersects(gdk::ModifierType::SUPER_MASK | gdk::ModifierType::ALT_MASK)
-            {
-                s.input(Msg::Cycle(1));
-                return glib::Propagation::Stop;
+            if !key_params.borrow().is_empty() {
+                if key == gdk::Key::j {
+                    s.input(Msg::Cycle(1));
+                    return glib::Propagation::Stop;
+                }
+                if key == gdk::Key::k {
+                    s.input(Msg::Cycle(-1));
+                    return glib::Propagation::Stop;
+                }
             }
             let forward =
                 matches!(key, gdk::Key::Delete) || modifiers.contains(gdk::ModifierType::ALT_MASK);

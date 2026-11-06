@@ -92,8 +92,8 @@ impl Plugin for AudioPlugin {
                 placeholder: "Search audio outputs".to_owned(),
                 hints: vec![
                     Hint {
-                        key: "A".to_owned(),
-                        label: "cycle".to_owned(),
+                        key: "↑↓".to_owned(),
+                        label: "choose".to_owned(),
                     },
                     Hint {
                         key: "Enter".to_owned(),
