@@ -1,5 +1,6 @@
 pub mod app;
 pub mod css;
+pub mod keybind;
 pub mod list;
 pub mod model;
 pub mod window;

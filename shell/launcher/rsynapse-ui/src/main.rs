@@ -17,6 +17,9 @@ use rsynapse_launcher_api::{
     KeyEvent as LauncherKeyEvent, KeyRequest, KeyResponse, LauncherHint, LauncherResult,
     LauncherView, SearchRequest, SearchResponse, ShowRequest,
 };
+use shell_core::keybind::{
+    HoldAction, HoldBindings, HoldWatcher, KeyChord, Keybind, KeybindWatcher,
+};
 
 const MAX_ITEMS: usize = 10;
 const RSYNAPSE_UI_CSS_PRIORITY: u32 = gtk::STYLE_PROVIDER_PRIORITY_USER + 1;
@@ -35,16 +38,15 @@ struct App {
     results: Vec<LauncherResult>,
     selected: i32,
     hold: bool,
+    _hold_watcher: HoldWatcher,
+    _nav_watcher: KeybindWatcher<Msg>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 enum Msg {
     SearchResults(SearchResponse),
-    SelectNext,
-    SelectPrev,
     Cycle(i32),
     Activate,
-    ModifierReleased,
     Hide,
     Show(ShowRequest),
     Toggle(ShowRequest),
@@ -157,48 +159,49 @@ impl SimpleComponent for App {
             );
         });
 
-        let s = sender.clone();
-        search_entry.connect_activate(move |_| {
-            s.input(Msg::Activate);
-        });
+        let nav_sender = sender.clone();
+        let nav_watcher = KeybindWatcher::install(
+            &root,
+            [
+                Keybind::new(KeyChord::plain(gdk::Key::Up), Msg::Cycle(-1)),
+                Keybind::new(KeyChord::plain(gdk::Key::Down), Msg::Cycle(1)),
+                Keybind::new(KeyChord::plain(gdk::Key::Tab), Msg::Cycle(1)),
+                Keybind::new(
+                    KeyChord::new(gdk::Key::Tab, gdk::ModifierType::SHIFT_MASK),
+                    Msg::Cycle(-1),
+                ),
+                Keybind::new(KeyChord::plain(gdk::Key::ISO_Left_Tab), Msg::Cycle(-1)),
+                Keybind::new(
+                    KeyChord::new(gdk::Key::ISO_Left_Tab, gdk::ModifierType::SHIFT_MASK),
+                    Msg::Cycle(-1),
+                ),
+            ],
+            move |message| nav_sender.input(message),
+        );
 
-        let s = sender.clone();
-        search_entry.connect_stop_search(move |_| {
-            s.input(Msg::Hide);
+        let hold_sender = sender.clone();
+        let hold_bindings = HoldBindings {
+            next: Vec::new(),
+            previous: Vec::new(),
+            ..HoldBindings::default()
+        };
+        let hold_watcher = HoldWatcher::install(&root, hold_bindings, move |action| {
+            let message = match action {
+                HoldAction::Next => Msg::Cycle(1),
+                HoldAction::Previous => Msg::Cycle(-1),
+                HoldAction::Activate | HoldAction::ModifierReleased => Msg::Activate,
+                HoldAction::Cancel => Msg::Hide,
+            };
+            hold_sender.input(message);
         });
-
-        let s = sender.clone();
-        search_entry.connect_next_match(move |_| {
-            s.input(Msg::SelectNext);
-        });
-        let s = sender.clone();
-        search_entry.connect_previous_match(move |_| {
-            s.input(Msg::SelectPrev);
-        });
+        if hold {
+            hold_watcher.start();
+        }
 
         let keys = gtk::EventControllerKey::new();
         keys.set_propagation_phase(gtk::PropagationPhase::Capture);
         let s = sender.clone();
         keys.connect_key_pressed(move |_, key, _, modifiers| {
-            if key == gdk::Key::Up {
-                s.input(Msg::Cycle(-1));
-                return glib::Propagation::Stop;
-            }
-            if key == gdk::Key::Down {
-                s.input(Msg::Cycle(1));
-                return glib::Propagation::Stop;
-            }
-            if matches!(key, gdk::Key::Tab | gdk::Key::ISO_Left_Tab) {
-                let delta = if key == gdk::Key::ISO_Left_Tab
-                    || modifiers.contains(gdk::ModifierType::SHIFT_MASK)
-                {
-                    -1
-                } else {
-                    1
-                };
-                s.input(Msg::Cycle(delta));
-                return glib::Propagation::Stop;
-            }
             let forward =
                 matches!(key, gdk::Key::Delete) || modifiers.contains(gdk::ModifierType::ALT_MASK);
             if !forward {
@@ -211,15 +214,6 @@ impl SimpleComponent for App {
                 shift: modifiers.contains(gdk::ModifierType::SHIFT_MASK),
             }));
             glib::Propagation::Stop
-        });
-        let s = sender.clone();
-        keys.connect_key_released(move |_, key, _, _| {
-            if matches!(
-                key,
-                gdk::Key::Super_L | gdk::Key::Super_R | gdk::Key::Alt_L | gdk::Key::Alt_R
-            ) {
-                s.input(Msg::ModifierReleased);
-            }
         });
         root.add_controller(keys);
 
@@ -300,6 +294,8 @@ impl SimpleComponent for App {
             results: Vec::new(),
             selected: 0,
             hold,
+            _hold_watcher: hold_watcher,
+            _nav_watcher: nav_watcher,
         };
         model.start_search(&sender);
 
@@ -322,33 +318,15 @@ impl SimpleComponent for App {
                 };
                 self.refresh_list();
             }
-            Msg::SelectNext => {
-                if !self.results.is_empty() {
-                    let count = self.results.len() as i32;
-                    self.selected = (self.selected + 1).rem_euclid(count);
-                    self.update_selection();
-                }
-            }
-            Msg::SelectPrev => {
-                if !self.results.is_empty() {
-                    let count = self.results.len() as i32;
-                    self.selected = (self.selected - 1).rem_euclid(count);
-                    self.update_selection();
-                }
-            }
             Msg::Cycle(delta) => self.cycle(delta),
             Msg::Activate => self.activate_selected(),
-            Msg::ModifierReleased => {
-                if self.hold {
-                    self.activate_selected();
-                }
-            }
             Msg::Hide => self.hide(),
             Msg::Show(request) => self.show_request(request, &sender),
             Msg::Toggle(request) => {
                 if self.window.is_visible() {
                     if request.hold {
                         self.hold = true;
+                        self._hold_watcher.start();
                         self.inhibit_shortcuts();
                         if *self.params.borrow() == request.params {
                             self.cycle(1);
@@ -423,9 +401,11 @@ impl App {
         self.revealer.set_reveal_child(true);
         self.search_entry.set_visible(!self.hold);
         if self.hold {
+            self._hold_watcher.start();
             self.inhibit_shortcuts();
             self.list_box.grab_focus();
         } else {
+            self._hold_watcher.stop();
             self.search_entry.grab_focus();
         }
         if !changed {
@@ -435,6 +415,7 @@ impl App {
 
     fn hide(&mut self) {
         self.hold = false;
+        self._hold_watcher.stop();
         self.transition_generation
             .set(self.transition_generation.get().wrapping_add(1));
         let generation = self.transition_generation.get();
