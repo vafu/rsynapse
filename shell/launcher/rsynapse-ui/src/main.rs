@@ -633,7 +633,6 @@ fn result_icon(icon: &str) -> gtk::Widget {
         if path.is_file() {
             let image = gtk::Image::from_file(&path);
             image.set_pixel_size(16);
-            image.add_css_class("launcher-icon");
             image.set_halign(gtk::Align::Center);
             image.set_valign(gtk::Align::Center);
             return image.upcast();
