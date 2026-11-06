@@ -55,8 +55,6 @@ pub struct HoldWatcher {
     release: gtk::EventControllerKey,
     target: glib::WeakRef<gtk::Widget>,
     active: Rc<Cell<bool>>,
-    action: Rc<dyn Fn(HoldAction)>,
-    release_modifiers: gdk::ModifierType,
 }
 
 impl HoldWatcher {
@@ -110,28 +108,12 @@ impl HoldWatcher {
             release,
             target: widget.downgrade(),
             active,
-            action: on_action,
-            release_modifiers: bindings.release_modifiers,
         }
     }
 
     pub fn start(&self) {
         self.active.set(true);
         self.press.set_enabled(true);
-    }
-
-    /// Starts a selector that should close if its modifier was already released.
-    ///
-    /// The invoking modifier can be released between shortcut dispatch and
-    /// component startup. Release events are not replayed, so check the current
-    /// modifier state instead of waiting for an event that may already have
-    /// happened. Use plain [`Self::start`] for hold-to-show surfaces such as
-    /// the MPRIS overlay.
-    pub fn start_checking_release(&self) {
-        self.start();
-        if !self.modifiers_held() {
-            (self.action)(HoldAction::ModifierReleased);
-        }
     }
 
     pub fn stop(&self) {
@@ -141,14 +123,6 @@ impl HoldWatcher {
 
     pub fn is_active(&self) -> bool {
         self.active.get()
-    }
-
-    fn modifiers_held(&self) -> bool {
-        gdk::Display::default()
-            .and_then(|display| display.default_seat())
-            .and_then(|seat| seat.keyboard())
-            .map(|keyboard| !(keyboard.modifier_state() & self.release_modifiers).is_empty())
-            .unwrap_or(true)
     }
 }
 

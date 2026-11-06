@@ -240,7 +240,7 @@ impl SimpleComponent for App {
             hold_sender.input(message);
         });
         if mode == LauncherMode::Cycle {
-            hold_watcher.start_checking_release();
+            hold_watcher.start();
         }
 
         let keys = gtk::EventControllerKey::new();
@@ -406,7 +406,7 @@ impl SimpleComponent for App {
                             && self.preselect_next == request.preselect_next
                             && *self.params.borrow() == request.params;
                         if same_request {
-                            self._hold_watcher.start_checking_release();
+                            self._hold_watcher.start();
                             self.inhibit_shortcuts();
                             self.cycle(1);
                         } else {
@@ -483,7 +483,7 @@ impl App {
         self.revealer.set_reveal_child(true);
         self.search_entry.set_visible(!cycle);
         if cycle {
-            self._hold_watcher.start_checking_release();
+            self._hold_watcher.start();
             self.inhibit_shortcuts();
             self.list_box.grab_focus();
         } else {
