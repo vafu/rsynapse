@@ -1,5 +1,3 @@
-use std::thread;
-
 use super::model::{
     ADAPTER_INTERFACE, BLUEZ_BUS, BLUEZ_OBJECT_PATH, BluezAdapter, BluezDevice, DEVICE_INTERFACE,
     bluez, bluez_models,
@@ -52,63 +50,22 @@ pub(super) fn set_adapter_power(path: Option<OwnedObjectPath>, powered: bool) {
         return;
     };
     let path = path.to_string();
-
-    thread::spawn(move || {
-        let result = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .map_err(|error| error.to_string())
-            .and_then(|runtime| {
-                runtime.block_on(async move {
-                    let connection = zbus::Connection::system()
-                        .await
-                        .map_err(|error| error.to_string())?;
-                    let proxy =
-                        zbus::Proxy::new(&connection, BLUEZ_BUS, path.as_str(), ADAPTER_INTERFACE)
-                            .await
-                            .map_err(|error| error.to_string())?;
-                    proxy
-                        .set_property("Powered", &powered)
-                        .await
-                        .map_err(|error| error.to_string())
-                })
-            });
-
-        if let Err(error) = result {
-            eprintln!("[bluetooth] failed to set adapter power: {error}");
-        }
+    shell_core::source::write::spawn("bluetooth adapter power", async move {
+        let connection = shell_core::source::write::system_connection().await?;
+        let proxy =
+            zbus::Proxy::new(connection, BLUEZ_BUS, path.as_str(), ADAPTER_INTERFACE).await?;
+        proxy.set_property("Powered", &powered).await
     });
 }
 
 pub(super) fn set_device_connected(path: OwnedObjectPath, connect: bool) {
     let path = path.to_string();
     let method = if connect { "Connect" } else { "Disconnect" };
-
-    thread::spawn(move || {
-        let result = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .map_err(|error| error.to_string())
-            .and_then(|runtime| {
-                runtime.block_on(async move {
-                    let connection = zbus::Connection::system()
-                        .await
-                        .map_err(|error| error.to_string())?;
-                    let proxy =
-                        zbus::Proxy::new(&connection, BLUEZ_BUS, path.as_str(), DEVICE_INTERFACE)
-                            .await
-                            .map_err(|error| error.to_string())?;
-                    proxy
-                        .call_method(method, &())
-                        .await
-                        .map(|_| ())
-                        .map_err(|error| error.to_string())
-                })
-            });
-
-        if let Err(error) = result {
-            eprintln!("[bluetooth] failed to call {method}: {error}");
-        }
+    shell_core::source::write::spawn("bluetooth device", async move {
+        let connection = shell_core::source::write::system_connection().await?;
+        let proxy =
+            zbus::Proxy::new(connection, BLUEZ_BUS, path.as_str(), DEVICE_INTERFACE).await?;
+        proxy.call_method(method, &()).await.map(|_| ())
     });
 }
 

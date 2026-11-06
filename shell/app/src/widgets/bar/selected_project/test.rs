@@ -162,37 +162,25 @@ fn selected_project_exposes_branch_for_clipboard() {
 }
 
 #[test]
-fn selected_project_shows_only_feature_for_vafu_worktree_branch() {
+fn selected_project_keeps_worktree_branch_name() {
     let view = project_view(
         ProjectDetails {
             has_project: true,
             name: Some("rsynapse".to_owned()),
-            branch: Some("vafu/rsynapse/disk-widget".to_owned()),
+            branch: Some("worktree/rsynapse/disk-widget".to_owned()),
             ..ProjectDetails::default()
         },
         None,
     );
 
-    assert_eq!(view.branch.as_deref(), Some("disk-widget"));
-}
-
-#[test]
-fn selected_project_keeps_vafu_branch_when_worktree_does_not_match_cwd() {
-    let view = project_view(
-        ProjectDetails {
-            has_project: true,
-            name: Some("rsynapse".to_owned()),
-            branch: Some("vafu/other/disk-widget".to_owned()),
-            ..ProjectDetails::default()
-        },
-        None,
+    assert_eq!(
+        view.branch.as_deref(),
+        Some("worktree/rsynapse/disk-widget")
     );
-
-    assert_eq!(view.branch.as_deref(), Some("vafu/other/disk-widget"));
 }
 
 #[test]
-fn selected_project_keeps_non_vafu_branch_name() {
+fn selected_project_keeps_plain_branch_name() {
     let view = project_view(
         ProjectDetails {
             has_project: true,

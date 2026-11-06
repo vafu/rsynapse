@@ -240,6 +240,23 @@ pub trait Relations {
     #[zbus(property)]
     fn relations(&self) -> zbus::Result<Vec<String>>;
 
+    #[zbus(signal)]
+    fn relation_added(&self, record: RelationRecord) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn relation_updated(&self, record: RelationRecord) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn relation_removed(&self, record: RelationRecord) -> zbus::Result<()>;
+
+    #[zbus(signal)]
+    fn relation_cleared(
+        &self,
+        subject: RelationEndpoint,
+        relation: String,
+        removed_count: u32,
+    ) -> zbus::Result<()>;
+
     async fn set(
         &self,
         subject: RelationEndpoint,

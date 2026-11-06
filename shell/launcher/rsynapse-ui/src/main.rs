@@ -38,13 +38,22 @@ struct App {
     results: Vec<LauncherResult>,
     selected: i32,
     hold: bool,
+    search_generation: Rc<Cell<u64>>,
+    search_tx: std::sync::mpsc::Sender<(u64, Vec<String>, String)>,
     _hold_watcher: HoldWatcher,
     _nav_watcher: KeybindWatcher<Msg>,
 }
 
 #[derive(Clone, Debug)]
 enum Msg {
-    SearchResults(SearchResponse),
+    SearchResults {
+        generation: u64,
+        response: SearchResponse,
+    },
+    SearchError {
+        generation: u64,
+        message: String,
+    },
     Cycle(i32),
     Activate,
     Hide,
@@ -102,7 +111,7 @@ impl SimpleComponent for App {
         header.append(&subtitle);
 
         let search_entry = gtk::SearchEntry::new();
-        search_entry.set_property("search-delay", 0u32);
+        search_entry.set_property("search-delay", 80u32);
         search_entry.set_placeholder_text(Some("Search"));
 
         let list_box = gtk::ListBox::builder()
@@ -148,15 +157,54 @@ impl SimpleComponent for App {
         revealer.set_child(Some(&frame));
         root.set_child(Some(&revealer));
 
+        let search_generation = Rc::new(Cell::new(0u64));
+        let (search_tx, search_rx) = std::sync::mpsc::channel::<(u64, Vec<String>, String)>();
+        let worker_sender = sender.clone();
+        std::thread::spawn(move || {
+            while let Ok(mut job) = search_rx.recv() {
+                while let Ok(newer) = search_rx.try_recv() {
+                    job = newer;
+                }
+                let (generation, params, query) = job;
+                let worker = worker_sender.clone();
+                match dbus::search(SearchRequest {
+                    params,
+                    query,
+                    selected: String::new(),
+                }) {
+                    Ok(response) => {
+                        glib::idle_add_once(move || {
+                            worker.input(Msg::SearchResults {
+                                generation,
+                                response,
+                            });
+                        });
+                    }
+                    Err(error) => {
+                        let message = error.to_string();
+                        glib::idle_add_once(move || {
+                            worker.input(Msg::SearchError {
+                                generation,
+                                message,
+                            });
+                        });
+                    }
+                }
+            }
+        });
+
         let params = Rc::new(RefCell::new(params));
-        let s = sender.clone();
         let search_params = params.clone();
+        let search_tx_entry = search_tx.clone();
+        let search_generation_entry = search_generation.clone();
         search_entry.connect_search_changed(move |entry| {
-            search_async(
-                s.clone(),
+            let generation = search_generation_entry.get().wrapping_add(1);
+            search_generation_entry.set(generation);
+            let _ = search_tx_entry.send((
+                generation,
                 search_params.borrow().clone(),
                 entry.text().to_string(),
-            );
+            ));
         });
 
         let nav_sender = sender.clone();
@@ -218,7 +266,7 @@ impl SimpleComponent for App {
         root.add_controller(keys);
 
         // D-Bus toggle interface
-        let (dbus_tx, dbus_rx) = std::sync::mpsc::channel::<UiCommand>();
+        let (dbus_tx, dbus_rx) = async_channel::unbounded::<UiCommand>();
         std::thread::spawn(move || {
             let rt = tokio::runtime::Builder::new_current_thread()
                 .enable_all()
@@ -252,20 +300,15 @@ impl SimpleComponent for App {
         });
 
         let toggle_sender = sender.clone();
-        glib::timeout_add_local(std::time::Duration::from_millis(100), move || {
-            match dbus_rx.try_recv() {
-                Ok(UiCommand::Show(request)) => {
-                    let _ = toggle_sender.input(Msg::Show(request));
-                }
-                Ok(UiCommand::Toggle(request)) => {
-                    let _ = toggle_sender.input(Msg::Toggle(request));
-                }
-                Ok(UiCommand::Hide) => {
-                    let _ = toggle_sender.input(Msg::Hide);
-                }
-                Err(_) => {}
+        glib::spawn_future_local(async move {
+            while let Ok(command) = dbus_rx.recv().await {
+                let message = match command {
+                    UiCommand::Show(request) => Msg::Show(request),
+                    UiCommand::Toggle(request) => Msg::Toggle(request),
+                    UiCommand::Hide => Msg::Hide,
+                };
+                let _ = toggle_sender.input(message);
             }
-            glib::ControlFlow::Continue
         });
 
         root.present();
@@ -294,6 +337,8 @@ impl SimpleComponent for App {
             results: Vec::new(),
             selected: 0,
             hold,
+            search_generation: search_generation.clone(),
+            search_tx: search_tx.clone(),
             _hold_watcher: hold_watcher,
             _nav_watcher: nav_watcher,
         };
@@ -304,7 +349,26 @@ impl SimpleComponent for App {
 
     fn update(&mut self, msg: Self::Input, sender: ComponentSender<Self>) {
         match msg {
-            Msg::SearchResults(response) => {
+            Msg::SearchError {
+                generation,
+                message,
+            } => {
+                if generation != self.search_generation.get() {
+                    return;
+                }
+                self.results.clear();
+                self.selected = 0;
+                self.refresh_list();
+                self.subtitle.set_text(&format!("Search failed: {message}"));
+                self.subtitle.set_visible(true);
+            }
+            Msg::SearchResults {
+                generation,
+                response,
+            } => {
+                if generation != self.search_generation.get() {
+                    return;
+                }
                 self.apply_view(&response.view);
                 let mut results = response.results;
                 results.truncate(MAX_ITEMS);
@@ -380,12 +444,14 @@ impl SimpleComponent for App {
 }
 
 impl App {
-    fn start_search(&self, sender: &ComponentSender<Self>) {
-        search_async(
-            sender.clone(),
+    fn start_search(&self, _sender: &ComponentSender<Self>) {
+        let generation = self.search_generation.get().wrapping_add(1);
+        self.search_generation.set(generation);
+        let _ = self.search_tx.send((
+            generation,
             self.params.borrow().clone(),
             self.search_entry.text().to_string(),
-        );
+        ));
     }
 
     fn show_request(&mut self, request: ShowRequest, sender: &ComponentSender<Self>) {
@@ -529,41 +595,11 @@ impl App {
     fn update_selection(&self) {
         if let Some(row) = self.list_box.row_at_index(self.selected) {
             self.list_box.select_row(Some(&row));
-            self.scroll_to_row(&row);
+            shell_core::list::scroll_row_into_view(&self.scrolled, &row);
         } else {
             self.list_box.unselect_all();
         }
     }
-
-    fn scroll_to_row(&self, row: &gtk::ListBoxRow) {
-        let Some(bounds) = row.compute_bounds(&self.list_box) else {
-            return;
-        };
-        let adjustment = self.scrolled.vadjustment();
-        let top = bounds.y() as f64;
-        let bottom = top + bounds.height() as f64;
-        if top < adjustment.value() {
-            adjustment.set_value(top);
-        } else if bottom > adjustment.value() + adjustment.page_size() {
-            adjustment.set_value(bottom - adjustment.page_size());
-        }
-    }
-}
-
-fn search_async(sender: ComponentSender<App>, params: Vec<String>, query: String) {
-    std::thread::spawn(move || {
-        let response = dbus::search(SearchRequest {
-            params,
-            query,
-            selected: String::new(),
-        })
-        .ok();
-        if let Some(response) = response {
-            glib::idle_add_once(move || {
-                sender.input(Msg::SearchResults(response));
-            });
-        }
-    });
 }
 
 fn result_icon(icon: &str) -> gtk::Widget {
@@ -599,21 +635,21 @@ fn key_name(key: gdk::Key) -> String {
 }
 
 struct UiDbus {
-    sender: std::sync::mpsc::Sender<UiCommand>,
+    sender: async_channel::Sender<UiCommand>,
 }
 
 #[zbus::interface(name = "org.rsynapse.UIToggle1")]
 impl UiDbus {
     fn show(&self, request: ShowRequest) {
-        let _ = self.sender.send(UiCommand::Show(request));
+        let _ = self.sender.try_send(UiCommand::Show(request));
     }
 
     fn toggle(&self, request: ShowRequest) {
-        let _ = self.sender.send(UiCommand::Toggle(request));
+        let _ = self.sender.try_send(UiCommand::Toggle(request));
     }
 
     fn hide(&self) {
-        let _ = self.sender.send(UiCommand::Hide);
+        let _ = self.sender.try_send(UiCommand::Hide);
     }
 }
 

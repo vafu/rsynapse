@@ -1,3 +1,7 @@
+[workspace]
+members = [".", "model"]
+resolver = "2"
+
 [package]
 name = "projd"
 version = "0.1.0"
@@ -24,7 +28,7 @@ rusqlite = { version = "0.38", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 shell-words = "1"
-tokio = { version = "1", features = ["macros","rt-multi-thread","sync","signal"] }
+tokio = { version = "1.52", features = ["macros","rt-multi-thread","sync","signal"] }
 uuid = { version = "1", features = ["v4"] }
 zbus = { version = "4.4", default-features = false, features = ["tokio"] }
 

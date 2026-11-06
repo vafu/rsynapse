@@ -141,7 +141,8 @@ async fn run_keyed_list<T, K, U, Items, Key, Value>(
     Value: Fn(T) -> Observable<U> + Send + Sync + 'static,
 {
     tracing::trace!("keyed list subscribe");
-    let (event_sender, event_receiver) = async_channel::unbounded();
+    // Bounded: value updates apply backpressure to slow keyed-list consumers.
+    let (event_sender, event_receiver) = async_channel::bounded(256);
     let mut outer = (items)().into_stream();
     let mut subscriptions = HashMap::<K, (T, AbortOnDrop)>::new();
     let mut values = HashMap::<K, U>::new();

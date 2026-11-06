@@ -2,6 +2,7 @@ use proj_model::{CheckoutInfo, GoalInfo, ProjectInfo, RemovedProjectInfo};
 use rusqlite::{Connection, params};
 use serde::{Serialize, de::DeserializeOwned};
 use std::{
+    collections::HashMap,
     path::{Path, PathBuf},
     sync::Mutex,
 };
@@ -29,16 +30,12 @@ fn read<T: DeserializeOwned>(db: &Connection, kind: &str) -> anyhow::Result<Vec<
     rows.map(|r| Ok(serde_json::from_str(&r?)?)).collect()
 }
 pub fn default_path() -> PathBuf {
-    std::env::var_os("PROJD_STORE_PATH")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            std::env::var_os("XDG_STATE_HOME")
-                .map(PathBuf::from)
-                .unwrap_or_else(|| {
-                    PathBuf::from(std::env::var_os("HOME").unwrap()).join(".local/state")
-                })
-                .join("rsynapse/projd/projects.sqlite3")
-        })
+    if let Some(path) = std::env::var_os("PROJD_STORE_PATH") {
+        return proj_model::xdg::absolute(PathBuf::from(path));
+    }
+    proj_model::xdg::state_home()
+        .unwrap_or_else(|_| PathBuf::from(".local/state"))
+        .join("rsynapse/projd/projects.sqlite3")
 }
 impl Store {
     pub fn open(path: &Path) -> anyhow::Result<Self> {
@@ -46,7 +43,7 @@ impl Store {
             std::fs::create_dir_all(parent)?;
         }
         let mut db = Connection::open(path)?;
-        db.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; CREATE TABLE IF NOT EXISTS records(kind TEXT NOT NULL,id TEXT NOT NULL,json TEXT NOT NULL,PRIMARY KEY(kind,id));")?;
+        db.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; CREATE TABLE IF NOT EXISTS records(kind TEXT NOT NULL,id TEXT NOT NULL,json TEXT NOT NULL,PRIMARY KEY(kind,id)); CREATE INDEX IF NOT EXISTS goal_parent_id ON records(json_extract(json,'$.parent_id')) WHERE kind='goal';")?;
         let legacy:bool=db.query_row("SELECT EXISTS(SELECT 1 FROM records WHERE (kind='project' AND json_extract(json,'$.cwd') IS NULL) OR kind='context')",[],|r|r.get(0))?;
         if legacy {
             let backup = path.with_file_name(format!(
@@ -73,6 +70,29 @@ impl Store {
     pub fn put<T: Serialize>(&self, kind: &str, id: &str, value: &T) -> anyhow::Result<()> {
         self.db.lock().unwrap().execute("INSERT INTO records(kind,id,json) VALUES(?,?,?) ON CONFLICT(kind,id) DO UPDATE SET json=excluded.json",params![kind,id,serde_json::to_string(value)?])?;
         Ok(())
+    }
+    pub fn get<T: DeserializeOwned>(&self, kind: &str, id: &str) -> anyhow::Result<Option<T>> {
+        let db = self.db.lock().unwrap();
+        let mut statement = db.prepare("SELECT json FROM records WHERE kind=? AND id=?")?;
+        let mut rows = statement.query(params![kind, id])?;
+        Ok(match rows.next()? {
+            Some(row) => Some(serde_json::from_str(&row.get::<_, String>(0)?)?),
+            None => None,
+        })
+    }
+    pub fn goal_by_key(&self, key: &str) -> anyhow::Result<Option<GoalInfo>> {
+        let (date, id) = key.split_once('/').unwrap_or(("", key));
+        Ok(self
+            .get::<GoalInfo>("goal", id)?
+            .filter(|goal| goal.date == date && goal.key() == key))
+    }
+    pub fn children_of(&self, key: &str) -> anyhow::Result<Vec<GoalInfo>> {
+        let db = self.db.lock().unwrap();
+        let mut statement = db.prepare(
+            "SELECT json FROM records WHERE kind='goal' AND json_extract(json,'$.parent_id')=? ORDER BY id",
+        )?;
+        let rows = statement.query_map([key], |row| row.get::<_, String>(0))?;
+        rows.map(|row| Ok(serde_json::from_str(&row?)?)).collect()
     }
     #[cfg(test)]
     pub fn create<T: Serialize>(&self, kind: &str, id: &str, value: &T) -> anyhow::Result<bool> {
@@ -121,6 +141,19 @@ impl Store {
             None => String::new(),
         })
     }
+    pub fn active_goals(&self) -> anyhow::Result<HashMap<String, String>> {
+        let db = self.db.lock().unwrap();
+        let mut statement = db.prepare("SELECT id,json FROM records WHERE kind='active-goal'")?;
+        let rows = statement.query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?;
+        let mut goals = HashMap::new();
+        for row in rows {
+            let (project, json) = row?;
+            goals.insert(project, serde_json::from_str::<String>(&json)?);
+        }
+        Ok(goals)
+    }
     pub fn remove_project(&self, id: &str) -> anyhow::Result<Option<RemovedProject>> {
         let mut db = self.db.lock().unwrap();
         let Some(project) = read::<ProjectInfo>(&db, "project")?
@@ -155,6 +188,23 @@ impl Store {
                 )?;
             }
         }
+        for mut goal in goals {
+            let references_removed = goal.project_id == id
+                || (!goal.project.is_empty()
+                    && (goal.project == project.cwd
+                        || removed
+                            .checkouts
+                            .iter()
+                            .any(|c| c.root_path == goal.project)));
+            if references_removed {
+                goal.project.clear();
+                goal.project_id.clear();
+                tx.execute(
+                    "UPDATE records SET json=? WHERE kind='goal' AND id=?",
+                    params![serde_json::to_string(&goal)?, goal.id],
+                )?;
+            }
+        }
         for c in &removed.checkouts {
             tx.execute(
                 "DELETE FROM records WHERE kind='checkout' AND id=?",
@@ -162,7 +212,10 @@ impl Store {
             )?;
         }
         tx.execute("DELETE FROM records WHERE kind='project' AND id=?", [id])?;
-        tx.execute("DELETE FROM records WHERE kind='project-labels' AND id=?", [id])?;
+        tx.execute(
+            "DELETE FROM records WHERE kind='project-labels' AND id=?",
+            [id],
+        )?;
         tx.execute(
             "DELETE FROM records WHERE kind='active-goal' AND id=?",
             [id],
@@ -223,8 +276,90 @@ mod tests {
         let store = Store::open(&path).unwrap();
         assert_eq!(store.projects().unwrap(), vec![other]);
         assert!(store.checkouts().unwrap().is_empty());
-        assert_eq!(store.goals().unwrap(), vec![goal]);
+        let goals = store.goals().unwrap();
+        assert_eq!(goals.len(), 1);
+        assert_eq!(goals[0].id, goal.id);
+        assert_eq!(goals[0].title, goal.title);
+        assert!(goals[0].project.is_empty());
+        assert!(goals[0].project_id.is_empty());
     }
+    #[test]
+    fn tracking_preloads_project_names_and_active_selection() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = Store::open(&tmp.path().join("store.db")).unwrap();
+        let project = ProjectInfo {
+            id: "p".into(),
+            name: "Project".into(),
+            cwd: "/p".into(),
+            checkout_id: String::new(),
+            icon: String::new(),
+            icon_origin: String::new(),
+        };
+        let goal = GoalInfo {
+            id: "g".into(),
+            title: "Task".into(),
+            kind: "task".into(),
+            project_id: "p".into(),
+            project: "/p".into(),
+            status: "in-progress".into(),
+            ..Default::default()
+        };
+        store.put("project", &project.id, &project).unwrap();
+        store.put("goal", &goal.id, &goal).unwrap();
+        store.initialize_history(1).unwrap();
+        store.put("active-goal", "p", &goal.key()).unwrap();
+        let tracking = store.tracking().unwrap();
+        assert_eq!(tracking.len(), 1);
+        assert_eq!(tracking[0].project_name, "Project");
+        assert!(tracking[0].selected);
+    }
+
+    #[test]
+    fn active_goals_reads_all_projects_once() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = Store::open(&tmp.path().join("store.db")).unwrap();
+        store
+            .put("active-goal", "alpha", &"2026-01-01/a".to_owned())
+            .unwrap();
+        store.put("active-goal", "beta", &"b".to_owned()).unwrap();
+        let goals = store.active_goals().unwrap();
+        assert_eq!(goals.get("alpha").map(String::as_str), Some("2026-01-01/a"));
+        assert_eq!(goals.get("beta").map(String::as_str), Some("b"));
+    }
+
+    #[test]
+    fn indexed_goal_lookup_and_children_respect_the_store_key() {
+        let tmp = tempfile::tempdir().unwrap();
+        let store = Store::open(&tmp.path().join("store.db")).unwrap();
+        let parent = GoalInfo {
+            id: "parent".into(),
+            date: "2026-01-02".into(),
+            title: "Parent".into(),
+            kind: "task".into(),
+            ..Default::default()
+        };
+        let child = GoalInfo {
+            id: "child".into(),
+            title: "Child".into(),
+            kind: "task".into(),
+            parent_id: parent.key(),
+            ..Default::default()
+        };
+        store.put("goal", &parent.id, &parent).unwrap();
+        store.put("goal", &child.id, &child).unwrap();
+
+        assert_eq!(
+            store.goal_by_key(&parent.key()).unwrap(),
+            Some(parent.clone())
+        );
+        assert_eq!(store.goal_by_key("missing").unwrap(), None);
+        assert_eq!(store.children_of(&parent.key()).unwrap(), vec![child]);
+        assert_eq!(
+            store.get::<GoalInfo>("goal", "parent").unwrap(),
+            Some(parent)
+        );
+    }
+
     #[test]
     fn durable_records_survive_restart_and_duplicates_do_not_overwrite() {
         let tmp = tempfile::tempdir().unwrap();

@@ -1,4 +1,3 @@
-use freedesktop_desktop_entry::{DesktopEntry, Iter};
 use fuzzy_matcher::FuzzyMatcher;
 use fuzzy_matcher::skim::SkimMatcherV2;
 use notify::{RecursiveMode, Watcher};
@@ -10,7 +9,6 @@ use std::{
     sync::{Arc, Mutex},
     thread,
 };
-use walkdir::WalkDir;
 use xdg::BaseDirectories;
 
 /// A struct to hold the indexed information for a single application.
@@ -18,7 +16,7 @@ use xdg::BaseDirectories;
 struct App {
     name: String,
     comment: Option<String>,
-    exec: Option<String>,
+    argv: Vec<String>,
     icon: Option<String>,
     desktop_file_id: String,
 }
@@ -75,59 +73,23 @@ fn reindex(index: &mut AppIndex) {
     );
 }
 
-fn find_and_parse_apps() -> Vec<App> {
-    let mut apps = Vec::new();
-    let xdg_dirs = BaseDirectories::new().unwrap();
-
-    // Get all application directories
-    let mut app_dirs: Vec<PathBuf> = xdg_dirs.get_data_dirs();
-    app_dirs.push(xdg_dirs.get_data_home());
-
-    for dir in app_dirs {
-        let app_dir = dir.join("applications");
-        if !app_dir.exists() {
-            continue;
-        }
-
-        // Walk the directory to find .desktop files
-        for entry in WalkDir::new(app_dir)
-            .into_iter()
-            .filter_map(Result::ok)
-            .filter(|e| e.path().extension().map_or(false, |ext| ext == "desktop"))
-        {
-            if let Ok(app) = parse_desktop_file(entry.path()) {
-                apps.push(app);
-            }
-        }
-    }
-    apps
-}
-
 fn parse_desktop_file(path: &std::path::Path) -> Result<App, Box<dyn std::error::Error>> {
     let content = std::fs::read_to_string(path)?;
-    let entry = DesktopEntry::decode(path, &content)?;
-
-    // Ignore hidden entries
-    if entry.no_display() {
+    let entry = desktop_entry::DesktopEntry::parse(&content, path).ok_or("No desktop entry")?;
+    if !entry.is_visible() || entry.terminal {
         return Err("Hidden entry".into());
     }
-
-    // We only care about "Application" types
-    if entry.type_() != Some("Application") {
+    if entry.field("Type") != Some("Application") {
         return Err("Not an application".into());
     }
-
-    let name = entry.name(None).ok_or("No name")?.to_string();
-    let comment = entry.comment(None).map(|s| s.to_string());
-    let exec = entry.exec().map(|s| s.to_string());
-    let icon = entry.icon().map(|s| s.to_string());
-    let desktop_file_id = path.file_name().unwrap().to_string_lossy().to_string();
-
+    let name = entry.name.clone().ok_or("No name")?;
+    let argv = entry.exec_argv(&name).ok_or("No exec")?;
+    let desktop_file_id = entry.id.clone();
     Ok(App {
         name,
-        comment,
-        exec,
-        icon,
+        comment: entry.field("Comment").map(str::to_owned),
+        argv,
+        icon: entry.icon.clone(),
         desktop_file_id,
     })
 }
@@ -162,17 +124,33 @@ impl Plugin for LauncherPlugin {
         vec![PluginGroup {
             id: "apps".to_owned(),
             title: "Applications".to_owned(),
-            description: Some("Launch installed applications".to_owned()),
+            description: "Launch installed applications".to_owned(),
             aliases: vec![
                 "app".to_owned(),
                 "applications".to_owned(),
                 "launch".to_owned(),
             ],
+            plugin: String::new(),
         }]
     }
 
     fn default_execute(&self) -> Option<&'static str> {
-        Some("{data}")
+        None
+    }
+
+    fn execute(&self, item: &ResultItem) -> Option<Result<(), String>> {
+        let index = self.index.lock().unwrap();
+        let app = index
+            .apps
+            .iter()
+            .find(|app| app.desktop_file_id == item.id)?;
+        let Some((program, args)) = app.argv.split_first() else {
+            return Some(Err("desktop entry has no exec".to_owned()));
+        };
+        match std::process::Command::new(program).args(args).spawn() {
+            Ok(_) => Some(Ok(())),
+            Err(error) => Some(Err(format!("failed to launch {program}: {error}"))),
+        }
     }
 
     fn query(&self, context: &QueryContext<'_>) -> PluginResponse {
@@ -195,9 +173,9 @@ impl Plugin for LauncherPlugin {
             .map(|(score, app)| ResultItem {
                 id: app.desktop_file_id.clone(),
                 title: app.name.clone(),
-                description: app.comment.clone(),
-                icon: app.icon.clone(),
-                data: app.exec.clone(),
+                description: app.comment.clone().unwrap_or_default(),
+                icon: app.icon.clone().unwrap_or_default(),
+                data: String::new(),
                 score: score as f64,
                 current: false,
             })
@@ -210,10 +188,9 @@ impl Plugin for LauncherPlugin {
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn _rsynapse_init() -> *mut dyn Plugin {
+pub fn plugin() -> Box<dyn Plugin> {
     let index = Arc::new(Mutex::new(AppIndex::new()));
     reindex(&mut index.lock().unwrap());
     start_watcher_thread(Arc::clone(&index));
-    Box::into_raw(Box::new(LauncherPlugin { index }))
+    Box::new(LauncherPlugin { index })
 }

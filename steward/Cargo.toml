@@ -11,6 +11,8 @@ name = "rsynapse-steward"
 path = "src/main.rs"
 
 [dependencies]
+desktop-entry = { path = "../shell/core/desktop-entry" }
+steward-api = { path = "../steward-api" }
 anyhow = "1.0"
 clap = { version = "4", features = ["derive"] }
 futures-util = "0.3"

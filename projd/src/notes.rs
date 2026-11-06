@@ -6,11 +6,10 @@ fn directory() -> PathBuf {
         return path.into();
     }
     if let Some(path) = std::env::var_os("PROJD_STORE_PATH") {
-        return PathBuf::from(path).parent().unwrap().join("goals");
+        return proj_model::xdg::parent_or_current(&PathBuf::from(path)).join("goals");
     }
-    std::env::var_os("XDG_STATE_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(std::env::var_os("HOME").unwrap()).join(".local/state"))
+    proj_model::xdg::state_home()
+        .unwrap_or_else(|_| PathBuf::from(".local/state"))
         .join("proj/goals")
 }
 

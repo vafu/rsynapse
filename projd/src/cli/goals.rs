@@ -1,7 +1,7 @@
 use clap::{Args, Subcommand};
+use proj_model::api::ManagerProxy;
 use proj_model::{Goal, GoalInfo, ProjectInfo};
 use std::path::PathBuf;
-use zbus::Proxy;
 
 #[derive(Args)]
 pub struct NewGoal {
@@ -61,6 +61,7 @@ pub enum GoalCommand {
     },
     Status {
         id: String,
+        /// Task status. `todo` is accepted as an alias for `planned`.
         #[arg(value_parser=["planned","todo","in-progress","completed","deferred","cancelled"])]
         status: String,
         #[arg(long)]
@@ -107,8 +108,8 @@ pub enum GoalCommand {
     },
 }
 
-async fn rows(proxy: &Proxy<'_>) -> anyhow::Result<Vec<GoalInfo>> {
-    Ok(proxy.call("ListGoals", &(String::new(),)).await?)
+async fn rows(proxy: &ManagerProxy<'_>) -> anyhow::Result<Vec<GoalInfo>> {
+    Ok(proxy.list_goals("").await?)
 }
 fn find<'a>(rows: &'a [GoalInfo], id: &str, date: Option<&str>) -> anyhow::Result<&'a GoalInfo> {
     let matches: Vec<_> = rows
@@ -122,27 +123,24 @@ fn find<'a>(rows: &'a [GoalInfo], id: &str, date: Option<&str>) -> anyhow::Resul
     Ok(matches[0])
 }
 pub(super) async fn project(
-    proxy: &Proxy<'_>,
+    proxy: &ManagerProxy<'_>,
     path: Option<PathBuf>,
 ) -> anyhow::Result<ProjectInfo> {
     Ok(proxy
-        .call(
-            "ResolveProject",
-            &(super::absolute(path.unwrap_or_else(|| PathBuf::from(".")))?,),
-        )
+        .resolve_project(&super::absolute(
+            path.unwrap_or_else(|| PathBuf::from(".")),
+        )?)
         .await?)
 }
-async fn select(proxy: &Proxy<'_>, goal: &GoalInfo) -> anyhow::Result<()> {
+async fn select(proxy: &ManagerProxy<'_>, goal: &GoalInfo) -> anyhow::Result<()> {
     anyhow::ensure!(
         !goal.project_id.is_empty(),
         "Task has no registered project"
     );
-    Ok(proxy
-        .call("SetActiveGoal", &(&goal.project_id, goal.key()))
-        .await?)
+    Ok(proxy.set_active_goal(&goal.project_id, &goal.key()).await?)
 }
 
-pub async fn run(proxy: &Proxy<'_>, command: GoalCommand) -> anyhow::Result<()> {
+pub async fn run(proxy: &ManagerProxy<'_>, command: GoalCommand) -> anyhow::Result<()> {
     match command {
         GoalCommand::Metrics(command) => super::metrics_cli::run(proxy, command).await?,
         GoalCommand::List {
@@ -194,7 +192,11 @@ pub async fn run(proxy: &Proxy<'_>, command: GoalCommand) -> anyhow::Result<()> 
             if let Some(description) = description {
                 fields.insert("description", description);
             }
-            let result: GoalInfo = proxy.call("EditGoal", &(goal.key(), fields)).await?;
+            let fields = fields
+                .into_iter()
+                .map(|(key, value)| (key.to_string(), value))
+                .collect();
+            let result: GoalInfo = proxy.edit_goal(&goal.key(), fields).await?;
             println!("{}", result.key());
         }
         GoalCommand::Show { id, date } => {
@@ -229,7 +231,7 @@ pub async fn run(proxy: &Proxy<'_>, command: GoalCommand) -> anyhow::Result<()> 
             } else {
                 let p = project(proxy, path).await?;
                 if clear {
-                    let _: () = proxy.call("SetActiveGoal", &(p.id, String::new())).await?;
+                    let _: () = proxy.set_active_goal(&p.id, "").await?;
                 } else {
                     let conn = zbus::Connection::session().await?;
                     let obj = zbus::Proxy::new(
@@ -271,7 +273,7 @@ pub async fn run(proxy: &Proxy<'_>, command: GoalCommand) -> anyhow::Result<()> 
         GoalCommand::Remove { id, date } => {
             let rows = rows(proxy).await?;
             let goal = find(&rows, &id, date.as_deref())?;
-            let removed: bool = proxy.call("RemoveGoal", &(&goal.date, &goal.id)).await?;
+            let removed: bool = proxy.remove_goal(&goal.date, &goal.id).await?;
             anyhow::ensure!(removed, "Goal not found");
         }
         GoalCommand::Import { file } => {
@@ -282,14 +284,14 @@ pub async fn run(proxy: &Proxy<'_>, command: GoalCommand) -> anyhow::Result<()> 
                 if rows(proxy).await?.iter().any(|g| g.key() == info.key()) {
                     continue;
                 }
-                let _: GoalInfo = proxy.call("CreateGoal", &(info,)).await?;
+                let _: GoalInfo = proxy.create_goal(&info).await?;
             }
         }
     }
     Ok(())
 }
 
-async fn create(proxy: &Proxy<'_>, new: NewGoal, upsert: bool) -> anyhow::Result<()> {
+async fn create(proxy: &ManagerProxy<'_>, new: NewGoal, upsert: bool) -> anyhow::Result<()> {
     let all = rows(proxy).await?;
     if upsert {
         anyhow::ensure!(new.id.is_some(), "goal set requires a stable ID");
@@ -306,7 +308,11 @@ async fn create(proxy: &Proxy<'_>, new: NewGoal, upsert: bool) -> anyhow::Result
             if let Some(description) = new.description {
                 fields.insert("description", description);
             }
-            let result: GoalInfo = proxy.call("EditGoal", &(existing.key(), fields)).await?;
+            let fields = fields
+                .into_iter()
+                .map(|(key, value)| (key.to_string(), value))
+                .collect();
+            let result: GoalInfo = proxy.edit_goal(&existing.key(), fields).await?;
             if new.active {
                 select(proxy, &result).await?;
             }
@@ -348,9 +354,9 @@ async fn create(proxy: &Proxy<'_>, new: NewGoal, upsert: bool) -> anyhow::Result
             !goal.project.is_empty(),
             "An active task requires a registered project"
         );
-        let _: ProjectInfo = proxy.call("ResolveProject", &(&goal.project,)).await?;
+        let _: ProjectInfo = proxy.resolve_project(&goal.project).await?;
     }
-    let result: GoalInfo = proxy.call("CreateGoal", &(goal,)).await?;
+    let result: GoalInfo = proxy.create_goal(&goal).await?;
     if new.active {
         select(proxy, &result).await?;
     }
@@ -358,7 +364,7 @@ async fn create(proxy: &Proxy<'_>, new: NewGoal, upsert: bool) -> anyhow::Result
     Ok(())
 }
 async fn set_status(
-    proxy: &Proxy<'_>,
+    proxy: &ManagerProxy<'_>,
     id: &str,
     status: &str,
     date: Option<&str>,
@@ -373,16 +379,37 @@ async fn set_status(
         );
     }
     let result: GoalInfo = proxy
-        .call(
-            "SetGoalStatus",
-            &(
-                goal.key(),
-                if status == "todo" { "planned" } else { status },
-            ),
-        )
+        .set_goal_status(&goal.key(), status_for_goal(status))
         .await?;
     if active {
         select(proxy, &result).await?;
     }
     Ok(())
+}
+
+fn status_for_goal(status: &str) -> &str {
+    if status == "todo" { "planned" } else { status }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::status_for_goal;
+
+    #[test]
+    fn todo_alias_maps_to_planned() {
+        assert_eq!(status_for_goal("todo"), "planned");
+    }
+
+    #[test]
+    fn real_statuses_pass_through() {
+        for status in [
+            "planned",
+            "in-progress",
+            "completed",
+            "deferred",
+            "cancelled",
+        ] {
+            assert_eq!(status_for_goal(status), status);
+        }
+    }
 }

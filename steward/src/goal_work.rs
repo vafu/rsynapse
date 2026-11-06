@@ -1,7 +1,5 @@
 use crate::focus::FocusState;
-use goal_model::{
-    BUS_NAME, GoalTrackingInfo, METRICS_INTERFACE, ROOT_PATH, WorkKind, WorkSessionInfo,
-};
+use goal_model::{GoalTrackingInfo, WorkKind, api::MetricsProxy};
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Scope {
@@ -48,14 +46,14 @@ pub fn scope(state: &FocusState, goals: &[GoalTrackingInfo]) -> Option<Scope> {
 }
 
 pub struct Recorder {
-    proxy: zbus::Proxy<'static>,
+    proxy: MetricsProxy<'static>,
     current: Option<(Scope, String)>,
 }
 impl Recorder {
     pub async fn connect() -> zbus::Result<Self> {
         let conn = zbus::Connection::session().await?;
         Ok(Self {
-            proxy: zbus::Proxy::new_owned(conn, BUS_NAME, ROOT_PATH, METRICS_INTERFACE).await?,
+            proxy: MetricsProxy::new(&conn).await?,
             current: None,
         })
     }
@@ -64,21 +62,14 @@ impl Recorder {
             return;
         }
         if let Some((_, id)) = self.current.take() {
-            if let Err(error) = self
-                .proxy
-                .call::<_, _, WorkSessionInfo>("EndGoalWork", &(id, "context-changed"))
-                .await
-            {
+            if let Err(error) = self.proxy.end_goal_work(&id, "context-changed").await {
                 eprintln!("[steward/goal-work] close: {error}");
             }
         }
         if let Some(scope) = wanted {
             match self
                 .proxy
-                .call::<_, _, WorkSessionInfo>(
-                    "BeginGoalWork",
-                    &(&scope.instance_id, scope.kind, "steward.focus"),
-                )
+                .begin_goal_work(&scope.instance_id, scope.kind, "steward.focus")
                 .await
             {
                 Ok(session) => self.current = Some((scope, session.id)),
@@ -88,11 +79,7 @@ impl Recorder {
     }
     pub async fn finish(&mut self) {
         if let Some((_, id)) = self.current.take() {
-            if let Err(error) = self
-                .proxy
-                .call::<_, _, WorkSessionInfo>("EndGoalWork", &(id, "source-stopped"))
-                .await
-            {
+            if let Err(error) = self.proxy.end_goal_work(&id, "source-stopped").await {
                 eprintln!("[steward/goal-work] shutdown: {error}");
             }
         }
@@ -101,10 +88,7 @@ impl Recorder {
         // Reconnect notifications carry a fresh tracking snapshot. An interrupted
         // old session must not suppress a new observation after recorder restart.
         if let Some((_, id)) = &self.current {
-            let session = self
-                .proxy
-                .call::<_, _, WorkSessionInfo>("GetWorkSession", &(id,))
-                .await;
+            let session = self.proxy.get_work_session(id).await;
             if session.as_ref().is_ok_and(|s| !s.open) {
                 self.current = None;
             }

@@ -6,7 +6,8 @@
   "scripts": {
     "build": "rollup -c && node build-assets.mjs",
     "build:test": "esbuild test/preview.tsx --bundle --outfile=test-build/preview.js --jsx=automatic && node test/preview-assets.mjs",
-    "test": "node --test test/*.test.mjs"
+    "test": "node --test test/*.test.mjs",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "esbuild": "^0.25.0",
@@ -14,6 +15,10 @@
     "rollup-plugin-esbuild": "^6.2.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "playwright": "^1.56.0"
+    "playwright": "^1.56.0",
+    "@grafana/data": "^12.2.0",
+    "@grafana/runtime": "^12.2.0",
+    "@grafana/ui": "^12.2.0",
+    "typescript": "^5.6.0"
   }
 }

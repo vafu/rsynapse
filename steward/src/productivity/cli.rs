@@ -55,19 +55,9 @@ pub async fn run() -> anyhow::Result<bool> {
         Command::BindCurrent { path } => {
             let path = path.canonicalize()?;
             let connection = zbus::Connection::session().await?;
-            let proxy = zbus::Proxy::new(
-                &connection,
-                "org.rsynapse.Steward",
-                "/org/rsynapse/Steward",
-                "org.rsynapse.Steward.Associations1",
-            )
-            .await?;
-            let _: goal_model::ProjectInfo = proxy
-                .call(
-                    "BindCurrentProject",
-                    &(path.to_string_lossy().into_owned(),),
-                )
-                .await?;
+            let proxy = steward_api::AssociationsProxy::new(&connection).await?;
+            let _: goal_model::ProjectInfo =
+                proxy.bind_current_project(&path.to_string_lossy()).await?;
             return Ok(true);
         }
         Command::Associations => {

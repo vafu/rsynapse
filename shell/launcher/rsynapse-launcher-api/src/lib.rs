@@ -29,7 +29,7 @@ pub struct LauncherGroup {
 }
 
 /// One launcher result row.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, Type)]
 pub struct LauncherResult {
     pub id: String,
     pub title: String,
@@ -37,6 +37,8 @@ pub struct LauncherResult {
     pub icon: String,
     pub data: String,
     pub current: bool,
+    /// Plugin-provided relevance score; not shown by the UI.
+    pub score: f64,
 }
 
 /// Search request with invocation params and the current query.
@@ -48,17 +50,21 @@ pub struct SearchRequest {
 }
 
 /// Search results plus the dynamic view for the resolved group.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, Type)]
 pub struct SearchResponse {
     pub view: LauncherView,
     pub results: Vec<LauncherResult>,
 }
 
+/// Version of the static plugin trait/wire contract built into the daemon.
+pub const PLUGIN_ABI_VERSION: u32 = 1;
+
 /// Static launcher metadata: default view and all available groups.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, Type)]
 pub struct DescribeResponse {
     pub default_view: LauncherView,
     pub groups: Vec<LauncherGroup>,
+    pub abi_version: u32,
 }
 
 /// One key event forwarded from the launcher UI to a plugin.

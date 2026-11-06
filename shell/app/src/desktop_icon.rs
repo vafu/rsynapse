@@ -89,35 +89,11 @@ fn collect_desktop_entries(directory: &Path, entries: &mut Vec<DesktopIconEntry>
 fn read_desktop_entry(path: &Path) -> Option<DesktopIconEntry> {
     let desktop_id = path.file_name()?.to_str()?.to_owned();
     let content = fs::read_to_string(path).ok()?;
-    let mut in_desktop_entry = false;
-    let mut startup_wm_class = None;
-    let mut icon = None;
-
-    for line in content.lines() {
-        let line = line.trim();
-        if line.starts_with('[') && line.ends_with(']') {
-            in_desktop_entry = line == "[Desktop Entry]";
-            continue;
-        }
-        if !in_desktop_entry {
-            continue;
-        }
-
-        if let Some(value) = line.strip_prefix("StartupWMClass=") {
-            startup_wm_class = Some(value.to_owned());
-        } else if let Some(value) = line.strip_prefix("Icon=") {
-            icon = Some(value.to_owned());
-        }
-
-        if startup_wm_class.is_some() && icon.is_some() {
-            break;
-        }
-    }
-
+    let entry = desktop_entry::DesktopEntry::parse(&content, path)?;
     Some(DesktopIconEntry {
         desktop_key: normalize_app_id(&desktop_id),
-        startup_wm_class_key: startup_wm_class.as_deref().map(normalize_app_id),
-        icon,
+        startup_wm_class_key: entry.startup_wm_class.as_deref().map(normalize_app_id),
+        icon: entry.icon,
     })
 }
 

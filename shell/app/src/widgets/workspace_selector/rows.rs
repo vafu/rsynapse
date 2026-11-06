@@ -4,7 +4,7 @@ use shell_core::gtk;
 
 use super::source::View;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub(super) enum EntryKey {
     Project(String),
     Unassign,

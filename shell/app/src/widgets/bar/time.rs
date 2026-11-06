@@ -1,11 +1,8 @@
-use std::time::Duration;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use shell_core::{
     gtk::glib,
-    source::{
-        Observable,
-        rx::{Observable as _, ObservableFactory as _, Shared},
-    },
+    source::{self, Observable, rx::Observable as _},
 };
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
@@ -15,12 +12,32 @@ pub(crate) struct ClockView {
 }
 
 pub(super) fn clock() -> Observable<ClockView> {
-    Shared::<()>::interval(Duration::from_secs(1))
-        .start_with(vec![0])
-        .map(|_| read_clock().unwrap_or_default())
-        .map_err(|error| error.to_string())
-        .distinct_until_changed()
-        .box_it()
+    // Minute-boundary scheduling: the view only changes once per minute, so do
+    // not wake every second.
+    source::from_task(|sender| async move {
+        loop {
+            match read_clock() {
+                Ok(view) => {
+                    if sender.send(Ok(view)).await.is_err() {
+                        return;
+                    }
+                }
+                Err(error) => {
+                    if sender.send(Err(error)).await.is_err() {
+                        return;
+                    }
+                }
+            }
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|duration| duration.as_secs())
+                .unwrap_or(0);
+            let wait = 60u64.saturating_sub(now % 60).max(1);
+            tokio::time::sleep(std::time::Duration::from_secs(wait)).await;
+        }
+    })
+    .distinct_until_changed()
+    .box_it()
 }
 
 fn read_clock() -> Result<ClockView, String> {

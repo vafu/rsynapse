@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use locus::{RelationEndpoint, RelationRecord, keys};
 use proj_model::ProjectInfo;
 use rsynapse_plugin::{
-    Hint, Key, KeyEvent, KeyOutcome, Plugin, PluginGroup, PluginResponse, PluginView, QueryContext,
+    Hint, KeyEvent, KeyResponse, Plugin, PluginGroup, PluginResponse, PluginView, QueryContext,
     ResultItem,
 };
 use zbus::blocking::{Connection, Proxy};
@@ -16,12 +16,6 @@ const WORKSPACE_MANAGER: &str = workspace_dbus_api::MANAGER_INTERFACE;
 const WORKSPACE_INTERFACE: &str = workspace_dbus_api::WORKSPACE_INTERFACE;
 const OUTPUT_INTERFACE: &str = workspace_dbus_api::OUTPUT_INTERFACE;
 const CONTROL_INTERFACE: &str = workspace_dbus_api::CONTROL_INTERFACE;
-const PROJECT_RELATION: &str = "org.rsynapse.workspace.project";
-const NAME_RELATION: &str = "org.rsynapse.workspace.name";
-const NAME_KIND: &str = "org.rsynapse.workspace.name";
-const STEWARD_SERVICE: &str = "org.rsynapse.Steward";
-const STEWARD_PATH: &str = "/org/rsynapse/Steward";
-const STEWARD_ASSOCIATIONS: &str = "org.rsynapse.Steward.Associations1";
 
 struct WorkspacesPlugin;
 
@@ -52,15 +46,10 @@ impl WorkspacesPlugin {
     }
 
     fn projects(connection: &Connection) -> Vec<ProjectInfo> {
-        let Ok(proxy) = Proxy::new(
-            connection,
-            proj_model::BUS_NAME,
-            proj_model::ROOT_PATH,
-            proj_model::MANAGER_INTERFACE,
-        ) else {
+        let Ok(proxy) = proj_model::api::ManagerProxyBlocking::new(connection) else {
             return Vec::new();
         };
-        let Ok(mut projects) = proxy.call::<_, _, Vec<ProjectInfo>>("ListProjects", &()) else {
+        let Ok(mut projects) = proxy.list_projects() else {
             return Vec::new();
         };
         projects.sort_by(|left, right| {
@@ -84,39 +73,25 @@ impl WorkspacesPlugin {
     }
 
     fn relations(connection: &Connection, relation: &str) -> Vec<RelationRecord> {
-        let Ok(proxy) = Proxy::new(
-            connection,
-            locus::BUS_NAME,
-            locus::OBJECT_PATH,
-            locus::RELATIONS_INTERFACE,
-        ) else {
+        let Ok(proxy) = locus::RelationsProxyBlocking::new(connection) else {
             return Vec::new();
         };
-        proxy
-            .call::<_, _, Vec<RelationRecord>>("List", &(relation,))
-            .unwrap_or_default()
+        proxy.list(relation).unwrap_or_default()
     }
 
     fn current_project_id(connection: &Connection, workspace: &str) -> Option<String> {
-        let records = Self::relations(connection, PROJECT_RELATION);
-        let record = Self::relation(&records, workspace, PROJECT_RELATION)?;
-        record
-            .metadata
-            .get("project-id")
-            .cloned()
-            .filter(|id| !id.is_empty())
+        let records = Self::relations(connection, workspace_policy::PROJECT_RELATION);
+        let record = Self::relation(&records, workspace, workspace_policy::PROJECT_RELATION)?;
+        workspace_policy::project_id_of(record)
     }
 
     fn current_name(connection: &Connection, workspace: &str) -> Option<String> {
-        let records = Self::relations(connection, NAME_RELATION);
-        let record = Self::relation(&records, workspace, NAME_RELATION)?;
-        match &record.target {
-            RelationEndpoint::StableKey { kind, id } if kind == NAME_KIND => {
-                let id = id.trim();
-                (!id.is_empty()).then(|| id.to_owned())
-            }
-            _ => None,
-        }
+        let records = Self::relations(connection, workspace_policy::NAME_RELATION);
+        workspace_policy::name_of(Self::relation(
+            &records,
+            workspace,
+            workspace_policy::NAME_RELATION,
+        )?)
     }
 
     fn focused_workspace_path(connection: &Connection) -> Option<String> {
@@ -171,7 +146,7 @@ impl WorkspacesPlugin {
             .filter(|name| !name.is_empty())
     }
 
-    fn workspaces(connection: &Connection) -> Vec<(String, String, u32, bool, String)> {
+    fn workspaces(connection: &Connection) -> Vec<workspace_policy::WorkspaceItem> {
         let Ok(manager) = Proxy::new(
             connection,
             WORKSPACE_SERVICE,
@@ -183,7 +158,10 @@ impl WorkspacesPlugin {
         let Ok(paths) = manager.get_property::<Vec<OwnedObjectPath>>("Workspaces") else {
             return Vec::new();
         };
-        let names = Self::workspace_names(connection);
+        let names = workspace_policy::workspace_names(&Self::relations(
+            connection,
+            workspace_policy::NAME_RELATION,
+        ));
         paths
             .iter()
             .filter_map(|path| {
@@ -213,11 +191,6 @@ impl WorkspacesPlugin {
                 let windows = workspace
                     .get_property::<Vec<OwnedObjectPath>>("Windows")
                     .unwrap_or_default();
-                // Hide anonymous empty non-focused workspaces. Named, occupied,
-                // and the focused workspace remain available.
-                if windows.is_empty() && name.is_empty() && !focused {
-                    return None;
-                }
                 let output_paths = workspace
                     .get_property::<Vec<OwnedObjectPath>>("Output")
                     .unwrap_or_default();
@@ -236,48 +209,14 @@ impl WorkspacesPlugin {
                     let name = output.get_property::<String>("Name").ok()?;
                     (!name.is_empty()).then_some(name)
                 })?;
-                Some((id, name, index, focused, output))
-            })
-            .collect()
-    }
-
-    fn workspace_names(connection: &Connection) -> HashMap<String, String> {
-        Self::relations(connection, NAME_RELATION)
-            .into_iter()
-            .filter_map(|record| {
-                if record.metadata.get("source").map(String::as_str) != Some("manual") {
-                    return None;
-                }
-                let RelationEndpoint::StableKey { kind, id } = record.subject else {
-                    return None;
-                };
-                if kind != keys::WORKSPACE_ID {
-                    return None;
-                }
-                let RelationEndpoint::StableKey { kind, id: name } = record.target else {
-                    return None;
-                };
-                if kind != NAME_KIND {
-                    return None;
-                }
-                let name = name.trim().to_owned();
-                (!name.is_empty()).then_some((id, name))
-            })
-            .collect()
-    }
-
-    fn workspace_projects(connection: &Connection) -> HashMap<String, String> {
-        Self::relations(connection, PROJECT_RELATION)
-            .into_iter()
-            .filter_map(|record| {
-                let RelationEndpoint::StableKey { kind, id } = record.subject else {
-                    return None;
-                };
-                if kind != keys::WORKSPACE_ID {
-                    return None;
-                }
-                let project_id = record.metadata.get("project-id")?.clone();
-                (!project_id.is_empty()).then_some((id, project_id))
+                Some(workspace_policy::WorkspaceItem {
+                    id,
+                    name,
+                    index,
+                    focused,
+                    has_windows: !windows.is_empty(),
+                    output,
+                })
             })
             .collect()
     }
@@ -291,9 +230,9 @@ impl WorkspacesPlugin {
                     .find(|project| project.id == project_id)
                     .map(|project| project.name)
                     .unwrap_or_else(|| "project".into());
-                Some(format!("Current project · {name}"))
+                format!("Current project · {name}")
             }
-            None => Some("No project assigned".into()),
+            None => "No project assigned".to_owned(),
         };
         PluginView {
             title,
@@ -323,7 +262,7 @@ impl WorkspacesPlugin {
     fn workspace_view() -> PluginView {
         PluginView {
             title: "Workspaces".into(),
-            subtitle: Some("Focus a workspace on any output".into()),
+            subtitle: "Focus a workspace on any output".into(),
             placeholder: "Search workspaces".into(),
             hints: vec![
                 Hint {
@@ -367,66 +306,43 @@ impl WorkspacesPlugin {
     }
 
     fn set_name(connection: &Connection, workspace: &str, name: &str) -> Result<(), String> {
-        let proxy = Proxy::new(
-            connection,
-            locus::BUS_NAME,
-            locus::OBJECT_PATH,
-            locus::RELATIONS_INTERFACE,
-        )
-        .map_err(|error| error.to_string())?;
+        let proxy =
+            locus::RelationsProxyBlocking::new(connection).map_err(|error| error.to_string())?;
         let _: locus::RelationState = proxy
-            .call(
-                "SetOneWithPersistence",
-                &(
-                    RelationEndpoint::stable_key(keys::WORKSPACE_ID, workspace),
-                    NAME_RELATION,
-                    RelationEndpoint::stable_key(NAME_KIND, name),
-                    HashMap::from([("source".to_owned(), "manual".to_owned())]),
-                    true,
-                ),
+            .set_one_with_persistence(
+                RelationEndpoint::stable_key(keys::WORKSPACE_ID, workspace),
+                workspace_policy::NAME_RELATION,
+                RelationEndpoint::stable_key(workspace_policy::NAME_KIND, name),
+                HashMap::from([("source".to_owned(), "manual".to_owned())]),
+                true,
             )
             .map_err(|error| error.to_string())?;
         Ok(())
     }
 
     fn bind(connection: &Connection, workspace: &str, path: &str) -> Result<(), String> {
-        let proxy = Proxy::new(
-            connection,
-            STEWARD_SERVICE,
-            STEWARD_PATH,
-            STEWARD_ASSOCIATIONS,
-        )
-        .map_err(|error| error.to_string())?;
+        let proxy = steward_api::AssociationsProxyBlocking::new(connection)
+            .map_err(|error| error.to_string())?;
         let _: proj_model::ProjectInfo = proxy
-            .call("BindWorkspaceProject", &(workspace, path))
+            .bind_workspace_project(workspace, path)
             .map_err(|error| error.to_string())?;
         Ok(())
     }
 
     fn unassign(connection: &Connection, workspace: &str) -> Result<(), String> {
-        let proxy = Proxy::new(
-            connection,
-            STEWARD_SERVICE,
-            STEWARD_PATH,
-            STEWARD_ASSOCIATIONS,
-        )
-        .map_err(|error| error.to_string())?;
+        let proxy = steward_api::AssociationsProxyBlocking::new(connection)
+            .map_err(|error| error.to_string())?;
         let _: () = proxy
-            .call("UnassignWorkspaceProject", &(workspace,))
+            .unassign_workspace_project(workspace)
             .map_err(|error| error.to_string())?;
         Ok(())
     }
 
     fn remove_project(connection: &Connection, id: &str) -> Result<(), String> {
-        let proxy = Proxy::new(
-            connection,
-            proj_model::BUS_NAME,
-            proj_model::ROOT_PATH,
-            proj_model::MANAGER_INTERFACE,
-        )
-        .map_err(|error| error.to_string())?;
+        let proxy = proj_model::api::ManagerProxyBlocking::new(connection)
+            .map_err(|error| error.to_string())?;
         let _: bool = proxy
-            .call("RemoveProject", &(id,))
+            .remove_project(id)
             .map_err(|error| error.to_string())?;
         Ok(())
     }
@@ -442,14 +358,16 @@ impl Plugin for WorkspacesPlugin {
             PluginGroup {
                 id: "projects".into(),
                 title: "Projects".into(),
-                description: Some("Assign a project or name this workspace".into()),
+                description: "Assign a project or name this workspace".into(),
                 aliases: vec!["project".into(), "proj".into()],
+                plugin: String::new(),
             },
             PluginGroup {
                 id: "workspaces".into(),
                 title: "Workspace".into(),
-                description: Some("Focus a workspace on any output".into()),
+                description: "Focus a workspace on any output".into(),
                 aliases: vec!["workspace".into(), "ws".into()],
+                plugin: String::new(),
             },
         ]
     }
@@ -458,11 +376,11 @@ impl Plugin for WorkspacesPlugin {
         let connection = Self::connection()?;
         let (workspace, _) = Self::focused_workspace(&connection)?;
         let result = if item.id == "rename" {
-            let name = item.data.as_deref().unwrap_or_default();
+            let name = item.data.as_str();
             Self::set_name(&connection, &workspace, name)
         } else if let Some(workspace) = item.id.strip_prefix("workspace:") {
             let _ = workspace;
-            let data = item.data.as_deref().unwrap_or_default();
+            let data = item.data.as_str();
             let (output, index) = data.split_once('\u{1f}').unwrap_or_default();
             index
                 .parse::<u32>()
@@ -472,7 +390,7 @@ impl Plugin for WorkspacesPlugin {
             Self::unassign(&connection, &workspace)
         } else if let Some(id) = item.id.strip_prefix("project:") {
             let _ = id;
-            let path = item.data.as_deref().unwrap_or_default();
+            let path = item.data.as_str();
             Self::bind(&connection, &workspace, path)
         } else {
             Err(format!("Unknown workspace item '{}'", item.id))
@@ -491,7 +409,10 @@ impl Plugin for WorkspacesPlugin {
                 .into_iter()
                 .map(|project| (project.id.clone(), project))
                 .collect::<HashMap<_, _>>();
-            let workspace_projects = Self::workspace_projects(&connection);
+            let workspace_projects = workspace_policy::workspace_projects(&Self::relations(
+                &connection,
+                workspace_policy::PROJECT_RELATION,
+            ));
             let current_output = context
                 .params
                 .iter()
@@ -506,62 +427,29 @@ impl Plugin for WorkspacesPlugin {
             let mru = Self::workspace_mru(&connection);
             let focused_path = Self::focused_workspace_path(&connection);
             let mut workspaces = Self::workspaces(&connection);
-            workspaces.sort_by_key(|(id, _, _, _, _)| {
-                let path = workspace_dbus_api::workspace_path(id).as_str().to_owned();
-                if focused_path.as_deref() == Some(path.as_str()) {
-                    0
-                } else {
-                    mru.iter()
-                        .position(|ranked| ranked == &path)
-                        .map(|rank| rank + 1)
-                        .unwrap_or(usize::MAX)
-                }
+            workspaces.retain(|item| {
+                workspace_policy::visible(item)
+                    && workspace_policy::matches(item, &words, current_output.as_deref())
+            });
+            workspaces.sort_by_key(|item| {
+                workspace_policy::sort_key(item, &mru, focused_path.as_deref())
             });
             let results = workspaces
-                .into_iter()
-                .filter(|(_, name, index, _, output)| {
-                    if current_output
-                        .as_deref()
-                        .is_some_and(|current| current != output)
-                    {
-                        return false;
-                    }
-                    let text = format!("{name} {index} {output}").to_lowercase();
-                    words.iter().all(|word| text.contains(word))
-                })
+                .iter()
                 .enumerate()
-                .map(|(position, (id, name, index, _focused, output))| {
-                    let path = workspace_dbus_api::workspace_path(&id);
-                    let is_current = focused_path.as_deref() == Some(path.as_str());
+                .map(|(position, item)| {
                     let project = workspace_projects
-                        .get(&id)
+                        .get(&item.id)
                         .and_then(|project_id| projects_by_id.get(project_id));
-                    let (title, icon) = match project {
-                        Some(project) => (
-                            project.name.clone(),
-                            if project.icon.is_empty() {
-                                "folder-symbolic".into()
-                            } else {
-                                project.icon.clone()
-                            },
-                        ),
-                        None => (
-                            if name.is_empty() {
-                                format!("Workspace {index}")
-                            } else {
-                                name
-                            },
-                            "focus-windows-symbolic".into(),
-                        ),
-                    };
+                    let (title, icon) = workspace_policy::title_and_icon(item, project);
                     ResultItem {
-                        id: format!("workspace:{id}"),
+                        id: format!("workspace:{}", item.id),
                         title,
-                        description: Some(output.clone()),
-                        icon: Some(icon),
-                        data: Some(format!("{output}\u{1f}{index}")),
+                        description: item.output.clone(),
+                        icon: icon,
+                        data: format!("{}\u{1f}{}", item.output, item.index),
                         score: 1_000.0 - position as f64,
-                        current: is_current,
+                        current: workspace_policy::is_current(item, focused_path.as_deref()),
                     }
                 })
                 .collect();
@@ -590,13 +478,13 @@ impl Plugin for WorkspacesPlugin {
             .map(|(index, project)| ResultItem {
                 id: format!("project:{}", project.id),
                 title: project.name,
-                description: Some(project.cwd.clone()),
-                icon: Some(if project.icon.is_empty() {
+                description: project.cwd.clone(),
+                icon: if project.icon.is_empty() {
                     "folder-symbolic".into()
                 } else {
                     project.icon
-                }),
-                data: Some(project.cwd),
+                },
+                data: project.cwd,
                 score: 1_000.0 - index as f64,
                 current: current_project.as_deref() == Some(project.id.as_str()),
             })
@@ -607,9 +495,9 @@ impl Plugin for WorkspacesPlugin {
                 results.push(ResultItem {
                     id: "unassign".into(),
                     title: "Unassign project".into(),
-                    description: Some("Remove the project association from this workspace".into()),
-                    icon: Some("list-remove-symbolic".into()),
-                    data: None,
+                    description: "Remove the project association from this workspace".into(),
+                    icon: "list-remove-symbolic".into(),
+                    data: String::new(),
                     score: -1.0,
                     current: false,
                 });
@@ -618,9 +506,9 @@ impl Plugin for WorkspacesPlugin {
             results.push(ResultItem {
                 id: "rename".into(),
                 title: format!("Rename to “{query}”"),
-                description: Some("Set the workspace name".into()),
-                icon: Some("document-edit-symbolic".into()),
-                data: Some(query.to_owned()),
+                description: "Set the workspace name".into(),
+                icon: "document-edit-symbolic".into(),
+                data: query.to_owned(),
                 score: -1.0,
                 current: false,
             });
@@ -632,39 +520,41 @@ impl Plugin for WorkspacesPlugin {
         }
     }
 
-    fn handle_key(&self, event: &KeyEvent, context: &QueryContext<'_>) -> KeyOutcome {
-        if event.key != Key::Delete {
-            return KeyOutcome::Ignored;
+    fn handle_key(&self, event: &KeyEvent, context: &QueryContext<'_>) -> KeyResponse {
+        if event.key != "Delete" {
+            return KeyResponse::default();
         }
         let Some(selected) = context.selected else {
-            return KeyOutcome::Ignored;
+            return KeyResponse::default();
         };
         let Some(id) = selected.strip_prefix("project:") else {
-            return KeyOutcome::Ignored;
+            return KeyResponse::default();
         };
         let Some(connection) = Self::connection() else {
-            return KeyOutcome::Handled {
+            return KeyResponse {
+                handled: true,
                 refresh: false,
                 close: false,
-                message: Some("Launcher services are unavailable".into()),
+                message: "Launcher services are unavailable".into(),
             };
         };
         match Self::remove_project(&connection, id) {
-            Ok(()) => KeyOutcome::Handled {
+            Ok(()) => KeyResponse {
+                handled: true,
                 refresh: true,
                 close: false,
-                message: Some("Removed project".into()),
+                message: "Removed project".into(),
             },
-            Err(error) => KeyOutcome::Handled {
+            Err(error) => KeyResponse {
+                handled: true,
                 refresh: false,
                 close: false,
-                message: Some(error),
+                message: error,
             },
         }
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn _rsynapse_init() -> *mut dyn Plugin {
-    Box::into_raw(Box::new(WorkspacesPlugin))
+pub fn plugin() -> Box<dyn Plugin> {
+    Box::new(WorkspacesPlugin)
 }

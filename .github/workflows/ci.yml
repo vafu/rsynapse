@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: cachix/install-nix-action@v30
+      - name: Format
+        run: nix develop .#native --command scripts/check.sh fmt
+      - name: Manifest consistency
+        run: nix develop .#native --command scripts/check.sh manifest
+      - name: Workspace tests
+        run: nix develop .#native --command scripts/check.sh test
+      - name: Installer tests
+        run: nix develop .#native --command scripts/check.sh test-install
+      - name: Python syntax
+        run: nix develop .#native --command scripts/check.sh test-python
+      - name: Panel typecheck/build/tests
+        run: nix develop .#native --command scripts/check.sh test-panel
+      - name: Hermetic D-Bus tests
+        run: nix develop .#native --command scripts/check.sh test-dbus
+      - name: Clippy
+        run: nix develop .#native --command scripts/check.sh clippy

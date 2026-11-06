@@ -2,8 +2,10 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use zbus::zvariant::Type;
+pub mod api;
 pub mod metrics;
 pub use metrics::*;
+pub mod xdg;
 
 pub const BUS_NAME: &str = "org.rsynapse.Proj";
 pub const ROOT_PATH: &str = "/org/rsynapse/Proj";

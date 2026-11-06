@@ -1,10 +1,11 @@
 import React from 'react';
 import {PanelPlugin, getFieldDisplayName} from '@grafana/data';
+import type {PanelProps} from '@grafana/data';
 import {locationService} from '@grafana/runtime';
 import {WorkdayPanel} from './WorkdayPanel';
 import {initialRangeSearch, rangeParams} from './workday-range.mjs';
 
-function Panel(props) {
+function Panel(props: PanelProps) {
   const values: Record<string,number> = {};
   for (const frame of props.data.series) {
     for (const field of frame.fields) {

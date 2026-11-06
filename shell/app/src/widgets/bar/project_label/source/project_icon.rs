@@ -60,15 +60,9 @@ pub(super) fn icon(project: ProjectDetails, id: String) -> Observable<WorkspaceI
                         let resolution = resolve_icon_once(request).await;
                         let result = async {
                             let conn = zbus::Connection::session().await?;
-                            let proxy = zbus::Proxy::new(
-                                &conn,
-                                "org.rsynapse.Proj",
-                                "/org/rsynapse/Proj",
-                                "org.rsynapse.Proj.Manager1",
-                            )
-                            .await?;
+                            let proxy = source::proj::ManagerProxy::new(&conn).await?;
                             let _: source::proj::ProjectInfo = proxy
-                                .call("SetProjectIconIfUnset", &(id, resolution.selected.glyph))
+                                .set_project_icon_if_unset(&id, &resolution.selected.glyph)
                                 .await?;
                             Ok::<_, zbus::Error>(())
                         }

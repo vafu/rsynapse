@@ -106,20 +106,6 @@ impl WorkspaceSelector {
             return;
         };
         self.list.select_row(Some(&row));
-        self.scroll_to_row(&row);
-    }
-
-    fn scroll_to_row(&self, row: &gtk::ListBoxRow) {
-        let Some(bounds) = row.compute_bounds(&self.list) else {
-            return;
-        };
-        let adjustment = self.scrolled.vadjustment();
-        let top = bounds.y() as f64;
-        let bottom = top + bounds.height() as f64;
-        if top < adjustment.value() {
-            adjustment.set_value(top);
-        } else if bottom > adjustment.value() + adjustment.page_size() {
-            adjustment.set_value(bottom - adjustment.page_size());
-        }
+        shell_core::list::scroll_row_into_view(&self.scrolled, &row);
     }
 }

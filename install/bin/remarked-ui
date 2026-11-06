@@ -6,4 +6,4 @@ case "${1:-}" in
   toggle|--toggle) action=toggle ;;
   hide|--hide) action=hide ;;
 esac
-exec rsynapse-shell request workspace "$action"
+exec rsynapse-shell request remarked "$action"

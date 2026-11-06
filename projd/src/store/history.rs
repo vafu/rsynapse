@@ -252,23 +252,32 @@ impl Store {
 
     pub fn tracking(&self) -> anyhow::Result<Vec<GoalTrackingInfo>> {
         let identities = self.identities()?;
-        let projects = self.projects()?;
+        let project_names: std::collections::HashMap<String, String> = self
+            .projects()?
+            .into_iter()
+            .map(|project| (project.id, project.name))
+            .collect();
+        // One indexed read for all active goals instead of one query per task.
+        let active_goals = self.active_goals()?;
         let mut result = Vec::new();
         for identity in identities.into_iter().filter(|g| g.deleted_at_ms == 0) {
             let g = identity.goal;
+            let project_name = project_names
+                .get(&g.project_id)
+                .cloned()
+                .unwrap_or(identity.project_name);
+            let selected = active_goals
+                .get(&g.project_id)
+                .is_some_and(|key| key == &identity.key);
             result.push(GoalTrackingInfo {
                 instance_id: identity.instance_id,
                 key: identity.key.clone(),
                 title: g.title,
-                project_id: g.project_id.clone(),
-                project_name: projects
-                    .iter()
-                    .find(|p| p.id == g.project_id)
-                    .map(|p| p.name.clone())
-                    .unwrap_or(identity.project_name),
+                project_id: g.project_id,
+                project_name,
                 status: g.status,
                 parent_instance_id: identity.ancestor_ids.last().cloned().unwrap_or_default(),
-                selected: self.active_goal(&g.project_id)? == identity.key,
+                selected,
                 ancestor_ids: identity.ancestor_ids,
             });
         }

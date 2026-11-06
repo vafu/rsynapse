@@ -38,25 +38,13 @@ impl IconTarget {
     }
 }
 fn write(id: String, glyph: Option<String>) {
-    relm4::spawn(async move {
-        let result = async {
-            let conn = zbus::Connection::session().await?;
-            let proxy = zbus::Proxy::new(
-                &conn,
-                "org.rsynapse.Proj",
-                "/org/rsynapse/Proj",
-                "org.rsynapse.Proj.Manager1",
-            )
-            .await?;
-            let _: shell_core::source::proj::ProjectInfo = match glyph {
-                Some(g) => proxy.call("SetProjectIcon", &(id, g)).await?,
-                None => proxy.call("ClearProjectIcon", &(id,)).await?,
-            };
-            Ok::<_, zbus::Error>(())
-        }
-        .await;
-        if let Err(error) = result {
-            eprintln!("[project-icon] {error}");
-        }
+    shell_core::source::write::spawn("project icon", async move {
+        let conn = shell_core::source::write::session_connection().await?;
+        let proxy = shell_core::source::proj::ManagerProxy::new(conn).await?;
+        let _: shell_core::source::proj::ProjectInfo = match glyph {
+            Some(glyph) => proxy.set_project_icon(&id, &glyph).await?,
+            None => proxy.clear_project_icon(&id).await?,
+        };
+        Ok::<_, zbus::Error>(())
     });
 }

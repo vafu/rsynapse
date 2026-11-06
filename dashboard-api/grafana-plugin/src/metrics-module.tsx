@@ -1,9 +1,10 @@
 import React,{useEffect,useState} from 'react';
 import {PanelPlugin} from '@grafana/data';
+import type {PanelProps} from '@grafana/data';
 import {RefreshEvent,getAppEvents} from '@grafana/runtime';
 import {GoalMetricsPanel} from './GoalMetricsPanel';
 
-function Panel(props) {
+function Panel(props: PanelProps<{apiUrl?: string}>) {
   const [refresh,setRefresh]=useState(0);
   useEffect(()=>{const sub=getAppEvents().getStream(RefreshEvent).subscribe(()=>setRefresh(n=>n+1));return()=>sub.unsubscribe();},[]);
   return <GoalMetricsPanel width={props.width} height={props.height} options={props.options} refreshKey={refresh}

@@ -11,8 +11,9 @@ impl Plugin for CalcPlugin {
         vec![PluginGroup {
             id: "calc".to_owned(),
             title: "Calculator".to_owned(),
-            description: Some("Evaluate a calculator expression".to_owned()),
+            description: "Evaluate a calculator expression".to_owned(),
             aliases: vec!["calculator".to_owned(), "=".to_owned()],
+            plugin: String::new(),
         }]
     }
 
@@ -28,9 +29,9 @@ impl Plugin for CalcPlugin {
                     results: vec![ResultItem {
                         id: format!("{}::{}", self.name(), context.query),
                         title: result.to_string(),
-                        description: Some("Result".to_string()),
-                        icon: Some("accessories-calculator".to_string()),
-                        data: Some(result.to_string()),
+                        description: "Result".to_string(),
+                        icon: "accessories-calculator".to_string(),
+                        data: result.to_string(),
                         score: 100.0,
                         current: false,
                     }],
@@ -41,7 +42,6 @@ impl Plugin for CalcPlugin {
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn _rsynapse_init() -> *mut dyn Plugin {
-    Box::into_raw(Box::new(CalcPlugin))
+pub fn plugin() -> Box<dyn Plugin> {
+    Box::new(CalcPlugin)
 }

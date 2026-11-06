@@ -1,33 +1,13 @@
 use shell_core::gtk::{self, prelude::*};
 use std::{cell::Cell, rc::Rc};
 
-#[zbus::proxy(
-    interface = "org.rsynapse.Steward.Associations1",
-    default_service = "org.rsynapse.Steward",
-    default_path = "/org/rsynapse/Steward"
-)]
-trait Associations {
-    fn unassign_workspace_project(&self, workspace: &str) -> zbus::Result<()>;
-    fn bind_workspace_project(
-        &self,
-        workspace: &str,
-        path: &str,
-    ) -> zbus::Result<shell_core::source::proj::ProjectInfo>;
-    fn get_init_workspace(&self) -> zbus::Result<String>;
-    fn init_workspace_project(
-        &self,
-        workspace: &str,
-        path: &str,
-    ) -> zbus::Result<shell_core::source::proj::ProjectInfo>;
-}
-
 pub(super) async fn bind_workspace(
     workspace: String,
     path: &str,
     initialize: bool,
 ) -> zbus::Result<shell_core::source::proj::ProjectInfo> {
     let connection = zbus::Connection::session().await?;
-    let proxy = AssociationsProxy::new(&connection).await?;
+    let proxy = shell_core::source::steward::AssociationsProxy::new(&connection).await?;
     if initialize {
         proxy.init_workspace_project(&workspace, path).await
     } else {
@@ -60,7 +40,7 @@ impl ProjectInitializer {
         relm4::spawn(async move {
             let result = async {
                 let connection = zbus::Connection::session().await?;
-                AssociationsProxy::new(&connection)
+                shell_core::source::steward::AssociationsProxy::new(&connection)
                     .await?
                     .get_init_workspace()
                     .await

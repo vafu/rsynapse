@@ -1,30 +1,9 @@
 //! Side effects for the workspace selector.
 use std::collections::HashMap;
 
-use shell_core::source::proj::ProjectInfo;
-
-#[zbus::proxy(
-    interface = "org.rsynapse.Steward.Associations1",
-    default_service = "org.rsynapse.Steward",
-    default_path = "/org/rsynapse/Steward"
-)]
-trait Associations {
-    fn bind_workspace_project(&self, workspace: &str, path: &str) -> zbus::Result<ProjectInfo>;
-    fn unassign_workspace_project(&self, workspace: &str) -> zbus::Result<()>;
-}
-
-#[zbus::proxy(
-    interface = "org.rsynapse.Proj.Manager1",
-    default_service = "org.rsynapse.Proj",
-    default_path = "/org/rsynapse/Proj"
-)]
-trait Projects {
-    fn remove_project(&self, id: &str) -> zbus::Result<bool>;
-}
-
 pub(super) async fn assign(workspace: String, path: String) -> zbus::Result<()> {
     let connection = zbus::Connection::session().await?;
-    AssociationsProxy::new(&connection)
+    shell_core::source::steward::AssociationsProxy::new(&connection)
         .await?
         .bind_workspace_project(&workspace, &path)
         .await?;
@@ -33,7 +12,7 @@ pub(super) async fn assign(workspace: String, path: String) -> zbus::Result<()> 
 
 pub(super) async fn unassign(workspace: String) -> zbus::Result<()> {
     let connection = zbus::Connection::session().await?;
-    AssociationsProxy::new(&connection)
+    shell_core::source::steward::AssociationsProxy::new(&connection)
         .await?
         .unassign_workspace_project(&workspace)
         .await?;
@@ -42,7 +21,7 @@ pub(super) async fn unassign(workspace: String) -> zbus::Result<()> {
 
 pub(super) async fn remove_project(id: String) -> zbus::Result<()> {
     let connection = zbus::Connection::session().await?;
-    ProjectsProxy::new(&connection)
+    shell_core::source::proj::ManagerProxy::new(&connection)
         .await?
         .remove_project(&id)
         .await?;

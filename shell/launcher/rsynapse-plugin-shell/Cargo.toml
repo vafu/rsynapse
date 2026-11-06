@@ -1,10 +1,13 @@
 [package]
 name = "rsynapse-plugin-shell"
 version = "0.1.0"
-edition = "2024"
+publish = false
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["rlib"]
 
 [dependencies]
 rsynapse-plugin = { path = "../rsynapse-plugin" }

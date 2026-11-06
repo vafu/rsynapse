@@ -54,10 +54,7 @@ pub(super) async fn query(
     if q.to_ms < q.from_ms || q.to_ms > i64::MAX as u64 {
         return Err(invalid("Invalid millisecond time range"));
     }
-    let identities: Vec<GoalIdentityInfo> = app
-        .metrics
-        .call("ListGoalIdentities", &(String::new(),))
-        .await?;
+    let identities: Vec<GoalIdentityInfo> = app.metrics.list_goal_identities("").await?;
     if !q.instance_id.is_empty() && !identities.iter().any(|g| g.instance_id == q.instance_id) {
         return Err(Error(
             StatusCode::NOT_FOUND,
@@ -66,10 +63,7 @@ pub(super) async fn query(
     }
     let all_work: Vec<WorkSessionInfo> = app
         .metrics
-        .call(
-            "WorkTimeline",
-            &(String::new(), String::new(), q.from_ms, q.to_ms, true),
-        )
+        .work_timeline("", "", q.from_ms, q.to_ms, true)
         .await?;
     let mut projects = BTreeMap::new();
     for g in &identities {
@@ -101,10 +95,7 @@ pub(super) async fn query(
         })
         .map(|g| g.instance_id.clone())
         .collect();
-    let mut history: Vec<GoalEventInfo> = app
-        .metrics
-        .call("GoalHistory", &(String::new(), q.from_ms, q.to_ms))
-        .await?;
+    let mut history: Vec<GoalEventInfo> = app.metrics.goal_history("", q.from_ms, q.to_ms).await?;
     history.retain(|e| {
         scope.contains(&e.instance_id)
             && (q.project_id.is_empty() || e.goal.project_id == q.project_id)
@@ -119,11 +110,7 @@ pub(super) async fn query(
         let from = q.from_ms;
         let to = q.to_ms;
         let descendants = q.include_subgoals;
-        async move {
-            metrics
-                .call::<_, _, GoalStatsInfo>("GoalStats", &(id, from, to, descendants))
-                .await
-        }
+        async move { metrics.goal_stats(&id, from, to, descendants).await }
     }))
     .buffer_unordered(8)
     .try_collect::<Vec<_>>()

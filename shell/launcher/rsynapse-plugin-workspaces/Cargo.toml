@@ -1,14 +1,19 @@
 [package]
 name = "rsynapse-plugin-workspaces"
 version = "0.1.0"
-edition = "2024"
+publish = false
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["rlib"]
 
 [dependencies]
+workspace-policy = { path = "../../core/workspace-policy" }
+steward-api = { path = "../../../steward-api" }
 rsynapse-plugin = { path = "../rsynapse-plugin" }
 locus = { path = "../../../locus" }
 proj-model = { package = "rsynapse-projd-model", path = "../../../projd/model" }
 workspace-dbus-api = { path = "../../../workspace-dbus/api" }
-zbus = "4"
+zbus = "4.4"

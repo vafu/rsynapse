@@ -10,6 +10,7 @@ pub(super) use init::ProjectInitializer;
 pub(super) use source::{selected_project_context, selected_project_status};
 
 use git::{GitStatus, summary as git_summary};
+use shell_core::source::text::non_empty;
 
 /// Workspace-level view: always carries the workspace display name when
 /// known, plus project details only when the workspace has a project.
@@ -47,7 +48,6 @@ fn project_view(project: ProjectDetails, git: Option<GitStatus>) -> ProjectView 
     let branch_full = optional_text(project.branch);
     let branch = branch_full
         .clone()
-        .map(|branch| display_branch(branch, &title))
         .filter(|branch| distinct_from(branch, &title));
     // Association presence is independent of whether its title has loaded yet.
     let visible = true;
@@ -72,20 +72,6 @@ fn optional_text(value: Option<String>) -> Option<String> {
         let value = value.trim().to_owned();
         (!value.is_empty()).then_some(value)
     })
-}
-
-fn display_branch(branch: String, cwd: &str) -> String {
-    branch
-        .strip_prefix("vafu/")
-        .and_then(|rest| rest.split_once('/'))
-        .filter(|(worktree, _)| *worktree == cwd)
-        .map(|(_, feature)| feature.to_owned())
-        .unwrap_or(branch)
-}
-
-fn non_empty(value: &str) -> Option<&str> {
-    let value = value.trim();
-    (!value.is_empty()).then_some(value)
 }
 
 pub(super) fn visible(view: &SelectedWorkspaceView) -> bool {

@@ -54,6 +54,24 @@ pub struct CommandsPlugin {
     commands: RwLock<Vec<CompiledCommand>>,
 }
 
+/// Builds a shell invocation whose user captures are positional arguments.
+///
+/// The configured template is trusted, but regex captures come from the query
+/// and must never be spliced into the script text. `$1`, `$2`, ... in the
+/// template resolve to the corresponding capture without being re-parsed by
+/// the shell.
+fn shell_command(command_template: &str, captures: &regex::Captures<'_>) -> Command {
+    let mut command = Command::new("sh");
+    command
+        .arg("-c")
+        .arg(command_template)
+        .arg("rsynapse-command");
+    for index in 1..captures.len() {
+        command.arg(captures.get(index).map_or("", |capture| capture.as_str()));
+    }
+    command
+}
+
 impl CommandsPlugin {
     fn load() -> Self {
         let commands = Self::compile_commands();
@@ -104,17 +122,7 @@ impl CommandsPlugin {
         captures: &regex::Captures,
         modifiers: &Modifiers,
     ) -> Vec<ResultItem> {
-        // Substitute capture groups: $1, $2, etc.
-        let mut command = command_template.to_string();
-        for i in 1..captures.len() {
-            let placeholder = format!("${}", i);
-            let value = captures.get(i).map_or("", |m| m.as_str());
-            command = command.replace(&placeholder, value);
-        }
-
-        let output = match Command::new("sh")
-            .arg("-c")
-            .arg(&command)
+        let output = match shell_command(command_template, captures)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .output()
@@ -212,9 +220,9 @@ impl JsonResultItem {
         ResultItem {
             id: final_id,
             title: final_title,
-            description: Some(final_desc),
-            icon: Some(final_icon),
-            data: Some(final_data),
+            description: final_desc,
+            icon: final_icon,
+            data: final_data,
             score: -(index as f64),
             current: false,
         }
@@ -230,8 +238,9 @@ impl Plugin for CommandsPlugin {
         vec![PluginGroup {
             id: "commands".to_owned(),
             title: "Commands".to_owned(),
-            description: Some("Run configured command queries".to_owned()),
+            description: "Run configured command queries".to_owned(),
             aliases: vec!["cmd".to_owned(), "command".to_owned()],
+            plugin: String::new(),
         }]
     }
 
@@ -262,7 +271,6 @@ impl Plugin for CommandsPlugin {
     }
 }
 
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn _rsynapse_init() -> *mut dyn Plugin {
-    Box::into_raw(Box::new(CommandsPlugin::load()))
+pub fn plugin() -> Box<dyn Plugin> {
+    Box::new(CommandsPlugin::load())
 }

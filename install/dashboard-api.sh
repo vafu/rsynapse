@@ -3,7 +3,8 @@
 set -euo pipefail
 repo="$(realpath "$(dirname "${BASH_SOURCE[0]}")/..")"
 prefix="${PREFIX:-$HOME/.local}"
-unit_dir="$HOME/.config/systemd/user"
+config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
+unit_dir="$config_home/systemd/user"
 npm --prefix "$repo/dashboard-api/grafana-plugin" ci
 npm --prefix "$repo/dashboard-api/grafana-plugin" run build
 install -d "$prefix/bin" "$unit_dir"

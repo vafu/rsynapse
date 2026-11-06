@@ -114,7 +114,11 @@ def install(prefix, config, built=False, reload=True):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--prefix", type=Path, default=Path(os.environ.get("PREFIX", str(Path.home() / ".local"))))
-    parser.add_argument("--config-home", type=Path, default=Path.home() / ".config")
+    parser.add_argument(
+        "--config-home",
+        type=Path,
+        default=Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")),
+    )
     parser.add_argument("--install-built", action="store_true", help="install already-built Projd/Steward artifacts too")
     parser.add_argument("--no-reload", action="store_true", help="stage files only, without contacting systemd or D-Bus")
     args = parser.parse_args()

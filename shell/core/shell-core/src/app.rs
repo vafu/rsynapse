@@ -58,40 +58,20 @@ impl ShellApp {
         self
     }
 
-    pub fn with_css(mut self, path: impl Into<PathBuf>) -> Self {
-        self.stylesheets.push(StylesheetRegistration {
-            source: StylesheetSource::new(path),
-            priority: CssPriority::Application,
-        });
-        self
+    pub fn with_css(self, path: impl Into<PathBuf>) -> Self {
+        self.with_stylesheet(path)
     }
 
-    pub fn with_css_at_priority(mut self, path: impl Into<PathBuf>, priority: CssPriority) -> Self {
-        self.stylesheets.push(StylesheetRegistration {
-            source: StylesheetSource::new(path),
-            priority,
-        });
-        self
+    pub fn with_css_at_priority(self, path: impl Into<PathBuf>, priority: CssPriority) -> Self {
+        self.with_stylesheet_at_priority(path, priority)
     }
 
-    pub fn with_scss(mut self, path: impl Into<PathBuf>) -> Self {
-        self.stylesheets.push(StylesheetRegistration {
-            source: StylesheetSource::new(path),
-            priority: CssPriority::Application,
-        });
-        self
+    pub fn with_scss(self, path: impl Into<PathBuf>) -> Self {
+        self.with_stylesheet(path)
     }
 
-    pub fn with_scss_at_priority(
-        mut self,
-        path: impl Into<PathBuf>,
-        priority: CssPriority,
-    ) -> Self {
-        self.stylesheets.push(StylesheetRegistration {
-            source: StylesheetSource::new(path),
-            priority,
-        });
-        self
+    pub fn with_scss_at_priority(self, path: impl Into<PathBuf>, priority: CssPriority) -> Self {
+        self.with_stylesheet_at_priority(path, priority)
     }
 
     pub fn with_sass_load_path(mut self, path: impl Into<PathBuf>) -> Self {
@@ -121,53 +101,7 @@ impl ShellApp {
         C::Input: Debug + 'static,
         C::Root: AsRef<gtk::Window>,
     {
-        let Self {
-            app_id,
-            args,
-            stylesheets,
-            watch_stylesheets,
-            sass_config,
-            startup_handlers,
-            relm_threads,
-        } = self;
-
-        Self::configure_relm_threads(relm_threads);
-        let app = RelmApp::<C::Input>::new(&app_id);
-        let app = match args {
-            Some(args) => app.with_args(args),
-            None => app,
-        };
-        let stylesheets = Self::prepare_stylesheets(stylesheets, sass_config)
-            .expect("failed to initialize shell app stylesheets");
-        let gtk_app = relm4::main_application();
-        let stylesheets = Rc::new(RefCell::new(Some(stylesheets)));
-        let stylesheet_watchers: Rc<RefCell<Vec<StylesheetWatcher>>> =
-            Rc::new(RefCell::new(Vec::new()));
-        let startup_handlers = Rc::new(RefCell::new(Some(startup_handlers)));
-
-        gtk_app.connect_startup(move |app| {
-            if let Some(startup_handlers) = startup_handlers.borrow_mut().take() {
-                for handler in startup_handlers {
-                    handler(app);
-                }
-            }
-
-            let Some(stylesheets) = stylesheets.borrow_mut().take() else {
-                return;
-            };
-
-            for stylesheet in stylesheets {
-                stylesheet.install();
-
-                if watch_stylesheets {
-                    let watcher = stylesheet
-                        .watch()
-                        .expect("failed to initialize shell app stylesheet watcher");
-                    stylesheet_watchers.borrow_mut().push(watcher);
-                }
-            }
-        });
-
+        let app = self.prepare::<C::Input>();
         app.run::<C>(payload);
     }
 
@@ -177,6 +111,11 @@ impl ShellApp {
         C::Input: Debug + 'static,
         C::Root: AsRef<gtk::Window>,
     {
+        let app = self.prepare::<C::Input>();
+        app.run_async::<C>(payload);
+    }
+
+    fn prepare<I: Debug + 'static>(self) -> RelmApp<I> {
         let Self {
             app_id,
             args,
@@ -188,7 +127,7 @@ impl ShellApp {
         } = self;
 
         Self::configure_relm_threads(relm_threads);
-        let app = RelmApp::<C::Input>::new(&app_id);
+        let app = RelmApp::<I>::new(&app_id);
         let app = match args {
             Some(args) => app.with_args(args),
             None => app,
@@ -224,7 +163,7 @@ impl ShellApp {
             }
         });
 
-        app.run_async::<C>(payload);
+        app
     }
 
     fn prepare_stylesheets(

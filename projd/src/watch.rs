@@ -7,7 +7,17 @@ use std::{
 use tokio::sync::{mpsc, oneshot};
 use zbus::Connection;
 
-pub(super) type Request = (String, PathBuf, bool, oneshot::Sender<()>);
+pub(super) enum Request {
+    Watch {
+        root: String,
+        dir: PathBuf,
+        initial: bool,
+        ready: oneshot::Sender<()>,
+    },
+    Unwatch {
+        root: String,
+    },
+}
 
 fn matches(dir: &Path, path: &Path) -> bool {
     if path.starts_with(dir.join("refs")) {
@@ -68,14 +78,30 @@ pub(super) fn start(
         loop {
             let roots = tokio::select! {
                 request=requests.recv()=>{
-                    let Some((root,dir,initial,ready))=request else{break;};
-                    if watched.insert(dir.clone()) {
-                        let _=watcher.watch(&dir,notify::RecursiveMode::NonRecursive);
-                        if dir.join("refs").exists() { let _=watcher.watch(&dir.join("refs"),notify::RecursiveMode::Recursive); }
+                    let Some(request)=request else{break;};
+                    match request {
+                        Request::Watch { root, dir, initial, ready } => {
+                            if watched.insert(dir.clone()) {
+                                let _=watcher.watch(&dir,notify::RecursiveMode::NonRecursive);
+                                if dir.join("refs").exists() { let _=watcher.watch(&dir.join("refs"),notify::RecursiveMode::Recursive); }
+                            }
+                            directories.insert(root.clone(),dir);
+                            let _=ready.send(());
+                            if initial { vec![root] } else { Vec::new() }
+                        }
+                        Request::Unwatch { root } => {
+                            if let Some(dir) = directories.remove(&root) {
+                                running.remove(&root);
+                                dirty.remove(&root);
+                                if !directories.values().any(|candidate| candidate == &dir) {
+                                    watched.remove(&dir);
+                                    let _=watcher.unwatch(&dir);
+                                    let _=watcher.unwatch(&dir.join("refs"));
+                                }
+                            }
+                            Vec::new()
+                        }
                     }
-                    directories.insert(root.clone(),dir);
-                    let _=ready.send(());
-                    if initial { vec![root] } else { Vec::new() }
                 },
                 paths=events.recv()=>{
                     let Some(paths)=paths else{break;};

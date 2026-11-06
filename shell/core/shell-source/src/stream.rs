@@ -4,11 +4,15 @@ use futures_util::{Stream, StreamExt, future, stream};
 
 type SourceStream<T> = Pin<Box<dyn Stream<Item = Result<T, String>> + Send + 'static>>;
 
-/// Cloneable async source used by newer shell ViewModel bindings.
+/// Internal compatibility source used by `#[view_model]`/`#[dbus_model]`.
+///
+/// New code should use [`crate::Observable`]; this type is kept doc-hidden and
+/// will be retired once those macros emit observables directly.
 ///
 /// `Source<T>` is intentionally small: each subscription creates an async
 /// stream, while operators return another source factory. The existing
 /// `Observable<T>` alias remains available during migration.
+#[doc(hidden)]
 pub struct Source<T> {
     create: Arc<dyn Fn() -> SourceStream<T> + Send + Sync>,
 }
@@ -81,7 +85,9 @@ where
         Fut: Future<Output = ()> + Send + 'static,
     {
         Self::new(move || {
-            let (sender, receiver) = async_channel::unbounded();
+            // Bounded: source producers wait for the subscriber instead of buffering
+            // without limit.
+            let (sender, receiver) = async_channel::bounded(256);
             let handle = tokio::spawn(run(sender));
             let guard = TaskGuard {
                 handle: Some(handle),

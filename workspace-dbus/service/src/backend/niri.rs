@@ -55,7 +55,6 @@ impl Niri {
         loop {
             let event = self.stream.event().await?;
             if matches!(event, Event::WorkspacesChanged { .. }) {
-                self.outputs = Self::outputs(&self.path).await?;
                 self.workspaces_ready = true;
             }
             if matches!(event, Event::WindowsChanged { .. }) {
@@ -63,6 +62,19 @@ impl Niri {
             }
             catch_unwind(AssertUnwindSafe(|| self.state.apply(event)))
                 .map_err(|_| anyhow::anyhow!("Niri rejected event ordering"))?;
+            // Output topology has no dedicated event in this niri-ipc version;
+            // refetch only when a workspace references an output we have not
+            // seen, instead of reconnecting on every workspace change.
+            if self.workspaces_ready
+                && self.state.workspaces.workspaces.values().any(|workspace| {
+                    workspace
+                        .output
+                        .as_ref()
+                        .is_some_and(|output| !self.outputs.contains_key(output))
+                })
+            {
+                self.outputs = Self::outputs(&self.path).await?;
+            }
             if self.workspaces_ready && self.windows_ready {
                 return Ok(self.project());
             }

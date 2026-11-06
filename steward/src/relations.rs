@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
 use futures_util::StreamExt;
-use locus::{RelationEndpoint, RelationRecord};
+use locus::{RelationEndpoint, RelationRecord, RelationsProxy};
 use shell_source::{Observable, from_task, rx::Observable as _};
-use zbus::{Connection, Proxy};
+use zbus::Connection;
 
 /// Workspace -> project link (owned by whoever maps workspaces).
 pub const WORKSPACE_PROJECT: &str = "org.rsynapse.workspace.project";
@@ -20,7 +20,7 @@ pub const WORKSPACE_NAME_KIND: &str = "org.rsynapse.workspace.name";
 /// this is only the write path plus the one-shot reads the watch loop needs.
 #[derive(Clone)]
 pub struct LocusClient {
-    proxy: Proxy<'static>,
+    proxy: RelationsProxy<'static>,
 }
 
 impl LocusClient {
@@ -33,10 +33,7 @@ impl LocusClient {
         persist: bool,
     ) -> anyhow::Result<()> {
         self.proxy
-            .call::<_, _, locus::RelationState>(
-                "SetWithPersistence",
-                &(subject, relation, target, metadata, persist),
-            )
+            .set_with_persistence(subject, relation, target, metadata, persist)
             .await?;
         Ok(())
     }
@@ -46,31 +43,23 @@ impl LocusClient {
         relation: &str,
         target: RelationEndpoint,
     ) -> anyhow::Result<()> {
-        self.proxy
-            .call::<_, _, bool>("Unset", &(subject, relation, target))
-            .await?;
+        self.proxy.unset(subject, relation, target).await?;
         Ok(())
     }
     pub async fn connect() -> anyhow::Result<Self> {
         let connection = Connection::session().await?;
-        let proxy = Proxy::new_owned(
-            connection,
-            locus::BUS_NAME,
-            locus::OBJECT_PATH,
-            locus::RELATIONS_INTERFACE,
-        )
-        .await?;
+        let proxy = RelationsProxy::new(&connection).await?;
         Ok(Self { proxy })
     }
 
     pub async fn list(&self, relation: &str) -> anyhow::Result<Vec<RelationRecord>> {
-        Ok(self.proxy.call("List", &(relation,)).await?)
+        Ok(self.proxy.list(relation).await?)
     }
     pub async fn list_with_persistence(
         &self,
         relation: &str,
     ) -> anyhow::Result<Vec<locus::RelationState>> {
-        Ok(self.proxy.call("ListWithPersistence", &(relation,)).await?)
+        Ok(self.proxy.list_with_persistence(relation).await?)
     }
 
     pub async fn set_one_with_persistence(
@@ -82,10 +71,7 @@ impl LocusClient {
         persist: bool,
     ) -> anyhow::Result<()> {
         self.proxy
-            .call::<_, _, locus::RelationState>(
-                "SetOneWithPersistence",
-                &(subject, relation, target, metadata, persist),
-            )
+            .set_one_with_persistence(subject, relation, target, metadata, persist)
             .await?;
         Ok(())
     }
@@ -110,10 +96,42 @@ pub fn records(client: LocusClient, relation: &'static str) -> Observable<Vec<Re
                 };
                 // Subscribe before the initial snapshot so policy edits during
                 // startup cannot fall into the List/subscribe gap.
-                let mut added = Box::pin(signal_stream(&watch, "RelationAdded").await);
-                let mut updated = Box::pin(signal_stream(&watch, "RelationUpdated").await);
-                let mut removed = Box::pin(signal_stream(&watch, "RelationRemoved").await);
-                let mut cleared = Box::pin(signal_stream(&watch, "RelationCleared").await);
+                let mut added = match watch.proxy.receive_relation_added().await {
+                    Ok(stream) => stream,
+                    Err(error) => {
+                        let _ = sender
+                            .send(Err(format!("subscribe RelationAdded: {error}")))
+                            .await;
+                        return;
+                    }
+                };
+                let mut updated = match watch.proxy.receive_relation_updated().await {
+                    Ok(stream) => stream,
+                    Err(error) => {
+                        let _ = sender
+                            .send(Err(format!("subscribe RelationUpdated: {error}")))
+                            .await;
+                        return;
+                    }
+                };
+                let mut removed = match watch.proxy.receive_relation_removed().await {
+                    Ok(stream) => stream,
+                    Err(error) => {
+                        let _ = sender
+                            .send(Err(format!("subscribe RelationRemoved: {error}")))
+                            .await;
+                        return;
+                    }
+                };
+                let mut cleared = match watch.proxy.receive_relation_cleared().await {
+                    Ok(stream) => stream,
+                    Err(error) => {
+                        let _ = sender
+                            .send(Err(format!("subscribe RelationCleared: {error}")))
+                            .await;
+                        return;
+                    }
+                };
                 if sender
                     .send(list_records(&client, relation).await)
                     .await
@@ -122,16 +140,25 @@ pub fn records(client: LocusClient, relation: &'static str) -> Observable<Vec<Re
                     return;
                 }
                 loop {
-                    let refresh = tokio::select! {
-                        message = added.next() => message,
-                        message = updated.next() => message,
-                        message = removed.next() => message,
-                        message = cleared.next() => message,
+                    let changed = tokio::select! {
+                        message = added.next() => {
+                            let Some(message) = message else { return; };
+                            message.args().is_ok_and(|args| args.record.relation == relation)
+                        }
+                        message = updated.next() => {
+                            let Some(message) = message else { return; };
+                            message.args().is_ok_and(|args| args.record.relation == relation)
+                        }
+                        message = removed.next() => {
+                            let Some(message) = message else { return; };
+                            message.args().is_ok_and(|args| args.record.relation == relation)
+                        }
+                        message = cleared.next() => {
+                            let Some(message) = message else { return; };
+                            message.args().is_ok_and(|args| args.relation == relation)
+                        }
                     };
-                    let Some(message) = refresh else {
-                        return;
-                    };
-                    if message_matches(&message, relation) {
+                    if changed {
                         if sender
                             .send(list_records(&client, relation).await)
                             .await
@@ -153,38 +180,6 @@ async fn list_records(client: &LocusClient, relation: &str) -> Result<Vec<Relati
         .list(relation)
         .await
         .map_err(|error| format!("locus list {relation}: {error}"))
-}
-
-async fn signal_stream<'a>(
-    client: &'a LocusClient,
-    member: &'a str,
-) -> futures_util::stream::BoxStream<'a, zbus::Message> {
-    use futures_util::StreamExt;
-    match client.proxy.receive_signal(member).await {
-        Ok(stream) => stream.boxed(),
-        Err(_) => futures_util::stream::empty().boxed(),
-    }
-}
-
-fn message_matches(message: &zbus::Message, relation: &str) -> bool {
-    let member = message
-        .header()
-        .member()
-        .map(|member| member.to_string())
-        .unwrap_or_default();
-    match member.as_str() {
-        "RelationAdded" | "RelationUpdated" | "RelationRemoved" => message
-            .body()
-            .deserialize::<RelationRecord>()
-            .map(|record| record.relation == relation)
-            .unwrap_or(false),
-        "RelationCleared" => message
-            .body()
-            .deserialize::<(RelationEndpoint, String, u32)>()
-            .map(|(_, cleared, _)| cleared == relation)
-            .unwrap_or(false),
-        _ => false,
-    }
 }
 
 #[cfg(test)]

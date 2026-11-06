@@ -20,7 +20,6 @@ pub(crate) mod dev {
 }
 
 pub(crate) mod fa {
-    pub(crate) const FA_BACKWARD_STEP: &str = "\u{f048}";
     pub(crate) const FA_CIRCLE_CHECK: &str = "\u{f05d}";
     pub(crate) const FA_CHECK_DOUBLE: &str = "\u{f560}";
     pub(crate) const FA_COMMENT: &str = "\u{f075}";
@@ -31,8 +30,6 @@ pub(crate) mod fa {
     pub(crate) const FA_EYE: &str = "\u{f06e}";
     pub(crate) const FA_FILE_TEXT: &str = "\u{f15c}";
     pub(crate) const FA_FIREFOX: &str = "\u{f269}";
-    pub(crate) const FA_FORWARD_STEP: &str = "\u{f051}";
-    pub(crate) const FA_PLAY: &str = "\u{f04b}";
 }
 
 pub(crate) mod md {

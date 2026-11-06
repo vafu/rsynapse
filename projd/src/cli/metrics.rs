@@ -1,8 +1,10 @@
 use chrono::{DateTime, Local, NaiveDate, TimeZone};
 use clap::{Args, Subcommand};
-use proj_model::*;
+use proj_model::{
+    api::{ManagerProxy, MetricsProxy},
+    *,
+};
 use std::{collections::BTreeMap, path::PathBuf};
-use zbus::Proxy;
 
 #[derive(Args)]
 pub struct Range {
@@ -89,13 +91,16 @@ fn timestamp(input: &str) -> anyhow::Result<u64> {
         .ok_or_else(|| anyhow::anyhow!("Date has no local midnight"))?;
     Ok(u64::try_from(at.timestamp_millis())?)
 }
-async fn metrics<'a>(proxy: &'a Proxy<'_>) -> zbus::Result<Proxy<'a>> {
-    Proxy::new(proxy.connection(), BUS_NAME, ROOT_PATH, METRICS_INTERFACE).await
+async fn metrics<'a>(proxy: &'a ManagerProxy<'_>) -> zbus::Result<MetricsProxy<'a>> {
+    MetricsProxy::new(proxy.inner().connection()).await
 }
-async fn identities(proxy: &Proxy<'_>, query: &str) -> anyhow::Result<Vec<GoalIdentityInfo>> {
-    Ok(proxy.call("ListGoalIdentities", &(query,)).await?)
+async fn identities(
+    proxy: &MetricsProxy<'_>,
+    query: &str,
+) -> anyhow::Result<Vec<GoalIdentityInfo>> {
+    Ok(proxy.list_goal_identities(query).await?)
 }
-async fn identity(proxy: &Proxy<'_>, query: &str) -> anyhow::Result<GoalIdentityInfo> {
+async fn identity(proxy: &MetricsProxy<'_>, query: &str) -> anyhow::Result<GoalIdentityInfo> {
     let rows = identities(proxy, query).await?;
     if let Some(row) = rows.iter().find(|g| g.instance_id == query) {
         return Ok(row.clone());
@@ -112,7 +117,7 @@ async fn identity(proxy: &Proxy<'_>, query: &str) -> anyhow::Result<GoalIdentity
         .max_by_key(|g| g.observed_at_ms)
         .ok_or_else(|| anyhow::anyhow!("Goal not found"))
 }
-async fn project_id(manager: &Proxy<'_>, args: &ReportArgs) -> anyhow::Result<String> {
+async fn project_id(manager: &ManagerProxy<'_>, args: &ReportArgs) -> anyhow::Result<String> {
     if args.all {
         return Ok(String::new());
     }
@@ -138,7 +143,7 @@ async fn project_id(manager: &Proxy<'_>, args: &ReportArgs) -> anyhow::Result<St
     Ok(ids.into_iter().next().unwrap())
 }
 async fn timeline(
-    manager: &Proxy<'_>,
+    manager: &ManagerProxy<'_>,
     args: &ReportArgs,
     id: Option<&str>,
     direct: bool,
@@ -156,7 +161,7 @@ async fn timeline(
         project_id(manager, args).await?
     };
     Ok(proxy
-        .call("WorkTimeline", &(goal, project, from, to, !direct))
+        .work_timeline(&goal, &project, from, to, !direct)
         .await?)
 }
 fn when(ms: u64) -> String {
@@ -176,7 +181,7 @@ fn duration(ms: u64) -> String {
     )
 }
 
-pub async fn run(manager: &Proxy<'_>, command: MetricsCommand) -> anyhow::Result<()> {
+pub async fn run(manager: &ManagerProxy<'_>, command: MetricsCommand) -> anyhow::Result<()> {
     let proxy = metrics(manager).await?;
     match command {
         MetricsCommand::Instances { id, json } => {
@@ -202,9 +207,7 @@ pub async fn run(manager: &Proxy<'_>, command: MetricsCommand) -> anyhow::Result
         MetricsCommand::History { id, range } => {
             let goal = identity(&proxy, &id).await?;
             let (from, to) = range.bounds()?;
-            let rows: Vec<GoalEventInfo> = proxy
-                .call("GoalHistory", &(goal.instance_id, from, to))
-                .await?;
+            let rows: Vec<GoalEventInfo> = proxy.goal_history(&goal.instance_id, from, to).await?;
             if range.json {
                 println!("{}", serde_json::to_string(&rows)?);
             } else {
@@ -243,7 +246,7 @@ pub async fn run(manager: &Proxy<'_>, command: MetricsCommand) -> anyhow::Result
             let goal = identity(&proxy, &id).await?;
             let (from, to) = range.bounds()?;
             let stats: GoalStatsInfo = proxy
-                .call("GoalStats", &(goal.instance_id, from, to, !direct))
+                .goal_stats(&goal.instance_id, from, to, !direct)
                 .await?;
             if range.json {
                 println!("{}", serde_json::to_string(&stats)?);
@@ -282,7 +285,7 @@ pub async fn run(manager: &Proxy<'_>, command: MetricsCommand) -> anyhow::Result
     Ok(())
 }
 
-pub async fn report(manager: &Proxy<'_>, args: ReportArgs) -> anyhow::Result<()> {
+pub async fn report(manager: &ManagerProxy<'_>, args: ReportArgs) -> anyhow::Result<()> {
     let rows = timeline(manager, &args, None, false).await?;
     let mut totals: BTreeMap<(String, String), serde_json::Value> = BTreeMap::new();
     for s in rows {

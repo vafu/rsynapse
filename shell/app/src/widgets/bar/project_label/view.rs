@@ -34,16 +34,6 @@ pub(super) fn project_icon_render(model: &ProjectLabelVm) -> NerdIcon {
     NerdIcon::new(model.project_icon_glyph.clone())
 }
 
-// Build status icon rendering is paused while the status is moved to a new surface.
-// pub(super) fn workspace_build_indicator_state(state: WorkspaceBuildState) -> BuildIndicatorState {
-//     match state {
-//         WorkspaceBuildState::None => BuildIndicatorState::None,
-//         WorkspaceBuildState::Running => BuildIndicatorState::Running,
-//         WorkspaceBuildState::Failed => BuildIndicatorState::Failed,
-//         WorkspaceBuildState::Finished => BuildIndicatorState::Finished,
-//     }
-// }
-
 pub(super) fn project_primary(model: &ProjectLabelVm, _workspace: &WorkspaceNode) -> String {
     model
         .project_name

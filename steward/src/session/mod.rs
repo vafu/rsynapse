@@ -190,8 +190,8 @@ pub async fn watch(manager: Arc<Manager>) -> anyhow::Result<()> {
                 message = relations.next() => {
                     let message = message.ok_or_else(|| anyhow::anyhow!("session relation source ended"))??;
                     message.body().deserialize::<locus::RelationRecord>().is_ok_and(|r| r.relation == crate::relations::WORKSPACE_PROJECT)
-                        || message.body().deserialize::<(locus::RelationEndpoint, String)>()
-                            .is_ok_and(|(_, relation)| relation == crate::relations::WORKSPACE_PROJECT)
+                        || message.body().deserialize::<(locus::RelationEndpoint, String, u32)>()
+                            .is_ok_and(|(_, relation, _)| relation == crate::relations::WORKSPACE_PROJECT)
                 },
                 message = owners.next() => {
                     let message = message.ok_or_else(|| anyhow::anyhow!("session owner source ended"))?;

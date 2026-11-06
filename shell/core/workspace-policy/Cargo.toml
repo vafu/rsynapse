@@ -1,0 +1,12 @@
+[package]
+name = "workspace-policy"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+workspace-dbus-api = { path = "../../../workspace-dbus/api" }
+locus = { path = "../../../locus" }
+proj-model = { package = "rsynapse-projd-model", path = "../../../projd/model" }

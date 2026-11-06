@@ -65,9 +65,17 @@ fn locus_burst_cannot_freeze_project_assignment_display() {
             .await
             .unwrap();
         let (sender, receiver) = async_channel::bounded(1);
-        let watcher = tokio::spawn(run_locus_workspace_project(
+        let watcher = tokio::spawn(crate::locus_watch::run_relation_watch(
             sender,
-            workspace_subject("selected".into()),
+            vec![workspace_subject("selected".into())],
+            WORKSPACE_PROJECT_RELATION,
+            |records| {
+                records
+                    .into_iter()
+                    .find(|record| record.subject == workspace_subject("selected".into()))
+                    .map(WorkspaceProject::from)
+                    .unwrap_or_default()
+            },
         ));
         let first = tokio::time::timeout(std::time::Duration::from_secs(5), receiver.recv())
             .await

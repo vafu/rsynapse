@@ -2,10 +2,9 @@ mod identity;
 
 use std::collections::HashMap;
 
-use futures_util::StreamExt;
-use locus::{RelationEndpoint, RelationRecord};
+use locus::{RelationEndpoint, RelationsProxy};
 use shell_core::source::{self, Observable, rx::Observable as _};
-use zbus::{Connection, Proxy};
+use zbus::Connection;
 
 use super::IconChoice;
 use crate::widgets::bar::workspace::WorkspaceObject;
@@ -37,25 +36,10 @@ pub(in crate::widgets::bar) fn set_workspace_icon_override(
     icon: IconChoice,
     picker_input: String,
 ) {
-    std::thread::spawn(move || {
-        let runtime = match tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-        {
-            Ok(runtime) => runtime,
-            Err(error) => {
-                eprintln!("[workspace-icon-override] failed to start runtime: {error}");
-                return;
-            }
-        };
-        if let Err(error) = runtime.block_on(set_workspace_icon_override_async(
-            workspace_id,
-            workspace_name,
-            icon,
-            picker_input,
-        )) {
-            eprintln!("[workspace-icon-override] failed to set override: {error}");
-        }
+    source::write::spawn("workspace icon override", async move {
+        set_workspace_icon_override_async(workspace_id, workspace_name, icon, picker_input)
+            .await
+            .map_err(|error| error)
     });
 }
 
@@ -63,126 +47,29 @@ pub(in crate::widgets::bar) fn clear_workspace_icon_override(
     workspace_id: String,
     workspace_name: String,
 ) {
-    std::thread::spawn(move || {
-        let runtime = match tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-        {
-            Ok(runtime) => runtime,
-            Err(error) => {
-                eprintln!("[workspace-icon-override] failed to start runtime: {error}");
-                return;
-            }
-        };
-        if let Err(error) = runtime.block_on(clear_workspace_icon_override_async(
-            workspace_id,
-            workspace_name,
-        )) {
-            eprintln!("[workspace-icon-override] failed to clear override: {error}");
-        }
+    source::write::spawn("workspace icon clear", async move {
+        clear_workspace_icon_override_async(workspace_id, workspace_name)
+            .await
+            .map_err(|error| error)
     });
 }
 
 fn locus_workspace_icon_override(
     identity: WorkspaceIconIdentity,
 ) -> Observable<Option<IconChoice>> {
-    let key = format!("{:?}", identity.subjects);
-    source::shared_by_key("rsynapse.workspace-icon-override", key, move || {
-        let identity = identity.clone();
-        source::from_task(move |sender| {
-            let identity = identity.clone();
-            async move {
-                let Err(error) = run_locus_workspace_icon_override(sender, identity.clone()).await
-                else {
-                    return;
-                };
-                eprintln!(
-                    "[workspace-icon-override] failed to watch locus override for {:?}: {error}",
-                    identity.subjects
-                );
-            }
+    let subjects = identity.subjects;
+    let filter_subjects = subjects.clone();
+    source::watch_relation(subjects, WORKSPACE_ICON_OVERRIDE_RELATION)
+        .map(move |records| {
+            filter_subjects.iter().find_map(|subject| {
+                records
+                    .iter()
+                    .find(|record| record.subject == *subject)
+                    .and_then(icon_choice_from_record)
+            })
         })
         .distinct_until_changed()
         .box_it()
-    })
-}
-
-async fn run_locus_workspace_icon_override(
-    sender: async_channel::Sender<Result<Option<IconChoice>, String>>,
-    identity: WorkspaceIconIdentity,
-) -> Result<(), String> {
-    let connection = Connection::session()
-        .await
-        .map_err(|error| format!("connect session bus: {error}"))?;
-    let proxy = locus_proxy(&connection)
-        .await
-        .map_err(|error| format!("connect locus proxy: {error}"))?;
-
-    send_override(&sender, &proxy, &identity.subjects).await?;
-
-    macro_rules! signal {
-        ($name:literal) => {
-            Box::pin(proxy.receive_signal($name).await.map_err(to_string)?)
-        };
-    }
-    let mut added = signal!("RelationAdded");
-    let mut updated = signal!("RelationUpdated");
-    let mut removed = signal!("RelationRemoved");
-    let mut cleared = signal!("RelationCleared");
-
-    loop {
-        tokio::select! {
-            message = added.next() => {
-                let Some(message) = message else { return Ok(()); };
-                if relation_record_matches(&message, &identity.subjects)? {
-                    send_override(&sender, &proxy, &identity.subjects).await?;
-                }
-            }
-            message = updated.next() => {
-                let Some(message) = message else { return Ok(()); };
-                if relation_record_matches(&message, &identity.subjects)? {
-                    send_override(&sender, &proxy, &identity.subjects).await?;
-                }
-            }
-            message = removed.next() => {
-                let Some(message) = message else { return Ok(()); };
-                if relation_record_matches(&message, &identity.subjects)? {
-                    send_override(&sender, &proxy, &identity.subjects).await?;
-                }
-            }
-            message = cleared.next() => {
-                let Some(message) = message else { return Ok(()); };
-                if clear_matches(&message, &identity.subjects)? {
-                    send_override(&sender, &proxy, &identity.subjects).await?;
-                }
-            }
-        }
-    }
-}
-
-async fn send_override(
-    sender: &async_channel::Sender<Result<Option<IconChoice>, String>>,
-    proxy: &Proxy<'_>,
-    subjects: &[RelationEndpoint],
-) -> Result<(), String> {
-    let records = match proxy
-        .call::<_, _, Vec<RelationRecord>>("List", &(WORKSPACE_ICON_OVERRIDE_RELATION,))
-        .await
-    {
-        Ok(records) => records,
-        Err(error) if is_locus_unavailable(&error) => Vec::new(),
-        Err(error) => return Err(format!("read locus icon override relations: {error}")),
-    };
-    let icon = subjects.iter().find_map(|subject| {
-        records
-            .iter()
-            .find(|record| record.subject == *subject)
-            .and_then(icon_choice_from_record)
-    });
-    sender
-        .send(Ok(icon))
-        .await
-        .map_err(|_| "workspace icon override subscriber dropped".to_string())
 }
 
 async fn set_workspace_icon_override_async(
@@ -195,7 +82,7 @@ async fn set_workspace_icon_override_async(
     let connection = Connection::session()
         .await
         .map_err(|error| format!("connect session bus: {error}"))?;
-    let proxy = locus_proxy(&connection)
+    let proxy = RelationsProxy::new(&connection)
         .await
         .map_err(|error| format!("connect locus proxy: {error}"))?;
     let identity = WorkspaceIconIdentity::new(workspace_id, Some(&workspace_name));
@@ -205,15 +92,12 @@ async fn set_workspace_icon_override_async(
         metadata.insert(PICKER_INPUT_METADATA.to_owned(), input);
     }
     proxy
-        .call::<_, _, locus::RelationState>(
-            "SetOneWithPersistence",
-            &(
-                identity.primary().clone(),
-                WORKSPACE_ICON_OVERRIDE_RELATION,
-                target,
-                metadata,
-                true,
-            ),
+        .set_one_with_persistence(
+            identity.primary().clone(),
+            WORKSPACE_ICON_OVERRIDE_RELATION,
+            target,
+            metadata,
+            true,
         )
         .await
         .map_err(|error| format!("set locus icon override relation: {error}"))?;
@@ -230,7 +114,7 @@ async fn clear_workspace_icon_override_async(
     let connection = Connection::session()
         .await
         .map_err(|error| format!("connect session bus: {error}"))?;
-    let proxy = locus_proxy(&connection)
+    let proxy = RelationsProxy::new(&connection)
         .await
         .map_err(|error| format!("connect locus proxy: {error}"))?;
     let identity = WorkspaceIconIdentity::new(workspace_id, Some(&workspace_name));
@@ -240,60 +124,18 @@ async fn clear_workspace_icon_override_async(
     Ok(())
 }
 
-async fn clear_subject(proxy: &Proxy<'_>, subject: RelationEndpoint) -> Result<(), String> {
+async fn clear_subject(
+    proxy: &RelationsProxy<'_>,
+    subject: RelationEndpoint,
+) -> Result<(), String> {
     proxy
-        .call::<_, _, u32>("Clear", &(subject, WORKSPACE_ICON_OVERRIDE_RELATION))
+        .clear(subject, WORKSPACE_ICON_OVERRIDE_RELATION)
         .await
         .map(|_| ())
         .map_err(|error| format!("clear locus icon override relation: {error}"))
 }
 
-async fn locus_proxy(connection: &Connection) -> zbus::Result<Proxy<'_>> {
-    Proxy::new(
-        connection,
-        locus::BUS_NAME,
-        locus::OBJECT_PATH,
-        locus::RELATIONS_INTERFACE,
-    )
-    .await
-}
-
-fn relation_record_matches(
-    message: &zbus::Message,
-    subjects: &[RelationEndpoint],
-) -> Result<bool, String> {
-    let record = message
-        .body()
-        .deserialize::<RelationRecord>()
-        .map_err(|error| format!("decode locus relation signal: {error}"))?;
-    Ok(subjects.contains(&record.subject) && record.relation == WORKSPACE_ICON_OVERRIDE_RELATION)
-}
-
-fn clear_matches(message: &zbus::Message, subjects: &[RelationEndpoint]) -> Result<bool, String> {
-    let (cleared_subject, cleared_relation, _count) = message
-        .body()
-        .deserialize::<(RelationEndpoint, String, u32)>()
-        .map_err(|error| format!("decode locus clear signal: {error}"))?;
-    Ok(subjects.contains(&cleared_subject) && cleared_relation == WORKSPACE_ICON_OVERRIDE_RELATION)
-}
-
 fn non_empty(value: String) -> Option<String> {
     let value = value.trim().to_owned();
     (!value.is_empty()).then_some(value)
-}
-
-fn to_string(error: zbus::Error) -> String {
-    error.to_string()
-}
-
-fn is_locus_unavailable(error: &zbus::Error) -> bool {
-    match error {
-        zbus::Error::MethodError(name, _, _) => {
-            name.as_str() == "org.freedesktop.DBus.Error.ServiceUnknown"
-        }
-        zbus::Error::FDO(error) => {
-            matches!(error.as_ref(), zbus::fdo::Error::ServiceUnknown(_))
-        }
-        _ => false,
-    }
 }

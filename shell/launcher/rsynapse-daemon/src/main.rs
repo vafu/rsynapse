@@ -1,18 +1,15 @@
-use anyhow::{Context, Result};
-use libloading::{Library, Symbol};
+use anyhow::Result;
 use notify::{
     EventKind, RecursiveMode, Watcher,
     event::{AccessKind, AccessMode, CreateKind},
 };
 use rsynapse_launcher_api::{
-    DescribeResponse, KeyEvent as DbusKeyEvent, KeyRequest, KeyResponse, LauncherGroup,
-    LauncherHint, LauncherResult, LauncherView, SearchRequest, SearchResponse,
+    DescribeResponse, KeyRequest, KeyResponse, LauncherGroup, LauncherHint, LauncherResult,
+    LauncherView, SearchRequest, SearchResponse,
 };
-use rsynapse_plugin::{Key, KeyEvent, KeyOutcome, Plugin, PluginGroup, QueryContext, ResultItem};
+use rsynapse_plugin::{Plugin, PluginGroup, QueryContext, ResultItem};
 use serde::Deserialize;
 use std::collections::HashMap;
-use std::path::PathBuf;
-use std::process::Command;
 use std::sync::{Arc, Mutex, RwLock};
 use zbus::{ConnectionBuilder, interface};
 
@@ -62,47 +59,26 @@ struct LoadedGroup {
 struct PluginManager {
     plugins: Vec<Box<dyn Plugin>>,
     groups: Vec<LoadedGroup>,
-    _libraries: Vec<Library>,
 }
 
 impl PluginManager {
-    fn new() -> Self {
-        Self {
+    fn with_builtins(plugins: Vec<Box<dyn Plugin>>) -> Self {
+        let mut manager = Self {
             plugins: Vec::new(),
             groups: Vec::new(),
-            _libraries: Vec::new(),
-        }
-    }
-
-    unsafe fn load_plugins_from(&mut self, path: &PathBuf) -> Result<()> {
-        println!("[Daemon] Loading plugins from: {:?}", path);
-
-        for entry in std::fs::read_dir(path)
-            .with_context(|| format!("Failed to read plugin directory at: {:?}", path))?
-        {
-            let entry = entry?;
-            let path = entry.path();
-            if path.is_file() && path.extension().map_or(false, |e| e == "so") {
-                println!("[Daemon] Attempting to load library: {:?}", path);
-
-                let lib = unsafe { Library::new(&path) }?;
-                let constructor: Symbol<unsafe extern "C" fn() -> *mut dyn Plugin> =
-                    unsafe { lib.get(b"_rsynapse_init") }?;
-                let plugin = unsafe { Box::from_raw(constructor()) };
-                println!("[Daemon] Loaded plugin: {}", plugin.name());
-
-                let plugin_index = self.plugins.len();
-                for group in plugin.groups() {
-                    self.groups.push(LoadedGroup {
-                        group,
-                        plugin_index,
-                    });
-                }
-                self.plugins.push(plugin);
-                self._libraries.push(lib);
+        };
+        for plugin in plugins {
+            let plugin_index = manager.plugins.len();
+            for mut group in plugin.groups() {
+                group.plugin = plugin.name().to_owned();
+                manager.groups.push(LoadedGroup {
+                    group,
+                    plugin_index,
+                });
             }
+            manager.plugins.push(plugin);
         }
-        Ok(())
+        manager
     }
 
     fn resolve_group(&self, param: &str) -> Option<&LoadedGroup> {
@@ -122,7 +98,7 @@ impl PluginManager {
             .map(|loaded| LauncherGroup {
                 id: loaded.group.id.clone(),
                 title: loaded.group.title.clone(),
-                description: loaded.group.description.clone().unwrap_or_default(),
+                description: loaded.group.description.clone(),
                 aliases: loaded.group.aliases.clone(),
                 plugin: self.plugins[loaded.plugin_index].name().to_owned(),
             })
@@ -192,17 +168,6 @@ struct CachedResult {
     item: ResultItem,
 }
 
-fn launcher_result(item: ResultItem) -> LauncherResult {
-    LauncherResult {
-        id: item.id,
-        title: item.title,
-        description: item.description.unwrap_or_default(),
-        icon: item.icon.unwrap_or_default(),
-        data: item.data.unwrap_or_default(),
-        current: item.current,
-    }
-}
-
 fn default_hints() -> Vec<LauncherHint> {
     vec![
         LauncherHint {
@@ -223,7 +188,7 @@ fn default_hints() -> Vec<LauncherHint> {
 fn view_for_group(group: &PluginGroup) -> LauncherView {
     LauncherView {
         title: group.title.clone(),
-        subtitle: group.description.clone().unwrap_or_default(),
+        subtitle: group.description.clone(),
         placeholder: format!("Search {}", group.title.to_lowercase()),
         hints: default_hints(),
     }
@@ -238,21 +203,79 @@ fn default_view() -> LauncherView {
     }
 }
 
-fn plugin_key_event(event: &DbusKeyEvent) -> KeyEvent {
-    let key = match event.key.as_str() {
-        "Delete" => Key::Delete,
-        "Backspace" => Key::Backspace,
-        "Tab" => Key::Tab,
-        "Enter" => Key::Enter,
-        "Escape" => Key::Escape,
-        other => Key::Other(other.to_owned()),
-    };
-    KeyEvent {
-        key,
-        ctrl: event.ctrl,
-        alt: event.alt,
-        shift: event.shift,
+fn run_search(
+    manager: &PluginManager,
+    request: SearchRequest,
+) -> (LauncherView, Vec<LauncherResult>, CachedSearch) {
+    let resolved = resolve_request(manager, &request);
+    let mut tagged: Vec<(f64, String, ResultItem)> = Vec::new();
+    let mut plugin_views = Vec::new();
+
+    for index in resolved.plugin_indices {
+        let plugin = &manager.plugins[index];
+        let plugin_name = plugin.name().to_owned();
+        let context = QueryContext {
+            group: resolved.focused_group,
+            params: &resolved.params,
+            query: &request.query,
+            selected: non_empty(&request.selected),
+        };
+        let response = plugin.query(&context);
+        if let Some(view) = response.view {
+            plugin_views.push(view);
+        }
+        for item in response.results {
+            tagged.push((item.score, plugin_name.clone(), item));
+        }
     }
+
+    tagged.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+
+    let mut cached = CachedSearch::default();
+    let results = tagged
+        .into_iter()
+        .map(|(_, plugin_name, item)| {
+            let wire = item.clone();
+            cached.results.push(CachedResult { plugin_name, item });
+            wire
+        })
+        .collect();
+
+    let view = resolved
+        .focused_group
+        .and_then(|_| plugin_views.into_iter().next())
+        .unwrap_or_else(|| match resolved.focused_group {
+            Some(group_id) => manager.view_for_group(group_id),
+            None => default_view(),
+        });
+    (view, results, cached)
+}
+
+fn run_key(manager: &PluginManager, cache: &CachedSearch, request: KeyRequest) -> KeyResponse {
+    let cached = cache
+        .results
+        .iter()
+        .find(|result| result.item.id == request.selected)
+        .map(|result| (result.plugin_name.clone(), result.item.id.clone()));
+    let Some((plugin_name, selected)) = cached else {
+        return KeyResponse::default();
+    };
+    let Some(plugin) = manager
+        .plugins
+        .iter()
+        .find(|plugin| plugin.name() == plugin_name)
+    else {
+        return KeyResponse::default();
+    };
+
+    let (group, params) = key_request_context(manager, &request.params);
+    let context = QueryContext {
+        group,
+        params: &params,
+        query: &request.query,
+        selected: Some(selected.as_str()),
+    };
+    plugin.handle_key(&request.event, &context)
 }
 
 // --- D-Bus interface ---
@@ -267,51 +290,15 @@ struct Engine {
 #[interface(name = "org.rsynapse.Engine1")]
 impl Engine {
     async fn search(&self, request: SearchRequest) -> SearchResponse {
-        let resolved = resolve_request(&self.manager, &request);
-        let mut tagged: Vec<(f64, String, ResultItem)> = Vec::new();
-        let mut plugin_views = Vec::new();
-
-        for index in resolved.plugin_indices {
-            let plugin = &self.manager.plugins[index];
-            let plugin_name = plugin.name().to_owned();
-            let context = QueryContext {
-                group: resolved.focused_group,
-                params: &resolved.params,
-                query: &request.query,
-                selected: non_empty(&request.selected),
-            };
-            let response = plugin.query(&context);
-            if let Some(view) = response.view {
-                plugin_views.push(view);
-            }
-            for item in response.results {
-                tagged.push((item.score, plugin_name.clone(), item));
-            }
-        }
-
-        tagged.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
-
-        let mut cache = self.last_search.lock().unwrap();
-        cache.results.clear();
-
-        let results = tagged
-            .into_iter()
-            .map(|(_, plugin_name, item)| {
-                let wire = launcher_result(item.clone());
-                cache.results.push(CachedResult { plugin_name, item });
-                wire
-            })
-            .collect();
-
-        let view = resolved
-            .focused_group
-            .and_then(|_| plugin_views.into_iter().next())
-            .map(launcher_view)
-            .unwrap_or_else(|| match resolved.focused_group {
-                Some(group_id) => self.manager.view_for_group(group_id),
-                None => default_view(),
-            });
-
+        let manager = self.manager.clone();
+        let (view, results, cached) =
+            tokio::task::spawn_blocking(move || run_search(&manager, request))
+                .await
+                .unwrap_or_else(|error| {
+                    eprintln!("[Daemon] search worker failed: {error}");
+                    (default_view(), Vec::new(), CachedSearch::default())
+                });
+        *self.last_search.lock().unwrap() = cached;
         SearchResponse { view, results }
     }
 
@@ -319,51 +306,19 @@ impl Engine {
         DescribeResponse {
             default_view: default_view(),
             groups: self.manager.group_infos(),
+            abi_version: rsynapse_launcher_api::PLUGIN_ABI_VERSION,
         }
     }
 
     async fn handle_key(&self, request: KeyRequest) -> KeyResponse {
-        let cached = {
-            let cache = self.last_search.lock().unwrap();
-            cache
-                .results
-                .iter()
-                .find(|result| result.item.id == request.selected)
-                .map(|result| (result.plugin_name.clone(), result.item.id.clone()))
-        };
-        let Some((plugin_name, selected)) = cached else {
-            return KeyResponse::default();
-        };
-        let Some(plugin) = self
-            .manager
-            .plugins
-            .iter()
-            .find(|plugin| plugin.name() == plugin_name)
-        else {
-            return KeyResponse::default();
-        };
-
-        let (group, params) = key_request_context(&self.manager, &request.params);
-        let context = QueryContext {
-            group,
-            params: &params,
-            query: &request.query,
-            selected: Some(selected.as_str()),
-        };
-        let event = plugin_key_event(&request.event);
-        match plugin.handle_key(&event, &context) {
-            KeyOutcome::Ignored => KeyResponse::default(),
-            KeyOutcome::Handled {
-                refresh,
-                close,
-                message,
-            } => KeyResponse {
-                handled: true,
-                refresh,
-                close,
-                message: message.unwrap_or_default(),
-            },
-        }
+        let manager = self.manager.clone();
+        let cache = self.last_search.lock().unwrap().clone();
+        tokio::task::spawn_blocking(move || run_key(&manager, &cache, request))
+            .await
+            .unwrap_or_else(|error| {
+                eprintln!("[Daemon] key worker failed: {error}");
+                KeyResponse::default()
+            })
     }
 
     async fn execute(&self, id: &str) -> String {
@@ -398,33 +353,44 @@ impl Engine {
             }
         }
 
-        let config = self.config.read().unwrap();
-        let config_execute = config
-            .plugins
-            .get(&plugin_name)
-            .and_then(|cfg| cfg.execute.as_deref());
-
-        let template = if let Some(tmpl) = config_execute {
-            tmpl
-        } else if let Some(default) = self.execute_defaults.get(&plugin_name) {
-            default.as_str()
-        } else {
-            let msg = format!("No execute config for plugin '{}'", plugin_name);
-            eprintln!("[Daemon] {}", msg);
-            return format!("Error: {}", msg);
+        let template = {
+            let config = self.config.read().unwrap();
+            let config_execute = config
+                .plugins
+                .get(&plugin_name)
+                .and_then(|cfg| cfg.execute.clone());
+            if let Some(template) = config_execute {
+                template
+            } else if let Some(default) = self.execute_defaults.get(&plugin_name) {
+                default.clone()
+            } else {
+                let msg = format!("No execute config for plugin '{}'", plugin_name);
+                eprintln!("[Daemon] {}", msg);
+                return format!("Error: {}", msg);
+            }
         };
 
         let command = template
-            .replace("{id}", &item.id)
-            .replace("{title}", &item.title)
-            .replace("{description}", item.description.as_deref().unwrap_or(""))
-            .replace("{icon}", item.icon.as_deref().unwrap_or(""))
-            .replace("{data}", item.data.as_deref().unwrap_or(""));
+            .replace("{id}", &shell_quote(&item.id))
+            .replace("{title}", &shell_quote(&item.title))
+            .replace("{description}", &shell_quote(&item.description))
+            .replace("{icon}", &shell_quote(&item.icon))
+            .replace("{data}", &shell_quote(&item.data));
 
         eprintln!("[Daemon] Executing: {}", command);
 
-        match Command::new("sh").arg("-c").arg(&command).spawn() {
-            Ok(_) => String::new(),
+        match tokio::process::Command::new("sh")
+            .arg("-c")
+            .arg(&command)
+            .status()
+            .await
+        {
+            Ok(status) if status.success() => String::new(),
+            Ok(status) => {
+                let msg = format!("Command exited with {status}");
+                eprintln!("[Daemon] {}", msg);
+                format!("Error: {}", msg)
+            }
             Err(e) => {
                 let msg = format!("Failed to execute: {}", e);
                 eprintln!("[Daemon] {}", msg);
@@ -434,20 +400,14 @@ impl Engine {
     }
 }
 
-fn launcher_view(view: rsynapse_plugin::PluginView) -> LauncherView {
-    LauncherView {
-        title: view.title,
-        subtitle: view.subtitle.unwrap_or_default(),
-        placeholder: view.placeholder,
-        hints: view
-            .hints
-            .into_iter()
-            .map(|hint| LauncherHint {
-                key: hint.key,
-                label: hint.label,
-            })
-            .collect(),
+/// Quotes a value as one shell word so template substitution cannot change the
+/// command structure. Templates come from user configuration; item fields come
+/// from plugin results and may contain arbitrary query text.
+fn shell_quote(value: &str) -> String {
+    if value.is_empty() {
+        return "''".to_owned();
     }
+    format!("'{}'", value.replace('\'', "'\\''"))
 }
 
 fn non_empty(value: &str) -> Option<&str> {
@@ -457,40 +417,25 @@ fn non_empty(value: &str) -> Option<&str> {
 
 // --- Main ---
 
-fn get_plugin_path() -> Option<PathBuf> {
-    if cfg!(debug_assertions) {
-        println!("[Daemon] Using DEBUG plugin path.");
-        Some(PathBuf::from("./target/debug/"))
-    } else {
-        println!("[Daemon] Using RELEASE plugin path.");
-        dirs::home_dir().map(|mut path| {
-            path.push(".local/lib/rsynapse/plugins/");
-            path
-        })
-    }
+fn builtin_plugins() -> Vec<Box<dyn Plugin>> {
+    vec![
+        rsynapse_plugin_calc::plugin(),
+        rsynapse_plugin_commands::plugin(),
+        rsynapse_plugin_launcher::plugin(),
+        rsynapse_plugin_shell::plugin(),
+        rsynapse_plugin_workspaces::plugin(),
+    ]
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let mut manager = PluginManager::new();
+    let mut manager = PluginManager::with_builtins(builtin_plugins());
     let config = load_config();
 
-    eprintln!("[Daemon] [INFO] Daemon starting up. Determining plugin path...");
-    if let Some(plugin_path) = get_plugin_path() {
-        if plugin_path.exists() {
-            unsafe {
-                manager.load_plugins_from(&plugin_path)?;
-            }
-        } else {
-            eprintln!(
-                "[Daemon] Warning: Plugin directory does not exist at {:?}",
-                plugin_path
-            );
-        }
-    } else {
-        eprintln!("[Daemon] Error: Could not determine plugin path.");
-    }
-
+    eprintln!(
+        "[Daemon] Loaded {} built-in plugin(s).",
+        manager.plugins.len()
+    );
     if manager.plugins.is_empty() {
         eprintln!("[Daemon] Warning: No plugins loaded. The daemon will not return any results.");
     }
@@ -574,7 +519,8 @@ async fn main() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rsynapse_plugin::{KeyOutcome, PluginResponse, PluginView, QueryContext, ResultItem};
+    use rsynapse_launcher_api::KeyEvent;
+    use rsynapse_plugin::{KeyResponse, PluginResponse, PluginView, QueryContext, ResultItem};
 
     struct TestPlugin {
         name: &'static str,
@@ -597,8 +543,8 @@ mod tests {
             }
         }
 
-        fn handle_key(&self, _event: &KeyEvent, _context: &QueryContext<'_>) -> KeyOutcome {
-            KeyOutcome::Ignored
+        fn handle_key(&self, _event: &KeyEvent, _context: &QueryContext<'_>) -> KeyResponse {
+            KeyResponse::default()
         }
     }
 
@@ -609,8 +555,9 @@ mod tests {
                 groups: vec![PluginGroup {
                     id: "workspaces".into(),
                     title: "Workspaces".into(),
-                    description: None,
+                    description: String::new(),
                     aliases: vec!["workspace".into(), "ws".into()],
+                    plugin: String::new(),
                 }],
             },
             TestPlugin {
@@ -618,23 +565,18 @@ mod tests {
                 groups: vec![PluginGroup {
                     id: "apps".into(),
                     title: "Applications".into(),
-                    description: None,
+                    description: String::new(),
                     aliases: vec!["app".into()],
+                    plugin: String::new(),
                 }],
             },
         ];
-        let mut manager = PluginManager::new();
-        for plugin in plugins {
-            let plugin_index = manager.plugins.len();
-            for group in plugin.groups() {
-                manager.groups.push(LoadedGroup {
-                    group,
-                    plugin_index,
-                });
-            }
-            manager.plugins.push(Box::new(plugin));
-        }
-        manager
+        PluginManager::with_builtins(
+            plugins
+                .into_iter()
+                .map(|plugin| Box::new(plugin) as Box<dyn Plugin>)
+                .collect(),
+        )
     }
 
     #[test]
@@ -675,15 +617,69 @@ mod tests {
     }
 
     #[test]
-    fn delete_key_maps_to_the_plugin_key_event() {
-        let event = plugin_key_event(&DbusKeyEvent {
+    fn static_registry_covers_all_builtin_plugins() {
+        let names = builtin_plugins()
+            .iter()
+            .map(|plugin| plugin.name())
+            .collect::<Vec<_>>();
+        for expected in [
+            "Calculator",
+            "Commands",
+            "Application Launcher",
+            "Shell Executor",
+            "Workspaces",
+        ] {
+            assert!(
+                names.contains(&expected),
+                "missing plugin {expected}: {names:?}"
+            );
+        }
+        assert_eq!(names.len(), 5);
+    }
+
+    #[test]
+    fn key_events_use_the_shared_wire_type() {
+        let event = KeyEvent {
             key: "Delete".into(),
             ctrl: false,
             alt: true,
             shift: true,
-        });
-        assert_eq!(event.key, Key::Delete);
+        };
+        assert_eq!(event.key, "Delete");
         assert!(event.alt);
         assert!(event.shift);
+    }
+
+    #[test]
+    fn shell_quote_neutralizes_shell_syntax() {
+        assert_eq!(shell_quote("plain"), "'plain'");
+        assert_eq!(shell_quote(""), "''");
+        assert_eq!(shell_quote("a'b"), "'a'\\''b'");
+        assert_eq!(
+            shell_quote("$(touch /tmp/x); rm -rf /"),
+            "'$(touch /tmp/x); rm -rf /'"
+        );
+    }
+
+    #[test]
+    fn execute_template_substitution_keeps_fields_as_single_words() {
+        let template = "notify-send {title} {data}";
+        let item = ResultItem {
+            id: "id".into(),
+            title: "hello; rm -rf /".into(),
+            description: String::new(),
+            icon: String::new(),
+            data: "$(whoami)".into(),
+            score: 0.0,
+            current: false,
+        };
+        let command = template
+            .replace("{id}", &shell_quote(&item.id))
+            .replace("{title}", &shell_quote(&item.title))
+            .replace("{description}", &shell_quote(&item.description))
+            .replace("{icon}", &shell_quote(&item.icon))
+            .replace("{data}", &shell_quote(&item.data));
+
+        assert_eq!(command, "notify-send 'hello; rm -rf /' '$(whoami)'");
     }
 }

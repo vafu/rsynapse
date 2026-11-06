@@ -4,20 +4,19 @@ mod bar_item;
 mod battery;
 mod bluetooth;
 mod brightness;
+mod bzbus;
 mod context_zone;
 mod github_status;
 mod goals;
 mod icon_resolver;
 mod layout_indicator;
-// Build status icon rendering is paused while the status is moved to a new surface.
-// mod build_indicator;
-mod bzbus;
 mod monitors;
-mod mpris;
 mod network;
+mod popovers;
 mod power_profile;
 mod project;
 mod project_label;
+mod secondary;
 mod selected_project;
 mod source_errors;
 mod system_stats;
@@ -29,7 +28,7 @@ mod workspace;
 mod workspace_bar;
 mod workspaces;
 
-use std::{cell::RefCell, process::Command, rc::Rc, thread};
+use std::{cell::RefCell, rc::Rc, thread};
 
 use relm4::component::ComponentController;
 use relm4::prelude::*;
@@ -44,8 +43,8 @@ use shell_core::{
 use crate::widgets::button_group::{
     ButtonGroup, Config as ButtonGroupConfig, Direction, RevealMode,
 };
+use crate::widgets::nerd_icon::md;
 use crate::widgets::nerd_icon::{NerdIcon, NerdIconLabelExt};
-use crate::widgets::nerd_icon::{fa, md};
 
 use self::audio::{AudioRoutePopover, AudioView, audio_status};
 use self::battery::BatteryView;
@@ -55,9 +54,15 @@ use self::bluetooth::{
 };
 use self::brightness::{BrightnessView, brightness_status};
 use self::monitors::{primary_output, secondary_bar_changes};
-use self::mpris::{MprisView, mpris_status};
+
 use self::network::{NetworkView, network_status};
+use self::popovers::{mount_bluetooth_group_popover, mount_popover_component};
 use self::power_profile::{PowerProfileView, power_profile_status};
+use self::secondary::{
+    SecondaryBar, available_monitors, bar_window_config, launch_secondary_bar,
+    launch_secondary_bars, launch_workspace_bar, log_bar_monitor, monitor_output_name,
+    watch_monitors,
+};
 use self::selected_project::{SelectedWorkspaceView, selected_project_status};
 use self::source_errors::{SourceErrorRow, source_error_count, source_error_items};
 use self::system_stats::{ArcSide, SysStatsView, sys_stats};
@@ -123,7 +128,6 @@ impl std::fmt::Debug for MainBarInit {
 #[derive(Debug)]
 pub enum MainBarInput {
     Source(sources::Msg),
-    Media(MediaAction),
     ToggleBluetooth,
     CyclePowerProfile,
     ToggleNotificationCenter,
@@ -141,21 +145,8 @@ impl From<sources::Msg> for MainBarInput {
     }
 }
 
-#[derive(Debug)]
-pub enum MediaAction {
-    Previous,
-    PlayPause,
-    Next,
-}
-
-struct SecondaryBar {
-    output_name: String,
-    controller: AsyncController<MainBar>,
-}
-
 #[shell_macros::model]
 pub struct MainBar {
-    _workspace: Option<Controller<rsynapse_workspace::WorkspaceWindow>>,
     _workspace_selector: Option<Controller<WorkspaceSelector>>,
     _remarked: Option<Controller<rsynapse_remarked::RemarkedWindow>>,
     _media_overlay: Option<Controller<crate::widgets::MprisWindow>>,
@@ -197,9 +188,6 @@ pub struct MainBar {
 
     #[source(brightness_status())]
     brightness: BrightnessView,
-
-    #[source(mpris_status())]
-    mpris: MprisView,
 
     #[source(bluetooth_status())]
     bluetooth: BluetoothView,
@@ -495,75 +483,6 @@ impl SimpleAsyncComponent for MainBar {
                     set_orientation: gtk::Orientation::Horizontal,
                     set_valign: gtk::Align::Fill,
                     set_vexpand: true,
-
-                    #[name = "mpris_group"]
-                    gtk::Box {
-                        #[watch]
-                        set_css_classes: &mpris_classes(&model.mpris),
-                        #[watch]
-                        set_visible: model.mpris.visible,
-                        #[watch]
-                        set_tooltip_text: Some(model.mpris.tooltip.as_str()),
-                        set_halign: gtk::Align::End,
-                        set_orientation: gtk::Orientation::Horizontal,
-
-                        #[name = "mpris_details_revealer"]
-                        gtk::Revealer {
-                            set_reveal_child: false,
-                            set_transition_type: gtk::RevealerTransitionType::SlideRight,
-
-                            gtk::Label {
-                                add_css_class: "mpris-label",
-                                set_ellipsize: gtk::pango::EllipsizeMode::End,
-                                set_max_width_chars: 30,
-                                #[watch]
-                                set_label: model.mpris.metadata.as_str(),
-                            }
-                        },
-
-                        #[name = "mpris_previous_button"]
-                        gtk::Button {
-                            add_css_class: "flat",
-                            add_css_class: bar_item::ACTION_CLASS,
-                            add_css_class: "mpris-control",
-                            #[watch]
-                            set_sensitive: model.mpris.can_go_previous,
-
-                            gtk::Label {
-                                set_css_classes: &["nerdicon", "mpris-control-icon"],
-                                set_nerd_icon: NerdIcon::new(fa::FA_BACKWARD_STEP),
-                            }
-                        },
-
-                        #[name = "mpris_play_pause_button"]
-                        gtk::Button {
-                            add_css_class: "flat",
-                            add_css_class: bar_item::ACTION_CLASS,
-                            add_css_class: "mpris-control",
-                            #[watch]
-                            set_sensitive: model.mpris.can_play_pause,
-
-                            gtk::Label {
-                                set_css_classes: &["nerdicon", "mpris-control-icon"],
-                                #[watch]
-                                set_nerd_icon: model.mpris.play_pause_icon.clone(),
-                            }
-                        },
-
-                        #[name = "mpris_next_button"]
-                        gtk::Button {
-                            add_css_class: "flat",
-                            add_css_class: bar_item::ACTION_CLASS,
-                            add_css_class: "mpris-control",
-                            #[watch]
-                            set_sensitive: model.mpris.can_go_next,
-
-                            gtk::Label {
-                                set_css_classes: &["nerdicon", "mpris-control-icon"],
-                                set_nerd_icon: NerdIcon::new(fa::FA_FORWARD_STEP),
-                            }
-                        }
-                    },
 
                     #[local_ref]
                     system_stats_item -> gtk::Box {
@@ -1182,7 +1101,6 @@ impl SimpleAsyncComponent for MainBar {
             None,
             None,
             None,
-            None,
             osd,
             request_server,
             workspace_bar,
@@ -1226,28 +1144,6 @@ impl SimpleAsyncComponent for MainBar {
         widgets.clock_button.connect_clicked(move |_| {
             input_sender.emit(MainBarInput::ToggleNotificationCenter);
         });
-        let input_sender = sender.input_sender().clone();
-        widgets.mpris_previous_button.connect_clicked(move |_| {
-            input_sender.emit(MainBarInput::Media(MediaAction::Previous));
-        });
-        let input_sender = sender.input_sender().clone();
-        widgets.mpris_play_pause_button.connect_clicked(move |_| {
-            input_sender.emit(MainBarInput::Media(MediaAction::PlayPause));
-        });
-        let input_sender = sender.input_sender().clone();
-        widgets.mpris_next_button.connect_clicked(move |_| {
-            input_sender.emit(MainBarInput::Media(MediaAction::Next));
-        });
-        let mpris_motion = gtk::EventControllerMotion::new();
-        let mpris_revealer = widgets.mpris_details_revealer.clone();
-        mpris_motion.connect_enter(move |_, _, _| {
-            mpris_revealer.set_reveal_child(true);
-        });
-        let mpris_revealer = widgets.mpris_details_revealer.clone();
-        mpris_motion.connect_leave(move |_| {
-            mpris_revealer.set_reveal_child(false);
-        });
-        widgets.mpris_group.add_controller(mpris_motion);
         let input_sender = sender.input_sender().clone();
         widgets.bluetooth_power_button.connect_clicked(move |_| {
             input_sender.emit(MainBarInput::ToggleBluetooth);
@@ -1319,7 +1215,6 @@ impl SimpleAsyncComponent for MainBar {
                 self.maybe_show_audio_osd(previous_audio);
                 self.maybe_show_brightness_osd(previous_brightness);
             }
-            MainBarInput::Media(action) => launch_playerctl(action, &self.mpris.playerctl_name),
             MainBarInput::ToggleBluetooth => bluetooth::toggle_power(&self.bluetooth.status),
             MainBarInput::CyclePowerProfile => {
                 power_profile::cycle_power_profile(&self.power_profile.profile)
@@ -1338,8 +1233,10 @@ impl SimpleAsyncComponent for MainBar {
             MainBarInput::OpenWorkspaceSelector => {
                 self.workspace_selector_action(request::ToggleAction::Set(true))
             }
-            MainBarInput::WorkspaceProject(project) => {
-                self.workspace_action(request::ToggleAction::Set(true), Some(project))
+            MainBarInput::WorkspaceProject(_project) => {
+                // Legacy project-scoped workspace overlay route now opens the
+                // v2 remarked surface, which follows the focused project.
+                self.remarked_action(request::ToggleAction::Set(true))
             }
             MainBarInput::ToggleNotificationCenter => request_notification_center_toggle(),
             MainBarInput::CopyBranch => {
@@ -1472,7 +1369,6 @@ impl MainBar {
 fn main_bar_input_name(msg: &MainBarInput) -> &'static str {
     match msg {
         MainBarInput::Source(_) => "source",
-        MainBarInput::Media(_) => "media",
         MainBarInput::ToggleBluetooth => "toggle-bluetooth",
         MainBarInput::CyclePowerProfile => "cycle-power-profile",
         MainBarInput::ToggleNotificationCenter => "toggle-notification-center",
@@ -1505,7 +1401,7 @@ impl MainBar {
                 request::RequestResponse::Ok
             }
             request::ShellRequest::Workspace(action) => {
-                self.workspace_action(action, None);
+                self.remarked_action(action);
                 request::RequestResponse::Ok
             }
             request::ShellRequest::Remarked(action) => {
@@ -1521,31 +1417,6 @@ impl MainBar {
             ),
         };
         request.respond(response);
-    }
-
-    fn workspace_action(&mut self, action: request::ToggleAction, project: Option<String>) {
-        use rsynapse_workspace::{WorkspaceInput, WorkspaceWindow};
-        let project = project.filter(|id| !id.is_empty()).or_else(|| {
-            self.focused_project
-                .project
-                .as_ref()
-                .and_then(|p| p.project_id.clone())
-        });
-        if self._workspace.is_none() {
-            if action == request::ToggleAction::Set(false) {
-                return;
-            }
-            let builder = WorkspaceWindow::builder();
-            relm4::main_application().add_window(&builder.root);
-            self._workspace = Some(builder.launch(project.clone()).detach());
-        }
-        if let Some(window) = &self._workspace {
-            window.emit(match action {
-                request::ToggleAction::Set(true) => WorkspaceInput::Open(project),
-                request::ToggleAction::Set(false) => WorkspaceInput::Hide,
-                request::ToggleAction::Toggle => WorkspaceInput::Toggle(project),
-            });
-        }
     }
 
     fn workspace_selector_action(&mut self, action: request::ToggleAction) {
@@ -1661,155 +1532,6 @@ fn copy_branch_to_clipboard(branch: String) {
     });
 }
 
-fn available_monitors() -> Vec<gtk::gdk::Monitor> {
-    let Some(display) = gtk::gdk::Display::default() else {
-        return Vec::new();
-    };
-    let monitors = display.monitors();
-    (0..monitors.n_items())
-        .filter_map(|index| monitors.item(index))
-        .filter_map(|item| item.downcast::<gtk::gdk::Monitor>().ok())
-        .collect()
-}
-
-fn launch_workspace_bar(
-    title: &'static str,
-    monitor: Option<gtk::gdk::Monitor>,
-    output_name: Option<String>,
-) -> Option<Controller<WorkspaceBar>> {
-    let builder = WorkspaceBar::builder();
-    let root = builder.root.clone();
-    relm4::main_application().add_window(&root);
-    let controller = builder
-        .launch(WorkspaceBarInit {
-            title,
-            monitor,
-            output_name,
-        })
-        .detach();
-    root.present();
-    Some(controller)
-}
-
-fn watch_monitors(sender: relm4::Sender<MainBarInput>) -> Option<gtk::gio::ListModel> {
-    let display = gtk::gdk::Display::default()?;
-    let monitors = display.monitors();
-    monitors.connect_items_changed(move |_, _, _, _| {
-        eprintln!("[bar] monitor list changed");
-        sender.emit(MainBarInput::MonitorsChanged);
-    });
-    Some(monitors)
-}
-
-fn launch_secondary_bars(
-    title: &'static str,
-    monitors: impl Iterator<Item = gtk::gdk::Monitor>,
-) -> Vec<SecondaryBar> {
-    monitors
-        .filter_map(|monitor| {
-            monitor_output_name(Some(&monitor)).map(|_| launch_secondary_bar(title, monitor))
-        })
-        .collect()
-}
-
-fn launch_secondary_bar(title: &'static str, monitor: gtk::gdk::Monitor) -> SecondaryBar {
-    let output_name =
-        monitor_output_name(Some(&monitor)).expect("secondary bars require a monitor connector");
-    let builder = MainBar::builder();
-    let root = builder.root.clone();
-    relm4::main_application().add_window(&root);
-    let controller = builder
-        .launch(MainBarInit::secondary(title, monitor))
-        .detach();
-    root.present();
-    SecondaryBar {
-        output_name,
-        controller,
-    }
-}
-
-fn monitor_output_name(monitor: Option<&gtk::gdk::Monitor>) -> Option<String> {
-    monitor
-        .and_then(|monitor| monitor.connector())
-        .and_then(|connector| non_empty_string(connector.as_str()))
-}
-
-fn non_empty_string(value: &str) -> Option<String> {
-    let value = value.trim();
-    (!value.is_empty()).then(|| value.to_owned())
-}
-
-fn log_bar_monitor(primary: bool, monitor: Option<&gtk::gdk::Monitor>, output_name: Option<&str>) {
-    let role = if primary { "primary" } else { "secondary" };
-    let connector = monitor.and_then(|monitor| monitor.connector());
-    let geometry = monitor.map(|monitor| monitor.geometry());
-    eprintln!(
-        "[bar] launching {role} bar: gtk_connector={:?} geometry={:?} workspace_output_filter={:?}",
-        connector.as_deref(),
-        geometry,
-        output_name
-    );
-}
-
-fn bar_window_config() -> WindowConfig {
-    WindowConfig::new(Layer::Top)
-        .with_anchors(
-            Anchors::NONE
-                .with_edge(Edge::Bottom)
-                .with_edge(Edge::Right)
-                .with_edge(Edge::Left),
-        )
-        .with_auto_exclusive_zone()
-        .with_namespace("rsynapse-bar")
-}
-
-fn mount_popover_component<C>(
-    popover: &gtk::Popover,
-    mount: &gtk::Box,
-    controller: &Rc<RefCell<Option<Controller<C>>>>,
-    init: C::Init,
-) where
-    C: Component,
-    C::Init: Clone,
-    C::Root: AsRef<gtk::Widget> + Clone + std::fmt::Debug,
-{
-    if popover.is_visible() {
-        if controller.borrow().is_none() {
-            let launched = C::builder().launch(init).detach();
-            let widget = <C::Root as AsRef<gtk::Widget>>::as_ref(launched.widget()).clone();
-            mount.append(&widget);
-            *controller.borrow_mut() = Some(launched);
-        }
-        return;
-    }
-
-    if let Some(launched) = controller.borrow_mut().take() {
-        let widget = <C::Root as AsRef<gtk::Widget>>::as_ref(launched.widget()).clone();
-        mount.remove(&widget);
-    }
-}
-
-fn mount_bluetooth_group_popover(popover: &gtk::Popover, group: BluetoothDeviceGroup) {
-    let mount = gtk::Box::builder()
-        .orientation(gtk::Orientation::Vertical)
-        .build();
-    popover.set_child(Some(&mount));
-    let controller = Rc::new(RefCell::new(None));
-    mount_popover_component::<BluetoothGroupPopover>(popover, &mount, &controller, group);
-
-    let popover_for_signal = popover.clone();
-    let popover_for_mount = popover.clone();
-    let mount_for_mount = mount.clone();
-    popover_for_signal.connect_visible_notify(move |_| {
-        mount_popover_component::<BluetoothGroupPopover>(
-            &popover_for_mount,
-            &mount_for_mount,
-            &controller,
-            group,
-        );
-    });
-}
-
 fn battery_tooltip(battery: &BatteryView) -> String {
     format!("{}%", battery.percent)
 }
@@ -1837,31 +1559,6 @@ fn source_error_tooltip(count: u64) -> String {
 
 fn source_error_count_label(count: u64) -> String {
     count.to_string()
-}
-
-fn mpris_classes(mpris: &MprisView) -> Vec<&'static str> {
-    let mut classes = bar_item::classes(&["mpris-widget"]);
-    if !mpris.state_class.is_empty() {
-        classes.push(mpris.state_class);
-    }
-    classes
-}
-
-fn launch_playerctl(action: MediaAction, player_name: &str) {
-    let player_name = player_name.trim().to_owned();
-    let command = match action {
-        MediaAction::Previous => "previous",
-        MediaAction::PlayPause => "play-pause",
-        MediaAction::Next => "next",
-    };
-
-    thread::spawn(move || {
-        let mut playerctl = Command::new("playerctl");
-        if !player_name.is_empty() {
-            playerctl.arg("--player").arg(player_name);
-        }
-        let _ = playerctl.arg(command).status();
-    });
 }
 
 #[cfg(test)]

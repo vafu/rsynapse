@@ -1,5 +1,3 @@
-mod source;
-
 use shell_core::source::Observable;
 
 use crate::widgets::{
@@ -32,25 +30,7 @@ const STAGES: &[LevelStage] = &[
     },
 ];
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub(crate) struct DiskStats {
-    pub(super) percent: u8,
-    pub(super) busy: u8,
-    pub(super) used: u64,
-    pub(super) free: u64,
-    pub(super) total: u64,
-}
-
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
-pub(crate) struct SysStatsView {
-    pub(super) cpu: u8,
-    pub(super) ram: u8,
-    pub(super) disk: DiskStats,
-}
-
-pub(super) fn sys_stats() -> Observable<SysStatsView> {
-    source::sys_stats()
-}
+pub(crate) use shell_core::source::system_stats::{DiskStats, SysStatsView, sys_stats};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(super) enum ArcSide {

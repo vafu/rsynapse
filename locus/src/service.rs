@@ -56,9 +56,13 @@ impl RelationsService {
             record: outcome.record.clone(),
             persist,
         };
-        self.emit_store_properties(&ctxt).await?;
-        Self::emit_set_outcome(&ctxt, outcome).await?;
-        Self::persistence_changed(&ctxt, state.clone()).await?;
+        if outcome.created {
+            self.emit_store_properties(&ctxt).await?;
+        }
+        if outcome.changed {
+            Self::emit_set_outcome(&ctxt, outcome).await?;
+            Self::persistence_changed(&ctxt, state.clone()).await?;
+        }
         Ok(state)
     }
 
@@ -81,12 +85,16 @@ impl RelationsService {
             record: outcome.set.record.clone(),
             persist,
         };
-        self.emit_store_properties(&ctxt).await?;
+        if outcome.set.created || !outcome.removed.is_empty() {
+            self.emit_store_properties(&ctxt).await?;
+        }
         for removed in outcome.removed {
             Self::relation_removed(&ctxt, removed).await?;
         }
-        Self::emit_set_outcome(&ctxt, outcome.set).await?;
-        Self::persistence_changed(&ctxt, state.clone()).await?;
+        if outcome.set.changed {
+            Self::emit_set_outcome(&ctxt, outcome.set).await?;
+            Self::persistence_changed(&ctxt, state.clone()).await?;
+        }
         Ok(state)
     }
 
@@ -143,8 +151,12 @@ impl RelationsService {
             .set(subject, relation, target, metadata)
             .map_err(fdo_error)?;
         let record = outcome.record.clone();
-        self.emit_store_properties(&ctxt).await?;
-        Self::emit_set_outcome(&ctxt, outcome).await?;
+        if outcome.created {
+            self.emit_store_properties(&ctxt).await?;
+        }
+        if outcome.changed {
+            Self::emit_set_outcome(&ctxt, outcome).await?;
+        }
         Ok(record)
     }
 
@@ -163,11 +175,15 @@ impl RelationsService {
             .set_one(subject, relation, target, metadata)
             .map_err(fdo_error)?;
         let record = outcome.set.record.clone();
-        self.emit_store_properties(&ctxt).await?;
+        if outcome.set.created || !outcome.removed.is_empty() {
+            self.emit_store_properties(&ctxt).await?;
+        }
         for removed in outcome.removed {
             Self::relation_removed(&ctxt, removed).await?;
         }
-        Self::emit_set_outcome(&ctxt, outcome.set).await?;
+        if outcome.set.changed {
+            Self::emit_set_outcome(&ctxt, outcome.set).await?;
+        }
         Ok(record)
     }
 

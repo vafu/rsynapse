@@ -1,16 +1,23 @@
 [package]
 name = "rsynapse-daemon"
 version = "0.1.0"
-edition = "2024"
+publish = false
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
 
 [dependencies]
-tokio = { version = "1", features = ["full"] }
-zbus = "4"
+tokio = { version = "1.52", features = ["macros", "rt-multi-thread", "process"] }
+zbus = "4.4"
 anyhow = "1"
-libloading = "0.8"
 serde = { version = "1.0", features = ["derive"] }
-dirs = "5.0"
+dirs = "6"
 toml = "0.8"
-notify = "6"
+notify = "6.1.1"
 rsynapse-launcher-api = { path = "../rsynapse-launcher-api" }
 rsynapse-plugin = { path = "../rsynapse-plugin" }
+rsynapse-plugin-calc = { path = "../rsynapse-plugin-calc" }
+rsynapse-plugin-commands = { path = "../rsynapse-plugin-commands" }
+rsynapse-plugin-launcher = { path = "../rsynapse-plugin-launcher" }
+rsynapse-plugin-shell = { path = "../rsynapse-plugin-shell" }
+rsynapse-plugin-workspaces = { path = "../rsynapse-plugin-workspaces" }

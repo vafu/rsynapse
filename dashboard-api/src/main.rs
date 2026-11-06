@@ -10,12 +10,15 @@ use axum::{
     routing::get,
 };
 use futures_util::{StreamExt, stream};
-use goal_model::{PREFERENCES_KIND, WORKDAY_TARGETS, WorkdayTargets};
-use locus::{RelationEndpoint, RelationRecord, RelationState};
+use goal_model::{
+    PREFERENCES_KIND, WORKDAY_TARGETS, WorkdayTargets,
+    api::{ManagerProxy, MetricsProxy},
+};
+use locus::{RelationEndpoint, RelationRecord, RelationState, RelationsProxy};
 use std::{collections::HashMap, convert::Infallible, sync::Arc};
 use tokio::sync::{Mutex, broadcast};
 use tower_http::cors::CorsLayer;
-use zbus::{Connection, Proxy};
+use zbus::Connection;
 mod metrics;
 
 #[derive(Clone, Copy)]
@@ -27,9 +30,9 @@ enum Change {
 
 #[derive(Clone)]
 struct App {
-    proj: Proxy<'static>,
-    metrics: Proxy<'static>,
-    locus: Proxy<'static>,
+    proj: ManagerProxy<'static>,
+    metrics: MetricsProxy<'static>,
+    locus: RelationsProxy<'static>,
     writes: Arc<Mutex<()>>,
     events: broadcast::Sender<Change>,
 }
@@ -63,7 +66,7 @@ fn invalid(e: impl Into<String>) -> Error {
 type Result<T> = std::result::Result<T, Error>;
 impl App {
     async fn records(&self, relation: &str) -> Result<Vec<RelationRecord>> {
-        Ok(self.locus.call("List", &(relation,)).await?)
+        Ok(self.locus.list(relation).await?)
     }
 }
 async fn target_settings(State(app): State<App>) -> Result<Json<WorkdayTargets>> {
@@ -93,18 +96,15 @@ async fn save_targets(
     let _lock = app.writes.lock().await;
     let _: RelationState = app
         .locus
-        .call(
-            "SetOneWithPersistence",
-            &(
-                RelationEndpoint::stable_key(PREFERENCES_KIND, "default"),
-                WORKDAY_TARGETS,
-                RelationEndpoint::stable_key(WORKDAY_TARGETS, "default"),
-                HashMap::from([(
-                    "targets".to_owned(),
-                    serde_json::to_string(&targets).map_err(|e| invalid(e.to_string()))?,
-                )]),
-                true,
-            ),
+        .set_one_with_persistence(
+            RelationEndpoint::stable_key(PREFERENCES_KIND, "default"),
+            WORKDAY_TARGETS,
+            RelationEndpoint::stable_key(WORKDAY_TARGETS, "default"),
+            HashMap::from([(
+                "targets".to_owned(),
+                serde_json::to_string(&targets).map_err(|e| invalid(e.to_string()))?,
+            )]),
+            true,
         )
         .await?;
     Ok(Json(targets))
@@ -139,65 +139,92 @@ async fn events(
         }
     }))
 }
-async fn watch(app: App) -> anyhow::Result<()> {
-    let mut domain = app.proj.receive_signal("Changed").await?;
-    let mut work = app.metrics.receive_signal("WorkChanged").await?;
-    let mut added = app.locus.receive_signal("RelationAdded").await?;
-    let mut updated = app.locus.receive_signal("RelationUpdated").await?;
-    let mut removed = app.locus.receive_signal("RelationRemoved").await?;
-    let mut cleared = app.locus.receive_signal("RelationCleared").await?;
-    tokio::spawn(async move {
+async fn watch(app: App) -> anyhow::Result<tokio::task::JoinHandle<()>> {
+    let mut domain = app.proj.receive_changed().await?;
+    let mut work = app.metrics.receive_work_changed().await?;
+    let mut added = app.locus.receive_relation_added().await?;
+    let mut updated = app.locus.receive_relation_updated().await?;
+    let mut removed = app.locus.receive_relation_removed().await?;
+    let mut cleared = app.locus.receive_relation_cleared().await?;
+    Ok(tokio::spawn(async move {
         loop {
-            let message = tokio::select! {
-                m=domain.next()=>{if let Some(m)=m {
-                    if m.body().deserialize::<(String,String)>().is_ok_and(|(kind,_)|kind!="checkout") {let _=app.events.send(Change::Goals);}
-                    continue;
-                }else{None}},
-                m=work.next()=>{if m.is_some(){let _=app.events.send(Change::Metrics);continue;}else{None}},
-                m=added.next()=>m,m=updated.next()=>m,m=removed.next()=>m,m=cleared.next()=>m
-            };
-            let Some(m) = message else {
-                break;
-            };
-            let relevant = m
-                .body()
-                .deserialize::<RelationRecord>()
-                .is_ok_and(|r| r.relation == WORKDAY_TARGETS)
-                || m.body()
-                    .deserialize::<(RelationEndpoint, String, u32)>()
-                    .is_ok_and(|(_, r, _)| r == WORKDAY_TARGETS);
-            if relevant {
-                let _ = app.events.send(Change::Targets);
+            tokio::select! {
+                message = domain.next() => {
+                    let Some(message) = message else {
+                        eprintln!("[dashboard] projd change stream ended; restart to reconnect");
+                        break;
+                    };
+                    if message.args().is_ok_and(|args| args.kind != "checkout") {
+                        let _ = app.events.send(Change::Goals);
+                    }
+                }
+                message = work.next() => {
+                    if message.is_some() {
+                        let _ = app.events.send(Change::Metrics);
+                    } else {
+                        eprintln!("[dashboard] projd work stream ended; restart to reconnect");
+                        break;
+                    }
+                }
+                message = added.next() => {
+                    let Some(message) = message else {
+                        eprintln!("[dashboard] locus RelationAdded stream ended");
+                        break;
+                    };
+                    if message
+                        .args()
+                        .is_ok_and(|args| args.record.relation == WORKDAY_TARGETS)
+                    {
+                        let _ = app.events.send(Change::Targets);
+                    }
+                }
+                message = updated.next() => {
+                    let Some(message) = message else {
+                        eprintln!("[dashboard] locus RelationUpdated stream ended");
+                        break;
+                    };
+                    if message
+                        .args()
+                        .is_ok_and(|args| args.record.relation == WORKDAY_TARGETS)
+                    {
+                        let _ = app.events.send(Change::Targets);
+                    }
+                }
+                message = removed.next() => {
+                    let Some(message) = message else {
+                        eprintln!("[dashboard] locus RelationRemoved stream ended");
+                        break;
+                    };
+                    if message
+                        .args()
+                        .is_ok_and(|args| args.record.relation == WORKDAY_TARGETS)
+                    {
+                        let _ = app.events.send(Change::Targets);
+                    }
+                }
+                message = cleared.next() => {
+                    let Some(message) = message else {
+                        eprintln!("[dashboard] locus RelationCleared stream ended");
+                        break;
+                    };
+                    if message
+                        .args()
+                        .is_ok_and(|args| args.relation == WORKDAY_TARGETS)
+                    {
+                        let _ = app.events.send(Change::Targets);
+                    }
+                }
             }
         }
-    });
-    Ok(())
+    }))
 }
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let conn = Connection::session().await?;
-    let locus = Proxy::new_owned(
-        conn.clone(),
-        locus::BUS_NAME,
-        locus::OBJECT_PATH,
-        locus::RELATIONS_INTERFACE,
-    )
-    .await?;
-    let proj = Proxy::new_owned(
-        conn.clone(),
-        goal_model::BUS_NAME,
-        goal_model::ROOT_PATH,
-        goal_model::MANAGER_INTERFACE,
-    )
-    .await?;
+    let locus = RelationsProxy::new(&conn).await?;
+    let proj = ManagerProxy::new(&conn).await?;
     let (event_sender, _) = broadcast::channel(32);
-    let metrics = Proxy::new_owned(
-        conn.clone(),
-        goal_model::BUS_NAME,
-        goal_model::ROOT_PATH,
-        goal_model::METRICS_INTERFACE,
-    )
-    .await?;
+    let metrics = MetricsProxy::new(&conn).await?;
     let app = App {
         proj,
         metrics,
@@ -205,7 +232,7 @@ async fn main() -> anyhow::Result<()> {
         writes: Arc::new(Mutex::new(())),
         events: event_sender,
     };
-    watch(app.clone()).await?;
+    let _watch = watch(app.clone()).await?;
     let origins = std::env::var("RSYNAPSE_DASHBOARD_ORIGINS")
         .unwrap_or_else(|_| "http://localhost:3000,http://127.0.0.1:3000".into());
     let origins: Vec<HeaderValue> = origins

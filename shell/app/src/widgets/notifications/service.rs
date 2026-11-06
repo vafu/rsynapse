@@ -31,12 +31,18 @@ struct NotificationStateHandle {
 
 impl NotificationStateHandle {
     fn set_has_items(&self, has_items: bool) {
-        let _ = self.updates.try_send(has_items);
+        if let Err(error) = self.updates.try_send(has_items) {
+            if error.is_full() {
+                eprintln!("[notifications] has-items queue full; dropping update");
+            }
+        }
     }
 }
 
 pub(super) fn start(input_sender: RelmSender<NotificationsInput>) -> NotificationsService {
-    let (state_sender, state_receiver) = async_channel::unbounded();
+    // Bounded: has-items updates coalesce; overflow is logged and the latest
+    // state is retried by the next change.
+    let (state_sender, state_receiver) = async_channel::bounded(64);
     let task = tokio::spawn(async move {
         if let Err(error) = run(input_sender, state_receiver).await {
             eprintln!("[notifications/dbus] {error}");
@@ -181,7 +187,7 @@ impl FreedesktopNotifications {
     }
 
     fn get_capabilities(&self) -> Vec<&'static str> {
-        vec!["actions", "body", "body-markup", "persistence"]
+        vec!["actions", "body", "persistence"]
     }
 
     #[zbus(out_args("name", "vendor", "version", "spec_version"))]

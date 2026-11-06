@@ -1,5 +1,3 @@
-use std::thread;
-
 use shell_core::source::{
     self, Observable,
     dbus::{self, Bus, ObjectDescriptor, PropertyDescriptor},
@@ -47,34 +45,16 @@ pub(super) fn power_profile_status() -> Observable<PowerProfileView> {
 
 pub(super) fn cycle_power_profile(profile: &str) {
     let next = next_profile(profile).to_owned();
-
-    thread::spawn(move || {
-        let result = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .map_err(|error| error.to_string())
-            .and_then(|runtime| {
-                runtime.block_on(async move {
-                    let connection = zbus::Connection::system()
-                        .await
-                        .map_err(|error| error.to_string())?;
-                    let proxy = zbus::Proxy::new(
-                        &connection,
-                        POWER_PROFILE_BUS,
-                        POWER_PROFILES_OBJECT_PATH,
-                        POWER_PROFILE_INTERFACE,
-                    )
-                    .await
-                    .map_err(|error| error.to_string())?;
-                    proxy
-                        .set_property("ActiveProfile", &next)
-                        .await
-                        .map_err(|error| error.to_string())
-                })
-            });
-        if let Err(error) = result {
-            eprintln!("[power-profile] failed to set ActiveProfile: {error}");
-        }
+    source::write::spawn("power-profile", async move {
+        let connection = source::write::system_connection().await?;
+        let proxy = zbus::Proxy::new(
+            connection,
+            POWER_PROFILE_BUS,
+            POWER_PROFILES_OBJECT_PATH,
+            POWER_PROFILE_INTERFACE,
+        )
+        .await?;
+        proxy.set_property("ActiveProfile", &next).await
     });
 }
 

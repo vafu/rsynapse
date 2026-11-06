@@ -32,8 +32,10 @@ async fn main() -> anyhow::Result<()> {
             _ => anyhow::bail!("unknown argument: {arg}"),
         }
     }
+    let mut terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
     tokio::select! {
         result = workspace_dbus::run(config) => result,
         result = tokio::signal::ctrl_c() => { result?; Ok(()) }
+        _ = terminate.recv() => Ok(()),
     }
 }

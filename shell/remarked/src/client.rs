@@ -117,33 +117,22 @@ pub(crate) enum TaskAction {
 }
 
 pub(crate) async fn task_action(action: TaskAction) -> Result<(), String> {
-    use proj_model::{BUS_NAME, GoalInfo, MANAGER_INTERFACE, ROOT_PATH};
+    use proj_model::{GoalInfo, api::ManagerProxy};
     let conn = zbus::Connection::session().await.map_err(error)?;
-    let proxy = zbus::Proxy::new(&conn, BUS_NAME, ROOT_PATH, MANAGER_INTERFACE)
-        .await
-        .map_err(error)?;
+    let proxy = ManagerProxy::new(&conn).await.map_err(error)?;
     match action {
         TaskAction::Status { key, status } => {
-            let _: GoalInfo = proxy
-                .call("SetGoalStatus", &(key, status))
-                .await
-                .map_err(error)?;
+            let _: GoalInfo = proxy.set_goal_status(&key, &status).await.map_err(error)?;
         }
         TaskAction::Start { key, project } => {
             let _: GoalInfo = proxy
-                .call("SetGoalStatus", &(&key, "in-progress"))
+                .set_goal_status(&key, "in-progress")
                 .await
                 .map_err(error)?;
-            let _: () = proxy
-                .call("SetActiveGoal", &(project, key))
-                .await
-                .map_err(error)?;
+            let _: () = proxy.set_active_goal(&project, &key).await.map_err(error)?;
         }
         TaskAction::Clear { project } => {
-            let _: () = proxy
-                .call("SetActiveGoal", &(project, ""))
-                .await
-                .map_err(error)?;
+            let _: () = proxy.set_active_goal(&project, "").await.map_err(error)?;
         }
         TaskAction::Create {
             project,
@@ -163,19 +152,18 @@ pub(crate) async fn task_action(action: TaskAction) -> Result<(), String> {
                 priority: "medium".into(),
                 ..Default::default()
             };
-            let _: GoalInfo = proxy.call("CreateGoal", &(goal,)).await.map_err(error)?;
+            let _: GoalInfo = proxy.create_goal(&goal).await.map_err(error)?;
         }
         TaskAction::Edit {
             key,
             title,
             description,
         } => {
-            let fields =
-                std::collections::HashMap::from([("title", title), ("description", description)]);
-            let _: GoalInfo = proxy
-                .call("EditGoal", &(key, fields))
-                .await
-                .map_err(error)?;
+            let fields = std::collections::HashMap::from([
+                ("title".to_owned(), title),
+                ("description".to_owned(), description),
+            ]);
+            let _: GoalInfo = proxy.edit_goal(&key, fields).await.map_err(error)?;
         }
     }
     Ok(())

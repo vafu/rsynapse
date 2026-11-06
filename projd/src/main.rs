@@ -63,19 +63,29 @@ impl ProjectObject {
         &self.0.icon_origin
     }
     #[zbus(property)]
-    fn labels(&self) -> zbus::fdo::Result<Vec<String>> {
-        self.1.project_labels(&self.0.id).map_err(error)
+    async fn labels(&self) -> zbus::fdo::Result<Vec<String>> {
+        let store = self.1.clone();
+        let id = self.0.id.clone();
+        tokio::task::spawn_blocking(move || store.project_labels(&id))
+            .await
+            .map_err(error)?
+            .map_err(error)
     }
     #[zbus(property)]
-    fn active_goal(&self) -> zbus::fdo::Result<OwnedObjectPath> {
-        let key = self.1.active_goal(&self.0.id).map_err(error)?;
-        Ok(self
-            .1
-            .goals()
+    async fn active_goal(&self) -> zbus::fdo::Result<OwnedObjectPath> {
+        let store = self.1.clone();
+        let id = self.0.id.clone();
+        let key = tokio::task::spawn_blocking(move || store.active_goal(&id))
+            .await
             .map_err(error)?
-            .iter()
-            .find(|g| g.key() == key)
-            .map(|g| OwnedObjectPath::try_from(g.object_path()).unwrap())
+            .map_err(error)?;
+        let store = self.1.clone();
+        let goal = tokio::task::spawn_blocking(move || store.goal_by_key(&key))
+            .await
+            .map_err(error)?
+            .map_err(error)?;
+        Ok(goal
+            .map(|goal| OwnedObjectPath::try_from(goal.object_path()).unwrap())
             .unwrap_or_else(|| OwnedObjectPath::try_from("/").unwrap()))
     }
 }
@@ -172,25 +182,28 @@ impl GoalObject {
         &self.0.note_path
     }
     #[zbus(property)]
-    fn parent(&self) -> zbus::fdo::Result<OwnedObjectPath> {
-        Ok(self
-            .1
-            .goals()
+    async fn parent(&self) -> zbus::fdo::Result<OwnedObjectPath> {
+        let store = self.1.clone();
+        let key = self.0.parent_id.clone();
+        let goal = tokio::task::spawn_blocking(move || store.goal_by_key(&key))
+            .await
             .map_err(error)?
-            .iter()
-            .find(|g| g.key() == self.0.parent_id)
-            .map(|g| OwnedObjectPath::try_from(g.object_path()).unwrap())
+            .map_err(error)?;
+        Ok(goal
+            .map(|goal| OwnedObjectPath::try_from(goal.object_path()).unwrap())
             .unwrap_or_else(|| OwnedObjectPath::try_from("/").unwrap()))
     }
     #[zbus(property)]
-    fn children(&self) -> zbus::fdo::Result<Vec<OwnedObjectPath>> {
-        Ok(self
-            .1
-            .goals()
+    async fn children(&self) -> zbus::fdo::Result<Vec<OwnedObjectPath>> {
+        let store = self.1.clone();
+        let key = self.0.key();
+        let goals = tokio::task::spawn_blocking(move || store.children_of(&key))
+            .await
             .map_err(error)?
-            .iter()
-            .filter(|g| g.parent_id == self.0.key())
-            .map(|g| OwnedObjectPath::try_from(g.object_path()).unwrap())
+            .map_err(error)?;
+        Ok(goals
+            .into_iter()
+            .map(|goal| OwnedObjectPath::try_from(goal.object_path()).unwrap())
             .collect())
     }
     #[zbus(property)]
@@ -411,7 +424,12 @@ impl Manager {
                 .map_err(error)?;
             if let Some(dir) = git::git_dir(Path::new(&root)) {
                 let (done, ready) = tokio::sync::oneshot::channel();
-                let _ = self.watch.send((root, dir, fresh && subscribe, done));
+                let _ = self.watch.send(watch::Request::Watch {
+                    root,
+                    dir,
+                    initial: fresh && subscribe,
+                    ready: done,
+                });
                 let _ = ready.await;
             }
         }
@@ -584,10 +602,18 @@ impl Manager {
         Ok(project)
     }
     async fn list_projects(&self) -> zbus::fdo::Result<Vec<ProjectInfo>> {
-        self.store.projects().map_err(error)
+        let store = self.store.clone();
+        tokio::task::spawn_blocking(move || store.projects())
+            .await
+            .map_err(error)?
+            .map_err(error)
     }
     async fn list_checkouts(&self) -> zbus::fdo::Result<Vec<CheckoutInfo>> {
-        self.store.checkouts().map_err(error)
+        let store = self.store.clone();
+        tokio::task::spawn_blocking(move || store.checkouts())
+            .await
+            .map_err(error)?
+            .map_err(error)
     }
     async fn register_project(
         &self,
@@ -653,13 +679,19 @@ impl Manager {
         Ok(project)
     }
     async fn list_goals(&self, date: String) -> zbus::fdo::Result<Vec<GoalInfo>> {
-        Ok(self
-            .store
-            .goals()
-            .map_err(error)?
-            .into_iter()
-            .filter(|g| date.is_empty() || g.date == date)
-            .collect())
+        let store = self.store.clone();
+        tokio::task::spawn_blocking(move || {
+            Ok::<_, anyhow::Error>(
+                store
+                    .goals()?
+                    .into_iter()
+                    .filter(|goal| date.is_empty() || goal.date == date)
+                    .collect(),
+            )
+        })
+        .await
+        .map_err(error)?
+        .map_err(error)
     }
     async fn set_active_goal(
         &self,
@@ -842,7 +874,12 @@ async fn main() -> anyhow::Result<()> {
     for checkout in store.checkouts()? {
         if let Some(dir) = git::git_dir(Path::new(&checkout.root_path)) {
             let (done, _) = tokio::sync::oneshot::channel();
-            let _ = manager.watch.send((checkout.root_path, dir, false, done));
+            let _ = manager.watch.send(watch::Request::Watch {
+                root: checkout.root_path,
+                dir,
+                initial: false,
+                ready: done,
+            });
         }
     }
     metrics.monitor_owners(conn.clone()).await?;

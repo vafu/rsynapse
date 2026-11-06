@@ -99,4 +99,21 @@ fn component_list_reconciles_insertions_removals_and_moves() {
             "step={step} items={items:?}"
         );
     }
+
+    // Same container, stable-key reconciliation path.
+    let keyed_sequences = [
+        vec![],
+        vec![0usize, 1, 2],
+        vec![2, 0, 1],
+        vec![3, 2, 0],
+        vec![],
+    ];
+    for items in keyed_sequences {
+        container.set_component_list_by_key(
+            ComponentListUpdate::<TestRow>::new(&items),
+            |item: &usize| *item,
+        );
+        let expected = items.iter().map(usize::to_string).collect::<Vec<_>>();
+        assert_eq!(child_names(&container), expected, "keyed items={items:?}");
+    }
 }

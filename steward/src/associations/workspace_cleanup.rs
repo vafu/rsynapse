@@ -2,7 +2,7 @@
 //! placement and replacement identities remain authoritative in the compositor.
 use crate::relations::LocusClient;
 use futures_util::StreamExt;
-use locus::RelationEndpoint;
+use locus::{RelationEndpoint, RelationsProxy};
 use std::collections::HashSet;
 use workspace_dbus_api::{BUS_NAME, MANAGER_INTERFACE, ROOT_PATH, WORKSPACE_INTERFACE};
 use zbus::{
@@ -60,17 +60,7 @@ fn source_changed(message: &zbus::Message) -> bool {
     }
 }
 
-fn relation_changed(message: &zbus::Message, tracker: &Reconciler) -> bool {
-    let header = message.header();
-    if !matches!(
-        header.member().map(|name| name.as_str()),
-        Some("RelationAdded" | "RelationUpdated")
-    ) {
-        return false;
-    }
-    let Ok(record) = message.body().deserialize::<locus::RelationRecord>() else {
-        return true;
-    };
+fn relation_record_relevant(record: &locus::RelationRecord, tracker: &Reconciler) -> bool {
     let RelationEndpoint::StableKey { kind, id } = &record.subject else {
         return false;
     };
@@ -84,6 +74,13 @@ fn relation_changed(message: &zbus::Message, tracker: &Reconciler) -> bool {
             && record.metadata.get(OWNER) == Some(owner)
             && record.metadata.get(GENERATION) == Some(&generation.to_string())
     })
+}
+
+fn relation_subject_relevant(subject: &RelationEndpoint) -> bool {
+    matches!(
+        subject,
+        RelationEndpoint::StableKey { kind, .. } if kind == locus::keys::WORKSPACE_ID
+    )
 }
 
 #[derive(Clone, Debug, Default)]
@@ -372,16 +369,11 @@ pub(super) async fn run(locus: LocusClient) -> anyhow::Result<()> {
     .await?;
     let bus = DBusProxy::new(&connection).await?;
     let mut owners = bus.receive_name_owner_changed().await?;
-    let mut relations = MessageStream::for_match_rule(
-        MatchRule::builder()
-            .msg_type(Type::Signal)
-            .sender(locus::BUS_NAME)?
-            .interface(locus::RELATIONS_INTERFACE)?
-            .build(),
-        &connection,
-        Some(128),
-    )
-    .await?;
+    let relations = RelationsProxy::new(&connection).await?;
+    let mut relation_added = relations.receive_relation_added().await?;
+    let mut relation_updated = relations.receive_relation_updated().await?;
+    let mut relation_removed = relations.receive_relation_removed().await?;
+    let mut relation_cleared = relations.receive_relation_cleared().await?;
     let mut tracker = Reconciler::default();
     loop {
         {
@@ -393,7 +385,23 @@ pub(super) async fn run(locus: LocusClient) -> anyhow::Result<()> {
         loop {
             let changed = tokio::select! {
                 message = source.next() => source_changed(&message.ok_or_else(|| anyhow::anyhow!("workspace signal stream ended"))??),
-                message = relations.next() => relation_changed(&message.ok_or_else(|| anyhow::anyhow!("Locus signal stream ended"))??, &tracker),
+                message = relation_added.next() => {
+                    let message = message.ok_or_else(|| anyhow::anyhow!("Locus RelationAdded stream ended"))?;
+                    relation_record_relevant(&message.args()?.record, &tracker)
+                }
+                message = relation_updated.next() => {
+                    let message = message.ok_or_else(|| anyhow::anyhow!("Locus RelationUpdated stream ended"))?;
+                    relation_record_relevant(&message.args()?.record, &tracker)
+                }
+                message = relation_removed.next() => {
+                    let message = message.ok_or_else(|| anyhow::anyhow!("Locus RelationRemoved stream ended"))?;
+                    relation_record_relevant(&message.args()?.record, &tracker)
+                }
+                message = relation_cleared.next() => {
+                    let message = message.ok_or_else(|| anyhow::anyhow!("Locus RelationCleared stream ended"))?;
+                    let args = message.args()?;
+                    relation_subject_relevant(&args.subject)
+                }
                 message = owners.next() => {
                     let message = message.ok_or_else(|| anyhow::anyhow!("bus owner stream ended"))?;
                     let args = message.args()?;

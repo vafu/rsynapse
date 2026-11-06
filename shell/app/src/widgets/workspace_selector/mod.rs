@@ -57,7 +57,7 @@ pub(crate) struct WorkspaceSelector {
     dialog_open: Rc<Cell<bool>>,
     selection_reset: bool,
 
-    #[source(shell_core::source::diff(entries_signal.observable()))]
+    #[source(shell_core::source::diff_by_key(entries_signal.observable(), Entry::key))]
     list_diff: ListDiff<Entry>,
 
     #[source(source::view())]

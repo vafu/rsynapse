@@ -4,10 +4,19 @@ use std::{
     io::{Read, Write},
     os::unix::net::{UnixListener, UnixStream},
     path::PathBuf,
-    sync::mpsc,
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+        mpsc,
+    },
     thread::{self, JoinHandle},
     time::Duration,
 };
+
+const MAX_REQUEST_BYTES: u64 = 64 * 1024;
+const REQUEST_WORKERS: usize = 4;
+const REQUEST_QUEUE: usize = 32;
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Runtime process that can receive rsynapse shell requests.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -93,7 +102,8 @@ impl fmt::Debug for PendingRequest {
 /// Long-lived local request socket server.
 pub struct RequestServer {
     path: PathBuf,
-    _thread: JoinHandle<()>,
+    shutdown: Arc<AtomicBool>,
+    threads: Vec<JoinHandle<()>>,
 }
 
 impl fmt::Debug for RequestServer {
@@ -107,6 +117,12 @@ impl fmt::Debug for RequestServer {
 
 impl Drop for RequestServer {
     fn drop(&mut self) {
+        self.shutdown.store(true, Ordering::Relaxed);
+        // Wake the blocking accept loop so it can observe shutdown.
+        let _ = UnixStream::connect(&self.path);
+        for thread in self.threads.drain(..) {
+            let _ = thread.join();
+        }
         let _ = fs::remove_file(&self.path);
     }
 }
@@ -114,9 +130,15 @@ impl Drop for RequestServer {
 /// Start a local request server for the selected process.
 pub fn start_server(
     target: RequestTarget,
-    dispatch: impl Fn(PendingRequest) + Send + 'static,
+    dispatch: impl Fn(PendingRequest) + Send + Sync + 'static,
 ) -> Result<RequestServer, String> {
-    let path = socket_path(target);
+    start_server_at(socket_path(target), dispatch)
+}
+
+fn start_server_at(
+    path: PathBuf,
+    dispatch: impl Fn(PendingRequest) + Send + Sync + 'static,
+) -> Result<RequestServer, String> {
     let parent = path
         .parent()
         .ok_or_else(|| format!("request socket path has no parent: {}", path.display()))?;
@@ -138,15 +160,34 @@ pub fn start_server(
     }
     let listener = UnixListener::bind(&path)
         .map_err(|error| format!("bind request socket {}: {error}", path.display()))?;
+    let shutdown = Arc::new(AtomicBool::new(false));
+    let dispatch = Arc::new(dispatch);
+    let (sender, receiver) = mpsc::sync_channel::<UnixStream>(REQUEST_QUEUE);
+    let receiver = Arc::new(Mutex::new(receiver));
+
+    let mut threads = Vec::with_capacity(REQUEST_WORKERS + 1);
+    for index in 0..REQUEST_WORKERS {
+        let receiver = receiver.clone();
+        let dispatch = dispatch.clone();
+        let worker = thread::Builder::new()
+            .name(format!("rsynapse-request-worker-{index}"))
+            .spawn(move || worker_loop(&receiver, dispatch.as_ref()))
+            .map_err(|error| format!("spawn request worker: {error}"))?;
+        threads.push(worker);
+    }
+
+    let accept_shutdown = shutdown.clone();
     let server_path = path.clone();
-    let thread = thread::Builder::new()
+    let accept = thread::Builder::new()
         .name("rsynapse-request-server".to_owned())
-        .spawn(move || accept_requests(listener, dispatch))
+        .spawn(move || accept_requests(listener, sender, &accept_shutdown))
         .map_err(|error| format!("spawn request server: {error}"))?;
+    threads.push(accept);
 
     Ok(RequestServer {
         path: server_path,
-        _thread: thread,
+        shutdown,
+        threads,
     })
 }
 
@@ -196,11 +237,35 @@ pub fn send_notification_center_action(action: ToggleAction) -> Result<RequestRe
     )
 }
 
-fn accept_requests(listener: UnixListener, dispatch: impl Fn(PendingRequest)) {
+fn accept_requests(
+    listener: UnixListener,
+    sender: mpsc::SyncSender<UnixStream>,
+    shutdown: &AtomicBool,
+) {
     for stream in listener.incoming() {
+        if shutdown.load(Ordering::Relaxed) {
+            break;
+        }
         match stream {
-            Ok(mut stream) => handle_connection(&mut stream, &dispatch),
+            Ok(stream) => {
+                if sender.send(stream).is_err() {
+                    break;
+                }
+            }
             Err(error) => eprintln!("[request] accept failed: {error}"),
+        }
+    }
+}
+
+fn worker_loop(receiver: &Mutex<mpsc::Receiver<UnixStream>>, dispatch: &impl Fn(PendingRequest)) {
+    loop {
+        let stream = receiver
+            .lock()
+            .expect("request worker receiver poisoned")
+            .recv();
+        match stream {
+            Ok(mut stream) => handle_connection(&mut stream, dispatch),
+            Err(_) => break,
         }
     }
 }
@@ -211,7 +276,7 @@ fn handle_connection(stream: &mut UnixStream, dispatch: &impl Fn(PendingRequest)
             let (sender, receiver) = mpsc::channel();
             dispatch(PendingRequest::new(request, sender));
             receiver
-                .recv_timeout(Duration::from_secs(5))
+                .recv_timeout(REQUEST_TIMEOUT)
                 .unwrap_or_else(|_| RequestResponse::Error("request timed out".to_owned()))
         }
         Err(error) => RequestResponse::Error(error),
@@ -249,9 +314,17 @@ fn notification_center_request_args(action: ToggleAction) -> Vec<String> {
 
 fn read_request(stream: &mut UnixStream) -> Result<Vec<String>, String> {
     let mut bytes = Vec::new();
-    stream
+    let mut limited = stream.take(MAX_REQUEST_BYTES + 1);
+    limited
         .read_to_end(&mut bytes)
         .map_err(|error| format!("read request: {error}"))?;
+    if bytes.len() as u64 > MAX_REQUEST_BYTES {
+        // Drain a bounded remainder so closing the socket does not reset the
+        // connection before the client reads the error response.
+        let mut rest = limited.into_inner().take(MAX_REQUEST_BYTES);
+        let _ = std::io::copy(&mut rest, &mut std::io::sink());
+        return Err(format!("request exceeds {MAX_REQUEST_BYTES} byte limit"));
+    }
     decode_args(&bytes)
 }
 
@@ -379,9 +452,89 @@ fn runtime_dir() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::{
-        RequestResponse, RequestTarget, ShellRequest, ToggleAction, decode_args, encode_args,
-        notification_center_request_args, parse_request, parse_response, socket_path,
+        MAX_REQUEST_BYTES, RequestResponse, RequestTarget, ShellRequest, ToggleAction, decode_args,
+        encode_args, notification_center_request_args, parse_request, parse_response, socket_path,
+        start_server_at,
     };
+    use std::{
+        io::{Read, Write},
+        os::unix::net::UnixStream,
+        path::PathBuf,
+        sync::{
+            Arc,
+            atomic::{AtomicU64, AtomicUsize, Ordering},
+        },
+        thread,
+        time::{Duration, Instant},
+    };
+
+    static SOCKET_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+    fn test_socket(name: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "rsynapse-request-{}-{name}-{}.sock",
+            std::process::id(),
+            SOCKET_COUNTER.fetch_add(1, Ordering::Relaxed)
+        ))
+    }
+
+    fn send_raw(path: &PathBuf, bytes: &[u8]) -> String {
+        let mut stream = UnixStream::connect(path).unwrap();
+        stream.write_all(bytes).unwrap();
+        stream.shutdown(std::net::Shutdown::Write).unwrap();
+        let mut response = String::new();
+        stream.read_to_string(&mut response).unwrap();
+        response
+    }
+
+    #[test]
+    fn oversized_requests_are_rejected() {
+        let path = test_socket("oversized");
+        let server =
+            start_server_at(path.clone(), |request| request.respond(RequestResponse::Ok)).unwrap();
+        let response = send_raw(&path, &vec![b'a'; (MAX_REQUEST_BYTES + 8) as usize]);
+
+        assert!(response.contains("exceeds"), "{response}");
+        drop(server);
+    }
+
+    #[test]
+    fn dropping_the_server_stops_the_accept_loop_and_removes_the_socket() {
+        let path = test_socket("drop");
+        let server =
+            start_server_at(path.clone(), |request| request.respond(RequestResponse::Ok)).unwrap();
+        assert!(path.exists());
+
+        drop(server);
+
+        assert!(!path.exists());
+    }
+
+    #[test]
+    fn a_slow_handler_does_not_block_another_connection() {
+        let path = test_socket("slow");
+        let calls = Arc::new(AtomicUsize::new(0));
+        let dispatch_calls = calls.clone();
+        let server = start_server_at(path.clone(), move |request| {
+            if dispatch_calls.fetch_add(1, Ordering::SeqCst) == 0 {
+                thread::sleep(Duration::from_millis(1_200));
+            }
+            request.respond(RequestResponse::Ok)
+        })
+        .unwrap();
+
+        let slow_path = path.clone();
+        let slow = thread::spawn(move || send_raw(&slow_path, b"hints\0toggle"));
+        thread::sleep(Duration::from_millis(100));
+
+        let started = Instant::now();
+        let fast = send_raw(&path, b"hints\0toggle");
+        assert!(started.elapsed() < Duration::from_millis(700));
+        assert_eq!(fast.trim_end(), "ok");
+
+        slow.join().unwrap();
+        drop(server);
+    }
 
     fn args(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| (*value).to_owned()).collect()

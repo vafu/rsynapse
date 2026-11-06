@@ -6,12 +6,16 @@ rust-version.workspace = true
 license.workspace = true
 
 [dependencies]
+notify = "6.1.1"
+libc = "0.2"
+workspace-policy = { path = "../workspace-policy" }
+steward-api = { path = "../../../steward-api" }
 async-channel = "2.5.0"
 futures-util = "0.3.32"
 locus = { path = "../../../locus" }
 rxrust.workspace = true
 shell-rx-macros = { path = "../rx-macros" }
-tokio = { version = "1.52.3", features = ["macros", "rt", "sync", "net", "time"] }
+tokio = { version = "1.52.3", features = ["macros", "rt", "rt-multi-thread", "sync", "net", "time"] }
 tracing.workspace = true
 wayland-client = "0.31"
 wayland-protocols = { version = "0.32", features = ["client", "staging"] }

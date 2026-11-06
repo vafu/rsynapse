@@ -46,7 +46,7 @@ impl Manager {
         let projects: Vec<goal_model::ProjectInfo> =
             self.projd().await?.call("ListProjects", &()).await?;
         let previous = self.store.lock().await.get("current").ok();
-        let home = std::env::var("HOME")?;
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/".to_owned());
         let mut workspaces = Vec::new();
         for workspace in source.workspaces.values() {
             if !source.outputs.contains(&workspace.output) {

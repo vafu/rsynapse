@@ -186,26 +186,10 @@ fn only_unreconciled_workspace_relations_trigger_lifecycle_cleanup() {
         crate::relations::WORKSPACE_NAME,
     ] {
         changed.relation = relation.into();
-        let message = zbus::Message::signal(
-            locus::OBJECT_PATH,
-            locus::RELATIONS_INTERFACE,
-            "RelationUpdated",
-        )
-        .unwrap()
-        .build(&changed)
-        .unwrap();
-        assert!(!relation_changed(&message, &tracker));
+        assert!(!relation_record_relevant(&changed, &tracker));
     }
     changed.metadata.remove(OWNER);
-    let message = zbus::Message::signal(
-        locus::OBJECT_PATH,
-        locus::RELATIONS_INTERFACE,
-        "RelationUpdated",
-    )
-    .unwrap()
-    .build(&changed)
-    .unwrap();
-    assert!(relation_changed(&message, &tracker));
+    assert!(relation_record_relevant(&changed, &tracker));
 }
 
 #[test]

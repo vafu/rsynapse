@@ -12,6 +12,9 @@ impl Manager {
             return Ok(None);
         };
         for c in &removed.checkouts {
+            let _ = self.watch.send(crate::watch::Request::Unwatch {
+                root: c.root_path.clone(),
+            });
             conn.object_server()
                 .remove::<CheckoutObject, _>(path("Checkouts", &c.id))
                 .await

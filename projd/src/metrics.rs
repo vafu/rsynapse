@@ -162,18 +162,31 @@ impl Metrics {
         &self,
         query: String,
     ) -> zbus::fdo::Result<Vec<GoalIdentityInfo>> {
-        Ok(self
-            .store
-            .identities()
-            .map_err(error)?
-            .into_iter()
-            .filter(|g| {
-                query.is_empty() || g.instance_id == query || g.key == query || g.goal.id == query
-            })
-            .collect())
+        let store = self.store.clone();
+        tokio::task::spawn_blocking(move || {
+            Ok::<_, anyhow::Error>(
+                store
+                    .identities()?
+                    .into_iter()
+                    .filter(|goal| {
+                        query.is_empty()
+                            || goal.instance_id == query
+                            || goal.key == query
+                            || goal.goal.id == query
+                    })
+                    .collect(),
+            )
+        })
+        .await
+        .map_err(error)?
+        .map_err(error)
     }
     async fn list_goal_tracking(&self) -> zbus::fdo::Result<Vec<GoalTrackingInfo>> {
-        self.store.tracking().map_err(error)
+        let store = self.store.clone();
+        tokio::task::spawn_blocking(move || store.tracking())
+            .await
+            .map_err(error)?
+            .map_err(error)
     }
     async fn goal_history(
         &self,

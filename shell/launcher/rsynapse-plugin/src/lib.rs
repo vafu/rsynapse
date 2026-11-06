@@ -1,45 +1,10 @@
+//! Plugin-facing traits built on the shared launcher wire contract.
 use std::fmt::Debug;
 
-/// The standardized data structure for a single result item.
-#[derive(Debug, Clone, PartialEq)]
-pub struct ResultItem {
-    pub id: String,
-    pub title: String,
-    pub description: Option<String>,
-    pub icon: Option<String>,
-    pub data: Option<String>,
-    pub score: f64,
-    /// Marks an already-applied/current value, such as the current project.
-    pub current: bool,
-}
-
-/// A param-selectable surface exposed by a plugin.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PluginGroup {
-    /// Stable group id used in launcher params, for example `projects`.
-    pub id: String,
-    /// Human-readable group title.
-    pub title: String,
-    pub description: Option<String>,
-    /// Additional accepted param spellings.
-    pub aliases: Vec<String>,
-}
-
-/// One dynamic keyboard hint rendered by the launcher footer.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Hint {
-    pub key: String,
-    pub label: String,
-}
-
-/// Plugin-provided dynamic launcher header/footer content.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PluginView {
-    pub title: String,
-    pub subtitle: Option<String>,
-    pub placeholder: String,
-    pub hints: Vec<Hint>,
-}
+pub use rsynapse_launcher_api::{
+    KeyEvent, KeyResponse, LauncherGroup as PluginGroup, LauncherHint as Hint,
+    LauncherResult as ResultItem, LauncherView as PluginView,
+};
 
 /// Request context passed to a plugin for search and key handling.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -59,35 +24,8 @@ pub struct PluginResponse {
     pub results: Vec<ResultItem>,
 }
 
-/// Plugin-facing key event.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct KeyEvent {
-    pub key: Key,
-    pub ctrl: bool,
-    pub alt: bool,
-    pub shift: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Key {
-    Delete,
-    Backspace,
-    Tab,
-    Enter,
-    Escape,
-    Other(String),
-}
-
-/// Outcome of forwarding a key event to a plugin.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum KeyOutcome {
-    Ignored,
-    Handled {
-        refresh: bool,
-        close: bool,
-        message: Option<String>,
-    },
-}
+/// Outcome of forwarding a key event to a plugin (wire-compatible).
+pub type KeyOutcome = KeyResponse;
 
 pub trait Plugin: Send + Sync {
     /// Returns the name of the plugin.
@@ -116,7 +54,7 @@ pub trait Plugin: Send + Sync {
     fn query(&self, context: &QueryContext<'_>) -> PluginResponse;
 
     /// Called for keyboard events the launcher UI does not consume itself.
-    fn handle_key(&self, _event: &KeyEvent, _context: &QueryContext<'_>) -> KeyOutcome {
-        KeyOutcome::Ignored
+    fn handle_key(&self, _event: &KeyEvent, _context: &QueryContext<'_>) -> KeyResponse {
+        KeyResponse::default()
     }
 }

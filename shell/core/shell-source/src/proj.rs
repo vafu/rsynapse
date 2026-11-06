@@ -1,54 +1,26 @@
 //! UI-free reactive clients for the reusable project-management service.
 use crate::{Observable, rx::Observable as _};
 use futures_util::StreamExt;
-use proj_model::{BUS_NAME, MANAGER_INTERFACE, ROOT_PATH, object_path};
+pub use proj_model::api::{ManagerProxy, MetricsProxy};
+use proj_model::{BUS_NAME, object_path};
 pub use proj_model::{CheckoutInfo, GoalIdentityInfo, GoalInfo, ProjectInfo, RemovedProjectInfo};
 mod tracking;
 pub use tracking::goal_tracking;
 mod labels;
 pub use labels::project_labels;
-use zbus::Proxy;
 
-fn snapshots<T>(method: &'static str, goal_list: bool) -> Observable<Vec<T>>
-where
-    T: serde::de::DeserializeOwned + zbus::zvariant::Type + Clone + Send + 'static,
-{
-    snapshots_at(method, MANAGER_INTERFACE, goal_list)
-}
-fn snapshots_at<T>(
-    method: &'static str,
-    interface: &'static str,
-    argument: bool,
-) -> Observable<Vec<T>>
-where
-    T: serde::de::DeserializeOwned + zbus::zvariant::Type + Clone + Send + 'static,
-{
-    crate::shared_by_key(
-        "projd-snapshots",
-        format!("{interface}:{method}"),
-        move || {
+macro_rules! manager_snapshot {
+    ($key:expr, $list:ident) => {{
+        crate::shared_by_key("projd-snapshots", $key, move || {
             crate::from_task(move |sender| async move {
                 let run = async {
                     let conn = zbus::Connection::session()
                         .await
                         .map_err(|e| e.to_string())?;
-                    let proxy = Proxy::new(&conn, BUS_NAME, ROOT_PATH, interface)
-                        .await
-                        .map_err(|e| e.to_string())?;
-                    let manager = Proxy::new(&conn, BUS_NAME, ROOT_PATH, MANAGER_INTERFACE)
-                        .await
-                        .map_err(|e| e.to_string())?;
-                    let mut changes = manager
-                        .receive_signal("Changed")
-                        .await
-                        .map_err(|e| e.to_string())?;
+                    let proxy = ManagerProxy::new(&conn).await.map_err(|e| e.to_string())?;
+                    let mut changes = proxy.receive_changed().await.map_err(|e| e.to_string())?;
                     loop {
-                        let rows: Vec<T> = if argument {
-                            proxy.call(method, &(String::new(),)).await
-                        } else {
-                            proxy.call(method, &()).await
-                        }
-                        .map_err(|e| e.to_string())?;
+                        let rows = proxy.$list().await.map_err(|e| e.to_string())?;
                         if sender.send(Ok(rows)).await.is_err() {
                             return Ok::<(), String>(());
                         }
@@ -63,11 +35,72 @@ where
                 }
             })
             .box_it()
-        },
-    )
+        })
+    }};
+    ($key:expr, $list:ident, $arg:expr) => {{
+        crate::shared_by_key("projd-snapshots", $key, move || {
+            crate::from_task(move |sender| async move {
+                let run = async {
+                    let conn = zbus::Connection::session()
+                        .await
+                        .map_err(|e| e.to_string())?;
+                    let proxy = ManagerProxy::new(&conn).await.map_err(|e| e.to_string())?;
+                    let mut changes = proxy.receive_changed().await.map_err(|e| e.to_string())?;
+                    loop {
+                        let rows = proxy.$list($arg).await.map_err(|e| e.to_string())?;
+                        if sender.send(Ok(rows)).await.is_err() {
+                            return Ok::<(), String>(());
+                        }
+                        if changes.next().await.is_none() {
+                            return Err("projd change stream ended".to_owned());
+                        }
+                    }
+                }
+                .await;
+                if let Err(error) = run {
+                    let _ = sender.send(Err(error)).await;
+                }
+            })
+            .box_it()
+        })
+    }};
 }
+
+macro_rules! metrics_snapshot {
+    ($key:expr, $list:ident, $arg:expr) => {{
+        crate::shared_by_key("projd-snapshots", $key, move || {
+            crate::from_task(move |sender| async move {
+                let run = async {
+                    let conn = zbus::Connection::session()
+                        .await
+                        .map_err(|e| e.to_string())?;
+                    let proxy = MetricsProxy::new(&conn).await.map_err(|e| e.to_string())?;
+                    let mut changes = proxy
+                        .receive_work_changed()
+                        .await
+                        .map_err(|e| e.to_string())?;
+                    loop {
+                        let rows = proxy.$list($arg).await.map_err(|e| e.to_string())?;
+                        if sender.send(Ok(rows)).await.is_err() {
+                            return Ok::<(), String>(());
+                        }
+                        if changes.next().await.is_none() {
+                            return Err("projd work stream ended".to_owned());
+                        }
+                    }
+                }
+                .await;
+                if let Err(error) = run {
+                    let _ = sender.send(Err(error)).await;
+                }
+            })
+            .box_it()
+        })
+    }};
+}
+
 pub fn projects() -> Observable<Vec<ProjectInfo>> {
-    snapshots("ListProjects", false)
+    manager_snapshot!("manager:ListProjects", list_projects)
         .distinct_until_changed()
         .box_it()
 }
@@ -77,18 +110,13 @@ pub fn removed_projects() -> Observable<RemovedProjectInfo> {
             let conn = zbus::Connection::session()
                 .await
                 .map_err(|e| e.to_string())?;
-            let proxy = Proxy::new(&conn, BUS_NAME, ROOT_PATH, MANAGER_INTERFACE)
-                .await
-                .map_err(|e| e.to_string())?;
+            let proxy = ManagerProxy::new(&conn).await.map_err(|e| e.to_string())?;
             let mut events = proxy
-                .receive_signal("ProjectRemoved")
+                .receive_project_removed()
                 .await
                 .map_err(|e| e.to_string())?;
             while let Some(event) = events.next().await {
-                let (info,) = event
-                    .body()
-                    .deserialize::<(RemovedProjectInfo,)>()
-                    .map_err(|e| e.to_string())?;
+                let info = event.args().map_err(|e| e.to_string())?.info;
                 if sender.send(Ok(info)).await.is_err() {
                     return Ok::<_, String>(());
                 }
@@ -102,19 +130,19 @@ pub fn removed_projects() -> Observable<RemovedProjectInfo> {
     })
 }
 pub fn checkouts() -> Observable<Vec<CheckoutInfo>> {
-    snapshots("ListCheckouts", false)
+    manager_snapshot!("manager:ListCheckouts", list_checkouts)
         .distinct_until_changed()
         .box_it()
 }
 pub fn goals() -> Observable<Vec<GoalInfo>> {
-    snapshots("ListGoals", true)
+    manager_snapshot!("manager:ListGoals", list_goals, "")
         .distinct_until_changed()
         .box_it()
 }
 /// Task-instance snapshots, including creation timestamps and retained deleted instances.
-/// Refreshed by Manager1 changes; consumers choose whether to include deleted tasks.
+/// Refreshed by Metrics1 work changes; consumers choose whether to include deleted tasks.
 pub fn goal_identities() -> Observable<Vec<GoalIdentityInfo>> {
-    snapshots_at("ListGoalIdentities", proj_model::METRICS_INTERFACE, true)
+    metrics_snapshot!("metrics:ListGoalIdentities", list_goal_identities, "")
         .distinct_until_changed()
         .box_it()
 }

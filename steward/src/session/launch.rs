@@ -20,11 +20,8 @@ impl Rules {
         let path = std::env::var_os("STEWARD_SESSION_LAUNCHERS_PATH")
             .map(PathBuf::from)
             .unwrap_or_else(|| {
-                std::env::var_os("XDG_CONFIG_HOME")
-                    .map(PathBuf::from)
-                    .unwrap_or_else(|| {
-                        PathBuf::from(std::env::var_os("HOME").unwrap()).join(".config")
-                    })
+                goal_model::xdg::config_home()
+                    .unwrap_or_else(|_| PathBuf::from(".config"))
                     .join("rsynapse/session-launchers.json")
             });
         match std::fs::read(path) {
@@ -72,57 +69,14 @@ pub fn canonical(app: &str) -> &str {
 }
 
 fn desktop(app: &str, cwd: &str) -> Option<Recipe> {
-    if app.is_empty() || app.contains('/') {
+    let entry = desktop_entry::find(app)?;
+    if !entry.is_visible() || entry.terminal {
         return None;
     }
-    let home = std::env::var_os("XDG_DATA_HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from(std::env::var_os("HOME").unwrap()).join(".local/share"));
-    let mut directories = vec![home];
-    directories.extend(std::env::split_paths(
-        &std::env::var_os("XDG_DATA_DIRS").unwrap_or_else(|| "/usr/local/share:/usr/share".into()),
-    ));
-    let path = directories
-        .into_iter()
-        .map(|p| p.join("applications").join(format!("{app}.desktop")))
-        .find(|p| p.is_file())?;
-    let contents = std::fs::read_to_string(&path).ok()?;
-    desktop_recipe(&contents, &path, app, cwd)
-}
-
-fn desktop_recipe(contents: &str, path: &Path, app: &str, cwd: &str) -> Option<Recipe> {
-    let mut entry = false;
-    let mut fields = BTreeMap::new();
-    for line in contents.lines().map(str::trim) {
-        if line.starts_with('[') {
-            entry = line == "[Desktop Entry]";
-        } else if entry && !line.starts_with('#') {
-            if let Some((key, value)) = line.split_once('=') {
-                fields.insert(key, value);
-            }
-        }
-    }
-    if fields.get("Hidden") == Some(&"true") || fields.get("Terminal") == Some(&"true") {
-        return None;
-    }
-    let mut argv = Vec::new();
-    for argument in shlex::split(fields.get("Exec")?)? {
-        if ["%f", "%F", "%u", "%U", "%i"].contains(&argument.as_str()) {
-            continue;
-        }
-        let argument = argument
-            .replace("%c", fields.get("Name").copied().unwrap_or(app))
-            .replace("%k", &path.to_string_lossy())
-            .replace("%%", "\u{1}");
-        if argument.contains('%') {
-            return None;
-        }
-        argv.push(argument.replace('\u{1}', "%"));
-    }
-    (!argv.is_empty()).then(|| Recipe {
+    Some(Recipe {
         provider: "desktop".into(),
         version: 1,
-        argv,
+        argv: entry.exec_argv(app)?,
         cwd: cwd.into(),
         match_app_id: app.into(),
     })
@@ -185,22 +139,20 @@ mod tests {
     use super::*;
     #[test]
     fn desktop_arguments_are_not_executed_through_a_shell() {
-        let recipe = desktop_recipe(
+        let entry = desktop_entry::DesktopEntry::parse(
             "[Desktop Entry]\nName=An App\nExec=app --name %c %U 'literal;argument'\n",
             Path::new("/app.desktop"),
-            "app",
-            "/tmp",
         )
         .unwrap();
-        assert_eq!(recipe.argv, ["app", "--name", "An App", "literal;argument"]);
-        assert!(
-            desktop_recipe(
-                "[Desktop Entry]\nExec=app %unsupported\n",
-                Path::new("/a"),
-                "app",
-                "/tmp"
-            )
-            .is_none()
+        assert_eq!(
+            entry.exec_argv("app").unwrap(),
+            ["app", "--name", "An App", "literal;argument"]
         );
+        let unsupported = desktop_entry::DesktopEntry::parse(
+            "[Desktop Entry]\nExec=app %unsupported\n",
+            Path::new("/a"),
+        )
+        .unwrap();
+        assert!(unsupported.exec_argv("app").is_none());
     }
 }

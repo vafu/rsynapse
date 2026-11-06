@@ -6,23 +6,30 @@ use rxrust::prelude::{
     Observable as RxObservable, ObservableFactory as _, Shared, SharedBoxedObservable,
 };
 
+pub mod backlight;
 pub mod dbus;
 pub mod github;
 mod keyed_list;
 mod list_diff;
+mod locus_watch;
 pub mod mpris;
 pub mod proj;
 pub mod session;
 mod state;
+pub mod steward;
 mod stream;
 mod support;
+pub mod system_stats;
+pub mod text;
 pub mod wayland;
 pub mod workspace;
 pub mod workspace_name;
 pub mod workspace_project;
+pub mod write;
 
 pub use keyed_list::{keyed_list, materialize_list};
-pub use list_diff::{ListChange, ListDiff, diff, diff_slices};
+pub use list_diff::{ListChange, ListDiff, diff, diff_by_key, diff_slices, diff_slices_by_key};
+pub use locus_watch::{watch_relation, watch_relation_subject};
 pub use rxrust;
 pub use rxrust::prelude as rx;
 pub use state::StateSignal;

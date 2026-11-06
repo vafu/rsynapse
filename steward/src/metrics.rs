@@ -56,7 +56,8 @@ impl Metrics {
         let mut workday_targets = crate::workdays::target_preferences(&self.locus).into_stream();
         let mut productivity = crate::productivity::Tracker::load(&self.locus).await?;
         let mut policies = crate::productivity::policies(&self.locus).into_stream();
-        let (batch_sender, batch_receiver) = mpsc::channel::<Vec<(String, f64, u64)>>();
+        // Bounded: a stalled Graphite host drops batches instead of growing memory.
+        let (batch_sender, batch_receiver) = mpsc::sync_channel::<Vec<(String, f64, u64)>>(1024);
         let host = self.carbon_host.clone();
         let port = self.carbon_port;
         let carbon = std::thread::Builder::new()
@@ -444,13 +445,13 @@ fn hook_app_name(
         .box_it()
 }
 
-fn publish_events(tracker: &mut Tracker, batch_sender: &mpsc::Sender<Vec<(String, f64, u64)>>) {
+fn publish_events(tracker: &mut Tracker, batch_sender: &mpsc::SyncSender<Vec<(String, f64, u64)>>) {
     publish_pending(tracker.drain(), batch_sender);
 }
 
 fn publish_pending(
     pending: std::collections::HashMap<String, f64>,
-    batch_sender: &mpsc::Sender<Vec<(String, f64, u64)>>,
+    batch_sender: &mpsc::SyncSender<Vec<(String, f64, u64)>>,
 ) {
     if pending.is_empty() {
         return;
@@ -463,8 +464,14 @@ fn publish_pending(
         .into_iter()
         .map(|(metric, value)| (format!("{}.{metric}", prefix()), value, now))
         .collect::<Vec<_>>();
-    if batch_sender.send(batch).is_err() {
-        eprintln!("[rsynapse-steward/metrics] carbon push thread gone; dropping batch");
+    match batch_sender.try_send(batch) {
+        Ok(()) => {}
+        Err(mpsc::TrySendError::Full(_)) => {
+            eprintln!("[rsynapse-steward/metrics] carbon queue full; dropping batch");
+        }
+        Err(mpsc::TrySendError::Disconnected(_)) => {
+            eprintln!("[rsynapse-steward/metrics] carbon push thread gone; dropping batch");
+        }
     }
 }
 

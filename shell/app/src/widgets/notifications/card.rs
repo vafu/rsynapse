@@ -4,9 +4,10 @@ use shell_core::gtk::{self, prelude::*};
 use super::model::{
     NotificationAction, NotificationView, notification_card_classes, notification_icon_name,
 };
+use super::service::{NOTIFICATIONS_BUS_NAME, NOTIFICATIONS_OBJECT_PATH};
 
-const NOTIFICATIONS_BUS_NAME: &str = "org.freedesktop.Notifications";
-const NOTIFICATIONS_OBJECT_PATH: &str = "/org/freedesktop/Notifications";
+static CONNECTION: tokio::sync::OnceCell<zbus::Connection> = tokio::sync::OnceCell::const_new();
+
 const NOTIFICATION_CARD_WIDTH: i32 = 400;
 const NOTIFICATION_TEXT_WIDTH_CHARS: i32 = 32;
 
@@ -177,10 +178,14 @@ fn request_close_notification(id: u32) {
     });
 }
 
+async fn connection() -> zbus::Result<&'static zbus::Connection> {
+    CONNECTION.get_or_try_init(zbus::Connection::session).await
+}
+
 async fn close_notification(id: u32) -> zbus::Result<()> {
-    let connection = zbus::Connection::session().await?;
+    let connection = connection().await?;
     let proxy = zbus::Proxy::new(
-        &connection,
+        connection,
         NOTIFICATIONS_BUS_NAME,
         NOTIFICATIONS_OBJECT_PATH,
         NOTIFICATIONS_BUS_NAME,
@@ -203,7 +208,7 @@ fn request_action_invoked(id: u32, action_key: String) {
 }
 
 async fn action_invoked(id: u32, action_key: &str) -> zbus::Result<()> {
-    let connection = zbus::Connection::session().await?;
+    let connection = connection().await?;
     connection
         .emit_signal(
             None::<&str>,

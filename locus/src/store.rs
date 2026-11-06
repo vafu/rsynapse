@@ -43,6 +43,8 @@ pub struct RelationStore {
 pub struct SetOutcome {
     pub record: RelationRecord,
     pub created: bool,
+    /// False when the same relation/target/metadata/persistence was already set.
+    pub changed: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -412,14 +414,19 @@ fn set_in_records(
         record.subject == subject && record.relation == relation && record.target == target
     }) {
         Some(record) => {
-            if let Some(persist) = persist {
-                record.persist = persist;
+            let changed = record.metadata != metadata
+                || persist.is_some_and(|persist| record.persist != persist);
+            if changed {
+                if let Some(persist) = persist {
+                    record.persist = persist;
+                }
+                record.metadata = metadata;
+                record.updated_at_unix_ms = now;
             }
-            record.metadata = metadata;
-            record.updated_at_unix_ms = now;
             SetOutcome {
                 record: record.record.clone(),
                 created: false,
+                changed,
             }
         }
         None => {
@@ -438,6 +445,7 @@ fn set_in_records(
             SetOutcome {
                 record,
                 created: true,
+                changed: true,
             }
         }
     }
@@ -777,6 +785,36 @@ mod tests {
     }
 
     #[test]
+    fn identical_re_set_is_a_noop() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let mut store = RelationStore::open(temp.path().join("relations.json")).expect("open");
+        let metadata = HashMap::from([("state".to_owned(), "idle".to_owned())]);
+        let first = store
+            .set(
+                window(9),
+                "org.rsynapse.window.agent-session".to_owned(),
+                agent("codex"),
+                metadata.clone(),
+            )
+            .expect("first set");
+        let second = store
+            .set(
+                window(9),
+                "org.rsynapse.window.agent-session".to_owned(),
+                agent("codex"),
+                metadata,
+            )
+            .expect("second set");
+        assert!(first.changed);
+        assert!(!second.created);
+        assert!(!second.changed);
+        assert_eq!(
+            first.record.updated_at_unix_ms,
+            second.record.updated_at_unix_ms
+        );
+    }
+
+    #[test]
     fn new_window_relations_default_to_memory_only() {
         let temp = tempfile::tempdir().expect("tempdir");
         let path = temp.path().join("relations.json");
@@ -1001,6 +1039,63 @@ mod tests {
         assert_eq!(
             store.targets(&workspace(1), "org.rsynapse.WorkspaceProject"),
             vec![project("old")]
+        );
+    }
+
+    #[test]
+    fn invalid_endpoints_are_rejected() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let mut store = RelationStore::open(temp.path().join("relations.json")).expect("open");
+        let bad = RelationEndpoint::stable_key("", "x");
+        assert!(
+            store
+                .set(
+                    bad,
+                    "org.rsynapse.test".to_owned(),
+                    project("p"),
+                    HashMap::new()
+                )
+                .is_err()
+        );
+        assert!(
+            store
+                .set(workspace(1), "".to_owned(), project("p"), HashMap::new())
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn set_one_reports_removed_target_before_setting_new_target() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let mut store = RelationStore::open(temp.path().join("relations.json")).expect("open");
+        store
+            .set(
+                workspace(1),
+                "org.rsynapse.workspace.project".to_owned(),
+                project("old"),
+                HashMap::new(),
+            )
+            .expect("set old");
+        let outcome = store
+            .set_one(
+                workspace(1),
+                "org.rsynapse.workspace.project".to_owned(),
+                project("new"),
+                HashMap::new(),
+            )
+            .expect("replace");
+        assert_eq!(
+            outcome
+                .removed
+                .iter()
+                .map(|record| record.target.clone())
+                .collect::<Vec<_>>(),
+            vec![project("old")]
+        );
+        assert!(outcome.set.created);
+        assert_eq!(
+            store.targets(&workspace(1), "org.rsynapse.workspace.project"),
+            vec![project("new")]
         );
     }
 

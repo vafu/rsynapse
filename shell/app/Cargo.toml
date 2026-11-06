@@ -11,10 +11,11 @@ name = "rsynapse-notifications"
 path = "src/bin/rsynapse-notifications.rs"
 
 [dependencies]
+desktop-entry = { path = "../core/desktop-entry" }
 async-channel = "2.5.0"
 futures-util = "0.3.32"
 adw = { package = "libadwaita", version = "0.9.1", features = ["v1_7"] }
-gtk = { package = "gtk4", version = "=0.11.3", features = ["v4_12"] }
+gtk.workspace = true
 libc = "0.2.186"
 locus = { path = "../../locus" }
 notify = "6.1.1"
@@ -28,7 +29,6 @@ shell-words = "1"
 shell-core.workspace = true
 shell-macros.workspace = true
 shell-rx-macros.workspace = true
-rsynapse-workspace = { path = "../remarked-legacy" }
 rsynapse-remarked = { path = "../remarked" }
 tokio = { version = "1.52.3", features = ["fs", "io-util", "process", "time"] }
 toml = "1.1.2"

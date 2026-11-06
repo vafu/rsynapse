@@ -4,7 +4,7 @@ use gtk::glib::Quark;
 use gtk::prelude::{BoxExt, Cast, IsA, ObjectExt, WidgetExt};
 use relm4::component::ComponentController;
 use relm4::{Component, Controller};
-use shell_source::{ListChange, diff_slices};
+use shell_source::{ListChange, ListDiff, diff_slices, diff_slices_by_key};
 
 use super::{ComponentListBoxExt, ComponentListUpdate};
 
@@ -26,6 +26,24 @@ where
         let key = component_list_key::<C>();
         let host = component_list_host::<C>(container, key);
         host.reconcile(container, update.items);
+    }
+
+    fn set_component_list_by_key<C, K, F>(&self, update: ComponentListUpdate<'_, C>, key: F)
+    where
+        C: Component,
+        C::Init: Clone + 'static,
+        K: Eq + std::hash::Hash + 'static,
+        F: Fn(&C::Init) -> K + 'static,
+        C::Root: AsRef<gtk::Widget> + Clone + std::fmt::Debug,
+    {
+        debug_assert!(
+            gtk::glib::MainContext::default().is_owner(),
+            "component list updates must run on the GTK main context"
+        );
+        let container = self.upcast_ref::<gtk::Box>();
+        let quark = component_list_key::<C>();
+        let host = component_list_host::<C>(container, quark);
+        host.reconcile_by_key(container, update.items, &key);
     }
 }
 
@@ -52,10 +70,13 @@ where
 impl<C> ComponentListHost<C>
 where
     C: Component,
-    C::Init: Clone + PartialEq + 'static,
+    C::Init: Clone + 'static,
     C::Root: AsRef<gtk::Widget> + Clone + std::fmt::Debug,
 {
-    fn reconcile(&mut self, container: &gtk::Box, items: &[C::Init]) {
+    fn reconcile(&mut self, container: &gtk::Box, items: &[C::Init])
+    where
+        C::Init: PartialEq,
+    {
         let row_type = std::any::type_name::<C>();
         let _span = tracing::trace_span!("list.reconcile", row = row_type).entered();
         let previous_len = self.rows.len();
@@ -85,6 +106,25 @@ where
             .map(|row| row.item.clone())
             .collect::<Vec<_>>();
         let diff = diff_slices(&previous_items, items);
+        self.apply_diff(container, items, diff);
+    }
+
+    fn reconcile_by_key<K, F>(&mut self, container: &gtk::Box, items: &[C::Init], key: &F)
+    where
+        K: Eq + std::hash::Hash,
+        F: Fn(&C::Init) -> K,
+    {
+        let previous_items = self
+            .rows
+            .iter()
+            .map(|row| row.item.clone())
+            .collect::<Vec<_>>();
+        let diff = diff_slices_by_key(&previous_items, items, key);
+        self.apply_diff(container, items, diff);
+    }
+
+    fn apply_diff(&mut self, container: &gtk::Box, items: &[C::Init], diff: ListDiff<C::Init>) {
+        let previous_len = self.rows.len();
         let mut rows = std::mem::take(&mut self.rows);
         let mut created = 0usize;
         let mut removed = 0usize;
@@ -226,6 +266,7 @@ where
     Quark::from_str(std::any::type_name::<ComponentListHost<C>>())
 }
 
+#[allow(clippy::mut_from_ref)]
 fn component_list_host<C>(container: &gtk::Box, key: Quark) -> &mut ComponentListHost<C>
 where
     C: Component,

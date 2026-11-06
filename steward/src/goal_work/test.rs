@@ -71,7 +71,10 @@ fn cancelled_tasks_cannot_receive_focus_work_even_with_stale_selection() {
 #[ignore = "requires PROJD_BIN and dbus-run-session; private bus, no desktop actions"]
 fn recorder_tracks_goal_idle_lock_and_service_restarts() {
     use futures_util::StreamExt;
-    use goal_model::{GoalInfo, MANAGER_INTERFACE, ProjectInfo};
+    use goal_model::{
+        BUS_NAME, GoalInfo, MANAGER_INTERFACE, METRICS_INTERFACE, ProjectInfo, ROOT_PATH,
+        WorkSessionInfo,
+    };
     use shell_source::rx::Observable as _;
     use std::{
         process::{Child, Command},

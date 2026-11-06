@@ -64,7 +64,7 @@ fn audio_snapshot() -> Observable<AudioSnapshot> {
             let mut in_chunk = false;
             let mut chunk_depth = 0i32;
             let mut initial_dump_seen = false;
-            while let Ok(Some(line)) = reader.next_line().await {
+            while let Some(line) = read_next_line(&mut reader, &sender).await {
                 let trimmed = line.trim();
                 if !in_chunk && trimmed == "[" {
                     in_chunk = true;
@@ -101,6 +101,25 @@ fn audio_snapshot() -> Observable<AudioSnapshot> {
         .distinct_until_changed()
         .box_it()
     })
+}
+
+async fn read_next_line(
+    reader: &mut tokio::io::Lines<BufReader<tokio::process::ChildStdout>>,
+    sender: &async_channel::Sender<Result<AudioSnapshot, String>>,
+) -> Option<String> {
+    match reader.next_line().await {
+        Ok(Some(line)) => Some(line),
+        Ok(None) => {
+            let _ = sender.send(Err("pw-dump monitor exited".to_owned())).await;
+            None
+        }
+        Err(error) => {
+            let _ = sender
+                .send(Err(format!("pw-dump monitor read failed: {error}")))
+                .await;
+            None
+        }
+    }
 }
 
 async fn emit_snapshot_if_changed(

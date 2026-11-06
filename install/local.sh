@@ -3,12 +3,22 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 prefix="${PREFIX:-"$HOME/.local"}"
+config_home="${XDG_CONFIG_HOME:-"$HOME/.config"}"
+data_home="${XDG_DATA_HOME:-"$HOME/.local/share"}"
+state_home="${XDG_STATE_HOME:-"$HOME/.local/state"}"
 local_bin="$prefix/bin"
 dbus_dir="$prefix/share/dbus-1/services"
 applications_dir="$prefix/share/applications"
-script_dir="$HOME/.config/scripts"
-plugin_dir="$prefix/lib/rsynapse/plugins"
-systemd_user_dir="$HOME/.config/systemd/user"
+script_dir="$config_home/scripts"
+systemd_user_dir="$config_home/systemd/user"
+
+apply_policy=0
+for arg in "$@"; do
+    case "$arg" in
+        --apply-policy) apply_policy=1 ;;
+        *) echo "unknown argument: $arg" >&2; exit 2 ;;
+    esac
+done
 
 cargo_install() {
     local path="$1"
@@ -39,6 +49,7 @@ cargo_install "$repo_root/shell/app"
 cargo_install "$repo_root/shell/launcher/rsynapse-daemon"
 cargo_install "$repo_root/shell/launcher/rsynapse-cli"
 cargo_install "$repo_root/shell/launcher/rsynapse-ui"
+cargo_install "$repo_root/shell/core/desktop-entry"
 
 cargo_install "$repo_root/steward"
 
@@ -46,40 +57,30 @@ echo "Installing helper scripts to $local_bin"
 install -d "$local_bin" "$script_dir"
 install -m 0755 "$repo_root/install/bin/rsynapse-open-url" "$script_dir/rsynapse-open-url"
 install -m 0755 "$repo_root/install/bin/remarked-ui" "$local_bin/remarked-ui"
-install -m 0755 "$repo_root/install/bin/remarked-ui" "$local_bin/remarked-ui-beta"
 ln -sfn "$script_dir/rsynapse-open-url" "$local_bin/rsynapse-open-url"
 install -m 0755 "$repo_root/install/bin/ghostty-project-window" "$script_dir/ghostty-project-window"
 ln -sfn "$script_dir/ghostty-project-window" "$local_bin/ghostty-project-window"
 install -m 0755 "$repo_root/install/bin/umbriel-workspace-new" "$script_dir/umbriel-workspace-new"
 ln -sfn "$script_dir/umbriel-workspace-new" "$local_bin/umbriel-workspace-new"
 
-echo "Building and installing launcher plugins to $plugin_dir"
-cargo build \
-    --manifest-path "$repo_root/shell/launcher/Cargo.toml" \
-    --release \
-    -p rsynapse-plugin-launcher \
-    -p rsynapse-plugin-shell \
-    -p rsynapse-plugin-calc \
-    -p rsynapse-plugin-commands \
-    -p rsynapse-plugin-workspaces
-
-install -d "$plugin_dir"
-plugin_target="${CARGO_TARGET_DIR:-"$repo_root/shell/launcher/target"}/release"
-find "$plugin_target" -maxdepth 1 -type f -name 'librsynapse_plugin_*.so' \
-    -exec install -m 0755 {} "$plugin_dir/" \;
-
+# Launcher plugins are compiled into rsynapse-daemon (static registration);
+# no plugin .so files are installed.
 echo "Installing desktop entries to $applications_dir"
 install_templates "$repo_root/install/applications" "$applications_dir" ".in"
-if command -v xdg-mime >/dev/null 2>&1; then
-    xdg-mime default rsynapse-open-url.desktop x-scheme-handler/http
-    xdg-mime default rsynapse-open-url.desktop x-scheme-handler/https
+if [[ $apply_policy -eq 1 ]]; then
+    if command -v xdg-mime >/dev/null 2>&1; then
+        xdg-mime default rsynapse-open-url.desktop x-scheme-handler/http
+        xdg-mime default rsynapse-open-url.desktop x-scheme-handler/https
+    else
+        echo "xdg-mime is not available; skipped URL handler activation"
+    fi
 else
-    echo "xdg-mime is not available; skipped URL handler activation"
+    echo "Skipped MIME policy changes (pass --apply-policy to apply them)"
 fi
 
 echo "Installing namespaced daemons, systemd units and D-Bus activation files"
 python3 "$repo_root/install/session-services.py" --prefix "$prefix" \
-    --config-home "$HOME/.config"
+    --config-home "$config_home"
 
 echo "Removing deprecated Rsynapse service definitions"
 rm -f \
@@ -105,9 +106,13 @@ rm -f \
     "$systemd_user_dir/default.target.wants/rsynapse-ui.service" \
     "$systemd_user_dir/graphical-session.target.wants/niri-dbus.service"
 
-rm -rf \
-    "$systemd_user_dir/rsynapse-shell.service.d" \
-    "$systemd_user_dir/rsynapse-notifications.service.d"
+if [[ $apply_policy -eq 1 ]]; then
+    rm -rf \
+        "$systemd_user_dir/rsynapse-shell.service.d" \
+        "$systemd_user_dir/rsynapse-notifications.service.d"
+else
+    echo "Preserved service drop-ins (pass --apply-policy to remove obsolete ones)"
+fi
 
 # Cleanup above may have removed obsolete loaded units.
 systemctl --user daemon-reload >/dev/null 2>&1 || true

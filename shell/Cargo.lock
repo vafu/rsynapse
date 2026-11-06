@@ -410,6 +410,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "desktop-entry"
+version = "0.1.0"
+dependencies = [
+ "shlex",
+]
+
+[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1405,12 +1412,7 @@ dependencies = [
 name = "notebook-api"
 version = "0.1.0"
 dependencies = [
- "anyhow",
- "async-trait",
  "serde",
- "serde_json",
- "strum",
- "strum_macros",
  "zbus",
 ]
 
@@ -1874,6 +1876,7 @@ name = "rsynapse-shell"
 version = "0.1.0"
 dependencies = [
  "async-channel",
+ "desktop-entry",
  "futures-util",
  "gtk4",
  "libadwaita",
@@ -1886,7 +1889,6 @@ dependencies = [
  "regex",
  "relm4",
  "rsynapse-remarked",
- "rsynapse-workspace",
  "serde",
  "serde_json",
  "shell-core",
@@ -1922,27 +1924,6 @@ dependencies = [
  "shell-core",
  "shell-macros",
  "workspace-dbus-api",
- "zbus",
-]
-
-[[package]]
-name = "rsynapse-workspace"
-version = "0.1.0"
-dependencies = [
- "futures-util",
- "gtk4",
- "libadwaita",
- "notebook-api",
- "pkg-config",
- "relm4",
- "rsynapse-projd-model",
- "shell-core",
- "shell-macros",
- "shell-rx-macros",
- "sourceview5",
- "tempfile",
- "tokio",
- "uuid",
  "zbus",
 ]
 
@@ -2149,18 +2130,22 @@ version = "0.1.0"
 dependencies = [
  "async-channel",
  "futures-util",
+ "libc",
  "locus",
+ "notify",
  "rsynapse-projd-model",
  "rxrust",
  "serde",
  "serde_json",
  "shell-rx-macros",
+ "steward-api",
  "tempfile",
  "tokio",
  "tracing",
  "wayland-client",
  "wayland-protocols",
  "workspace-dbus-api",
+ "workspace-policy",
  "zbus",
 ]
 
@@ -2274,28 +2259,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
+name = "steward-api"
+version = "0.1.0"
+dependencies = [
+ "rsynapse-projd-model",
+ "zbus",
+]
+
+[[package]]
 name = "str_stack"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f446288b699d66d0fd2e30d1cfe7869194312524b3b9252594868ed26ef056a"
-
-[[package]]
-name = "strum"
-version = "0.27.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "af23d6f6c1a224baef9d3f61e287d2761385a5b88fdab4eb4c6f11aeb54c4bcf"
-
-[[package]]
-name = "strum_macros"
-version = "0.27.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7695ce3845ea4b33927c055a39dc438a45b059f7c1b3d91d38d10355fb8cbca7"
-dependencies = [
- "heck",
- "proc-macro2",
- "quote",
- "syn",
-]
 
 [[package]]
 name = "symbolic-common"
@@ -3010,6 +2985,15 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "zbus",
+]
+
+[[package]]
+name = "workspace-policy"
+version = "0.1.0"
+dependencies = [
+ "locus",
+ "rsynapse-projd-model",
+ "workspace-dbus-api",
 ]
 
 [[package]]

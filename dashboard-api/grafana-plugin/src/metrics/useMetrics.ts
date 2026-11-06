@@ -17,7 +17,8 @@ export function useMetrics(api:string,range:Range,project:string,goal:string,inc
     const controller=new AbortController();
     const query={api,from:range.from,to:range.to,project,goal,include:includeSubgoals};
     // Never display a previous task/project's totals under newly selected filters.
-    if (!last.current || Object.keys(query).some(k=>query[k]!==last.current?.[k])) setData(null);
+    const lastQuery = last.current;
+    if (!lastQuery || lastQuery.api!==query.api || lastQuery.from!==query.from || lastQuery.to!==query.to || lastQuery.project!==query.project || lastQuery.goal!==query.goal || lastQuery.include!==query.include) setData(null);
     last.current=query;setBusy(true);
     const params=new URLSearchParams({from_ms:String(range.from),to_ms:String(range.live?Date.now():range.to),project_id:project,instance_id:goal,include_subgoals:String(includeSubgoals)});
     fetch(api+'/api/goal-metrics?'+params,{signal:controller.signal})

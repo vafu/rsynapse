@@ -1,5 +1,6 @@
 use super::resolve;
 use clap::{Args, Subcommand};
+use proj_model::api::ManagerProxy;
 use proj_model::{BUS_NAME, PROJECT_INTERFACE, object_path};
 use std::path::PathBuf;
 use zbus::Proxy;
@@ -36,9 +37,9 @@ pub enum LabelsCommand {
     },
 }
 
-pub async fn get(proxy: &Proxy<'_>, id: &str) -> anyhow::Result<Vec<String>> {
+pub async fn get(proxy: &ManagerProxy<'_>, id: &str) -> anyhow::Result<Vec<String>> {
     let project = Proxy::new(
-        proxy.connection(),
+        proxy.inner().connection(),
         BUS_NAME,
         object_path("Projects", id),
         PROJECT_INTERFACE,
@@ -47,11 +48,11 @@ pub async fn get(proxy: &Proxy<'_>, id: &str) -> anyhow::Result<Vec<String>> {
     Ok(project.get_property("Labels").await?)
 }
 
-pub async fn run(proxy: &Proxy<'_>, command: LabelsCommand) -> anyhow::Result<()> {
-    let (target, method, labels) = match command {
+pub async fn run(proxy: &ManagerProxy<'_>, command: LabelsCommand) -> anyhow::Result<()> {
+    let (target, action, labels) = match command {
         LabelsCommand::Get(target) => (target, None, Vec::new()),
-        LabelsCommand::Add { target, labels } => (target, Some("AddProjectLabels"), labels),
-        LabelsCommand::Remove { target, labels } => (target, Some("RemoveProjectLabels"), labels),
+        LabelsCommand::Add { target, labels } => (target, Some(true), labels),
+        LabelsCommand::Remove { target, labels } => (target, Some(false), labels),
     };
     let id = match target.project_id {
         Some(id) => id,
@@ -61,8 +62,9 @@ pub async fn run(proxy: &Proxy<'_>, command: LabelsCommand) -> anyhow::Result<()
                 .id
         }
     };
-    let result: Vec<String> = match method {
-        Some(method) => proxy.call(method, &(id, labels)).await?,
+    let result: Vec<String> = match action {
+        Some(true) => proxy.add_project_labels(&id, labels).await?,
+        Some(false) => proxy.remove_project_labels(&id, labels).await?,
         None => get(proxy, &id).await?,
     };
     if target.json {
