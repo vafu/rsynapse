@@ -3,12 +3,15 @@ mod actions;
 mod component;
 mod controller;
 mod helpers;
+mod sone;
 
 use shell_core::{
     gtk,
     keybind::HoldWatcher,
     source::{StateSignal, mpris::MprisSnapshot},
 };
+
+use sone::SoneLikeState;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum MediaAction {
@@ -20,12 +23,26 @@ pub(crate) enum MediaAction {
 #[derive(Debug)]
 pub(crate) enum MprisInput {
     Source(sources::Msg),
-    Show { hold: bool },
+    Show {
+        hold: bool,
+    },
     Hide,
     HideWindow(u64),
-    Toggle { hold: bool },
+    Toggle {
+        hold: bool,
+    },
     Control(MediaAction),
     ControlResult(Result<(), String>),
+    ToggleLike,
+    LikeStatus {
+        track_id: String,
+        result: Result<bool, String>,
+    },
+    LikeResult {
+        track_id: String,
+        liked: bool,
+        result: Result<(), String>,
+    },
 }
 
 impl From<sources::Msg> for MprisInput {
@@ -43,6 +60,9 @@ pub(crate) struct MprisWindow {
     generation: u64,
     _hold_watcher: HoldWatcher,
     active: StateSignal<bool>,
+    sone_track_id: Option<String>,
+    sone_like: SoneLikeState,
+    sone_busy: bool,
 
     #[source(shell_core::source::switch_map(
         active.observable(),

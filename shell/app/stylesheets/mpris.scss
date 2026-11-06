@@ -42,6 +42,16 @@ window.mpris-window {
   color: $rsx-on-surface-variant;
 }
 
+.mpris-like {
+  padding: 4px 8px;
+  border-radius: $rsx-surface-radius-pill;
+}
+
+.mpris-like-icon {
+  font-family: "FiraCode Nerd Font Mono";
+  font-size: 1.1em;
+}
+
 .mpris-progress trough,
 .mpris-progress progress {
   border-radius: $rsx-surface-radius-pill;

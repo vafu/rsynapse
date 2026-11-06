@@ -35,6 +35,7 @@ pub enum PlaybackStatus {
 pub struct MprisSnapshot {
     pub player: String,
     pub identity: String,
+    pub track_id: String,
     pub title: String,
     pub artist: String,
     pub album: String,
@@ -196,6 +197,7 @@ fn player_snapshot(player: String) -> Observable<MprisSnapshot> {
             MprisSnapshot {
                 player: player_for_view.clone(),
                 identity,
+                track_id: metadata.track_id,
                 title: metadata.title,
                 artist: metadata.artist,
                 album: metadata.album,

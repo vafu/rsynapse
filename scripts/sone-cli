@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+log="${XDG_CONFIG_HOME:-$HOME/.config}/sone/logs/sone_rCURRENT.log"
+if [[ ! -r "$log" ]]; then
+  echo "sone-cli: log not found at $log (is Sone running?)" >&2
+  exit 1
+fi
+
+url=$(grep -a 'MCP server listening on ' "$log" | tail -n 1 | sed 's/.*MCP server listening on //')
+if [[ -z "${url:-}" ]]; then
+  echo "sone-cli: MCP server not running; enable it in Sone Settings -> MCP server" >&2
+  exit 1
+fi
+
+call() {
+  curl -fsS --max-time 15 "$url" \
+    -H 'Content-Type: application/json' \
+    -H 'Accept: application/json, text/event-stream' \
+    -d "$1"
+}
+
+tool() {
+  local name="$1" args="$2"
+  call "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/call\",\"params\":{\"name\":\"$name\",\"arguments\":$args}}" \
+    | jq -r '.result.content[0].text // empty'
+}
+
+require_id() {
+  local id="${1:-}"
+  if [[ -z "$id" ]]; then
+    id=$(tool get_now_playing '{}' | jq -r '.nowPlaying.trackId // empty')
+  fi
+  if [[ -z "$id" ]]; then
+    echo "sone-cli: nothing is playing" >&2
+    exit 1
+  fi
+  printf '%s' "$id"
+}
+
+cmd="${1:-now}"
+if [[ $# -gt 0 ]]; then
+  shift
+fi
+
+case "$cmd" in
+  now)
+    tool get_now_playing '{}' \
+      | jq -r '.nowPlaying | "\(.title) — \(.artist) [\(.trackId)] \(if .isPlaying then "playing" else "paused" end)"'
+    ;;
+  like | unlike)
+    action=add
+    if [[ "$cmd" == "unlike" ]]; then
+      action=remove
+    fi
+    id=$(require_id "$@")
+    tool favorite_track "{\"id\":$id,\"action\":\"$action\"}" | jq -r '.status // .'
+    ;;
+  status)
+    id=$(require_id "$@")
+    tool is_track_favorited "{\"track_id\":$id}" \
+      | jq -r 'if .favorited then "liked" else "not liked" end'
+    ;;
+  *)
+    echo "usage: sone-cli [now|like [track-id]|unlike [track-id]|status [track-id]]" >&2
+    exit 2
+    ;;
+esac

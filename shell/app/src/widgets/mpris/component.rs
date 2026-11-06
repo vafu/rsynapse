@@ -8,7 +8,9 @@ use shell_core::{
 use super::{
     MediaAction, MprisInput, MprisWindow,
     helpers::{art_file, artist_text, format_duration, play_pause_icon, title_text},
+    sone::SoneLikeState,
 };
+use crate::widgets::nerd_icon::{NerdIcon, NerdIconLabelExt};
 
 #[shell_macros::component(model = MprisWindow)]
 #[relm4::component(pub(crate))]
@@ -127,6 +129,23 @@ impl SimpleComponent for MprisWindow {
                                 set_visible: model.player.is_available(),
                                 #[watch]
                                 set_label: model.player.identity.as_str(),
+                            },
+
+                            gtk::Button {
+                                add_css_class: "mpris-like",
+                                set_halign: gtk::Align::Start,
+                                set_tooltip_text: Some("Toggle like (L)"),
+                                #[watch]
+                                set_visible: model.sone_like.visible(),
+                                #[watch]
+                                set_sensitive: model.sone_like.can_toggle() && !model.sone_busy,
+                                connect_clicked => MprisInput::ToggleLike,
+
+                                gtk::Label {
+                                    add_css_class: "mpris-like-icon",
+                                    #[watch]
+                                    set_nerd_icon: NerdIcon::new(model.sone_like.icon()),
+                                }
                             }
                         }
                     },
@@ -250,6 +269,10 @@ impl SimpleComponent for MprisWindow {
                 key_sender.input(MprisInput::Control(MediaAction::PlayPause));
                 gtk::glib::Propagation::Stop
             }
+            gdk::Key::l | gdk::Key::L => {
+                key_sender.input(MprisInput::ToggleLike);
+                gtk::glib::Propagation::Stop
+            }
             gdk::Key::Left => {
                 key_sender.input(MprisInput::Control(MediaAction::Previous));
                 gtk::glib::Propagation::Stop
@@ -268,7 +291,18 @@ impl SimpleComponent for MprisWindow {
             gtk::glib::Propagation::Stop
         });
 
-        let model = Self::new(root.clone(), false, false, false, 0, hold_watcher, active);
+        let model = Self::new(
+            root.clone(),
+            false,
+            false,
+            false,
+            0,
+            hold_watcher,
+            active,
+            None,
+            SoneLikeState::Hidden,
+            false,
+        );
         let widgets = view_output!();
         ComponentParts { model, widgets }
     }

@@ -43,6 +43,8 @@ pub(crate) mod md {
     pub(crate) const MD_DOCK_LEFT: &str = "\u{f10aa}";
     pub(crate) const MD_GOOGLE_CHROME: &str = "\u{f02af}";
     pub(crate) const MD_HARDDISK: &str = "\u{f02ca}";
+    pub(crate) const MD_HEART: &str = "\u{f02d1}";
+    pub(crate) const MD_HEART_OUTLINE: &str = "\u{f02d5}";
     pub(crate) const MD_LEAF: &str = "\u{f032a}";
     pub(crate) const MD_ROBOT: &str = "\u{f06a9}";
     pub(crate) const MD_SPEEDOMETER: &str = "\u{f04c5}";
