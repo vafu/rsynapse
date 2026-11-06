@@ -1,5 +1,3 @@
-use std::fmt;
-
 use shell_core::source::{
     Observable,
     dbus::{
@@ -13,7 +11,6 @@ pub(super) const BLUEZ_BUS: &str = "org.bluez";
 pub(super) const BLUEZ_OBJECT_PATH: &str = "/";
 pub(super) const ADAPTER_INTERFACE: &str = "org.bluez.Adapter1";
 pub(super) const DEVICE_INTERFACE: &str = "org.bluez.Device1";
-const BATTERY_INTERFACE: &str = "org.bluez.Battery1";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct BluezAdapter {
@@ -45,92 +42,23 @@ impl BluezAdapter {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct BluezDevice {
     path: OwnedObjectPath,
-    initial_address: Option<String>,
-    initial_alias: Option<String>,
-    initial_name: Option<String>,
-    initial_icon: Option<String>,
-    initial_class: Option<u32>,
     initial_connected: Option<bool>,
-    initial_connecting: Option<bool>,
-    initial_battery_percentage: Option<u8>,
 }
 
 impl BluezDevice {
-    pub(super) fn path(&self) -> OwnedObjectPath {
-        self.path.clone()
-    }
-
-    pub(super) fn address(&self) -> Observable<String> {
-        property_or(
-            self.device_object(),
-            "Address",
-            self.initial_address.clone(),
-            String::new(),
-        )
-    }
-
-    pub(super) fn alias(&self) -> Observable<Option<String>> {
-        property(self.device_object(), "Alias", self.initial_alias.clone())
-    }
-
-    pub(super) fn name(&self) -> Observable<Option<String>> {
-        property(self.device_object(), "Name", self.initial_name.clone())
-    }
-
-    pub(super) fn icon(&self) -> Observable<Option<String>> {
-        property(self.device_object(), "Icon", self.initial_icon.clone())
-    }
-
-    pub(super) fn class(&self) -> Observable<Option<u32>> {
-        property(self.device_object(), "Class", self.initial_class)
-    }
-
     pub(super) fn connected(&self) -> Observable<bool> {
-        property_or(
-            self.device_object(),
-            "Connected",
-            self.initial_connected,
-            false,
-        )
-    }
-
-    pub(super) fn connecting(&self) -> Observable<bool> {
-        property_or(
-            self.device_object(),
-            "Connecting",
-            self.initial_connecting,
-            false,
-        )
-    }
-
-    pub(super) fn battery_percentage(&self) -> Observable<Option<u8>> {
-        property(
-            self.battery_object(),
-            "Percentage",
-            self.initial_battery_percentage,
-        )
+        property_or(self.object(), "Connected", self.initial_connected, false)
     }
 
     fn from_object(object: &DbusObject) -> Self {
         Self {
             path: object.path.clone(),
-            initial_address: snapshot_property(object, DEVICE_INTERFACE, "Address"),
-            initial_alias: snapshot_property(object, DEVICE_INTERFACE, "Alias"),
-            initial_name: snapshot_property(object, DEVICE_INTERFACE, "Name"),
-            initial_icon: snapshot_property(object, DEVICE_INTERFACE, "Icon"),
-            initial_class: snapshot_property(object, DEVICE_INTERFACE, "Class"),
             initial_connected: snapshot_property(object, DEVICE_INTERFACE, "Connected"),
-            initial_connecting: snapshot_property(object, DEVICE_INTERFACE, "Connecting"),
-            initial_battery_percentage: snapshot_property(object, BATTERY_INTERFACE, "Percentage"),
         }
     }
 
-    fn device_object(&self) -> ObjectDescriptor {
+    fn object(&self) -> ObjectDescriptor {
         object(self.path.as_str(), DEVICE_INTERFACE)
-    }
-
-    fn battery_object(&self) -> ObjectDescriptor {
-        object(self.path.as_str(), BATTERY_INTERFACE)
     }
 }
 
@@ -155,18 +83,6 @@ pub(super) fn bluez_models(objects: Vec<DbusObject>) -> (Vec<BluezAdapter>, Vec<
     (adapters, devices)
 }
 
-fn property<T>(
-    object: ObjectDescriptor,
-    property_name: &'static str,
-    initial: Option<T>,
-) -> Observable<Option<T>>
-where
-    T: TryFrom<OwnedValue> + Clone + PartialEq + Send + Sync + 'static,
-    T::Error: fmt::Display,
-{
-    dbus::property_with_initial(PropertyDescriptor::new(object, property_name), initial)
-}
-
 fn property_or<T>(
     object: ObjectDescriptor,
     property_name: &'static str,
@@ -175,7 +91,7 @@ fn property_or<T>(
 ) -> Observable<T>
 where
     T: TryFrom<OwnedValue> + Clone + PartialEq + Send + Sync + 'static,
-    T::Error: fmt::Display,
+    T::Error: std::fmt::Display,
 {
     dbus::property_or_with_initial(
         PropertyDescriptor::new(object, property_name),
@@ -196,7 +112,7 @@ fn has_interface(object: &DbusObject, interface_name: &str) -> bool {
 fn snapshot_property<T>(object: &DbusObject, interface_name: &str, property_name: &str) -> Option<T>
 where
     T: TryFrom<OwnedValue>,
-    T::Error: fmt::Display,
+    T::Error: std::fmt::Display,
 {
     let property = interface(object, interface_name)?
         .properties

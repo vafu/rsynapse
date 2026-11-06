@@ -55,6 +55,8 @@ pub struct HoldWatcher {
     release: gtk::EventControllerKey,
     target: glib::WeakRef<gtk::Widget>,
     active: Rc<Cell<bool>>,
+    action: Rc<dyn Fn(HoldAction)>,
+    release_modifiers: gdk::ModifierType,
 }
 
 impl HoldWatcher {
@@ -64,7 +66,7 @@ impl HoldWatcher {
         on_action: impl Fn(HoldAction) + 'static,
     ) -> Self {
         let active = Rc::new(Cell::new(false));
-        let on_action = Rc::new(on_action);
+        let on_action: Rc<dyn Fn(HoldAction)> = Rc::new(on_action);
 
         let mut keybinds = Vec::new();
         for chord in bindings.next {
@@ -89,7 +91,7 @@ impl HoldWatcher {
         let release = gtk::EventControllerKey::new();
         release.set_propagation_phase(gtk::PropagationPhase::Capture);
         let release_active = active.clone();
-        let release_action = on_action;
+        let release_action = on_action.clone();
         let release_modifiers = bindings.release_modifiers;
         release.connect_key_released(move |_, key, _, _| {
             if !release_active.get() {
@@ -108,12 +110,21 @@ impl HoldWatcher {
             release,
             target: widget.downgrade(),
             active,
+            action: on_action,
+            release_modifiers: bindings.release_modifiers,
         }
     }
 
     pub fn start(&self) {
         self.active.set(true);
         self.press.set_enabled(true);
+        // The invoking modifier can be released between the shortcut dispatch
+        // and component startup. Release events are not replayed, so check the
+        // current modifier state instead of waiting for an event that may
+        // already have happened.
+        if !self.modifiers_held() {
+            (self.action)(HoldAction::ModifierReleased);
+        }
     }
 
     pub fn stop(&self) {
@@ -123,6 +134,14 @@ impl HoldWatcher {
 
     pub fn is_active(&self) -> bool {
         self.active.get()
+    }
+
+    fn modifiers_held(&self) -> bool {
+        gdk::Display::default()
+            .and_then(|display| display.default_seat())
+            .and_then(|seat| seat.keyboard())
+            .map(|keyboard| !(keyboard.modifier_state() & self.release_modifiers).is_empty())
+            .unwrap_or(true)
     }
 }
 

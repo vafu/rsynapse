@@ -1,0 +1,11 @@
+[package]
+name = "rsynapse-plugin-bluetooth"
+version = "0.1.0"
+publish = false
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+rsynapse-plugin = { path = "../rsynapse-plugin" }
+zbus = "4.4"

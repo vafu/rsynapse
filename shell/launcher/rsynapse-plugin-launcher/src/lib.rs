@@ -178,6 +178,7 @@ impl Plugin for LauncherPlugin {
                 data: String::new(),
                 score: score as f64,
                 current: false,
+                keep_open: false,
             })
             .collect();
 

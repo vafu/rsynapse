@@ -450,6 +450,7 @@ impl Plugin for WorkspacesPlugin {
                         data: format!("{}\u{1f}{}", item.output, item.index),
                         score: 1_000.0 - position as f64,
                         current: workspace_policy::is_current(item, focused_path.as_deref()),
+                        keep_open: false,
                     }
                 })
                 .collect();
@@ -491,6 +492,7 @@ impl Plugin for WorkspacesPlugin {
                 data: project.cwd,
                 score: 1_000.0 - index as f64,
                 current: current_project.as_deref() == Some(project.id.as_str()),
+                keep_open: false,
             })
             .collect::<Vec<_>>();
 
@@ -504,6 +506,7 @@ impl Plugin for WorkspacesPlugin {
                     data: String::new(),
                     score: -1.0,
                     current: false,
+                    keep_open: false,
                 });
             }
         } else {
@@ -515,6 +518,7 @@ impl Plugin for WorkspacesPlugin {
                 data: query.to_owned(),
                 score: -1.0,
                 current: false,
+                keep_open: false,
             });
         }
 

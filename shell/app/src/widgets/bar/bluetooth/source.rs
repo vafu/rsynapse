@@ -1,9 +1,8 @@
+use super::BluetoothView;
 use super::model::{
-    ADAPTER_INTERFACE, BLUEZ_BUS, BLUEZ_OBJECT_PATH, BluezAdapter, BluezDevice, DEVICE_INTERFACE,
-    bluez, bluez_models,
+    ADAPTER_INTERFACE, BLUEZ_BUS, BLUEZ_OBJECT_PATH, BluezAdapter, BluezDevice, bluez, bluez_models,
 };
-use super::view::{self, AdapterSnapshot, DeviceSnapshot};
-use super::{BluetoothDeviceGroup, BluetoothDeviceView, BluetoothView};
+use super::view::{self, AdapterSnapshot};
 use shell_core::source::{self, Observable, dbus, rx::Observable as _};
 use shell_rx_macros::combine_latest;
 use zbus::zvariant::OwnedObjectPath;
@@ -31,19 +30,6 @@ pub(super) fn bluetooth_status() -> Observable<BluetoothView> {
     })
 }
 
-pub(super) fn bluetooth_group_devices(
-    group: BluetoothDeviceGroup,
-) -> Observable<Vec<BluetoothDeviceView>> {
-    bluetooth_status()
-        .map(move |view| match group {
-            BluetoothDeviceGroup::Keyboard => view.keyboard.devices,
-            BluetoothDeviceGroup::Audio => view.audio.devices,
-            BluetoothDeviceGroup::Pointer => view.pointer.devices,
-        })
-        .distinct_until_changed()
-        .box_it()
-}
-
 pub(super) fn set_adapter_power(path: Option<OwnedObjectPath>, powered: bool) {
     let Some(path) = path else {
         eprintln!("[bluetooth] cannot toggle power: no BlueZ adapter found");
@@ -58,17 +44,6 @@ pub(super) fn set_adapter_power(path: Option<OwnedObjectPath>, powered: bool) {
     });
 }
 
-pub(super) fn set_device_connected(path: OwnedObjectPath, connect: bool) {
-    let path = path.to_string();
-    let method = if connect { "Connect" } else { "Disconnect" };
-    shell_core::source::write::spawn("bluetooth device", async move {
-        let connection = shell_core::source::write::system_connection().await?;
-        let proxy =
-            zbus::Proxy::new(connection, BLUEZ_BUS, path.as_str(), DEVICE_INTERFACE).await?;
-        proxy.call_method(method, &()).await.map(|_| ())
-    });
-}
-
 fn adapter_snapshot(adapter: BluezAdapter) -> Observable<AdapterSnapshot> {
     let path = adapter.path();
     adapter
@@ -78,31 +53,6 @@ fn adapter_snapshot(adapter: BluezAdapter) -> Observable<AdapterSnapshot> {
         .box_it()
 }
 
-fn device_snapshot(device: BluezDevice) -> Observable<DeviceSnapshot> {
-    let path = device.path();
-    combine_latest!(
-        device.address(),
-        device.alias(),
-        device.name(),
-        device.icon(),
-        device.class(),
-        device.connected(),
-        device.connecting(),
-        device.battery_percentage()
-            => move |(address, alias, name, icon, class, connected, connecting, battery)| {
-                view::device_snapshot(
-                    path.clone(),
-                    address,
-                    alias,
-                    name,
-                    icon,
-                    class,
-                    connected,
-                    connecting,
-                    battery,
-                )
-            },
-    )
-    .distinct_until_changed()
-    .box_it()
+fn device_snapshot(device: BluezDevice) -> Observable<bool> {
+    device.connected().distinct_until_changed().box_it()
 }

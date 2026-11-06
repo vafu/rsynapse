@@ -62,6 +62,7 @@ enum Msg {
     Toggle(ShowRequest),
     ForwardKey(LauncherKeyEvent),
     KeyResponse(KeyResponse),
+    Refresh,
 }
 
 enum UiCommand {
@@ -394,7 +395,8 @@ impl SimpleComponent for App {
                 self.refresh_list();
             }
             Msg::Cycle(delta) => self.cycle(delta),
-            Msg::Activate => self.activate_selected(),
+            Msg::Activate => self.activate_selected(&sender),
+            Msg::Refresh => self.start_search(&sender),
             Msg::Hide => self.hide(),
             Msg::Show(request) => self.show_request(request, &sender),
             Msg::Toggle(request) => {
@@ -530,18 +532,27 @@ impl App {
         self.update_selection();
     }
 
-    fn activate_selected(&mut self) {
+    fn activate_selected(&mut self, sender: &ComponentSender<Self>) {
         let Some(result) = self.results.get(self.selected as usize).cloned() else {
             return;
         };
-        // Release the layer-shell keyboard grab before activating another
-        // output's workspace or window. The compositor must be free to move
-        // focus away from this launcher.
-        self.hide();
+        let keep_open = result.keep_open;
+        if !keep_open {
+            // Release the layer-shell keyboard grab before activating another
+            // output's workspace or window. The compositor must be free to move
+            // focus away from this launcher.
+            self.hide();
+        }
         eprintln!("[rsynapse-ui] Executing: {} ({})", result.title, result.id);
-        std::thread::spawn(move || match dbus::execute(&result.id) {
-            Ok(r) => eprintln!("[rsynapse-ui] Execute result: {:?}", r),
-            Err(e) => eprintln!("[rsynapse-ui] Execute error: {}", e),
+        let sender = sender.clone();
+        std::thread::spawn(move || {
+            match dbus::execute(&result.id) {
+                Ok(r) => eprintln!("[rsynapse-ui] Execute result: {:?}", r),
+                Err(e) => eprintln!("[rsynapse-ui] Execute error: {}", e),
+            }
+            if keep_open {
+                let _ = sender.input(Msg::Refresh);
+            }
         });
     }
 

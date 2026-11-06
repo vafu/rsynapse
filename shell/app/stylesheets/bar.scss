@@ -754,26 +754,6 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
   margin-top: -14px;
 }
 
-.bt-device-button {
-  &.tinted {
-    opacity: 0.58;
-  }
-}
-
-.bt-device-list {
-  min-width: 320px;
-
-  .bt-device-row {
-    padding: 2px 4px;
-  }
-}
-
-.bt-battery-indicator {
-  min-width: 4px;
-  margin-left: 1px;
-  padding: 0;
-}
-
 .levelindicator.agent-context-level {
   min-width: 4px;
   margin: 5px 0 5px 2px;

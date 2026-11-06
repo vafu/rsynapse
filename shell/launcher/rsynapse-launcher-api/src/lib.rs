@@ -37,6 +37,8 @@ pub struct LauncherResult {
     pub icon: String,
     pub data: String,
     pub current: bool,
+    /// Keep the launcher open after activating this result.
+    pub keep_open: bool,
     /// Plugin-provided relevance score; not shown by the UI.
     pub score: f64,
 }

@@ -87,6 +87,7 @@ impl Plugin for ShellPlugin {
                 data: command.to_string(),
                 score: std::f64::MIN,
                 current: false,
+                keep_open: false,
             }],
         }
     }

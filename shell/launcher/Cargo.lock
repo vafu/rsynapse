@@ -1780,6 +1780,7 @@ dependencies = [
  "rsynapse-launcher-api",
  "rsynapse-plugin",
  "rsynapse-plugin-audio",
+ "rsynapse-plugin-bluetooth",
  "rsynapse-plugin-calc",
  "rsynapse-plugin-commands",
  "rsynapse-plugin-launcher",
@@ -1813,6 +1814,14 @@ version = "0.1.0"
 dependencies = [
  "rsynapse-plugin",
  "serde_json",
+]
+
+[[package]]
+name = "rsynapse-plugin-bluetooth"
+version = "0.1.0"
+dependencies = [
+ "rsynapse-plugin",
+ "zbus",
 ]
 
 [[package]]

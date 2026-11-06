@@ -76,6 +76,7 @@ impl Plugin for AudioPlugin {
                 data: sink.id.to_string(),
                 score: 1_000.0 - index as f64,
                 current: sink.is_default,
+                keep_open: false,
             })
             .collect();
 

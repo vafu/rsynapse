@@ -34,6 +34,7 @@ impl Plugin for CalcPlugin {
                         data: result.to_string(),
                         score: 100.0,
                         current: false,
+                        keep_open: false,
                     }],
                 }
             }

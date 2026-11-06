@@ -429,6 +429,7 @@ fn non_empty(value: &str) -> Option<&str> {
 fn builtin_plugins() -> Vec<Box<dyn Plugin>> {
     vec![
         rsynapse_plugin_audio::plugin(),
+        rsynapse_plugin_bluetooth::plugin(),
         rsynapse_plugin_calc::plugin(),
         rsynapse_plugin_commands::plugin(),
         rsynapse_plugin_launcher::plugin(),
@@ -634,6 +635,7 @@ mod tests {
             .collect::<Vec<_>>();
         for expected in [
             "Audio",
+            "Bluetooth",
             "Calculator",
             "Commands",
             "Application Launcher",
@@ -645,7 +647,7 @@ mod tests {
                 "missing plugin {expected}: {names:?}"
             );
         }
-        assert_eq!(names.len(), 6);
+        assert_eq!(names.len(), 7);
     }
 
     #[test]
@@ -683,6 +685,7 @@ mod tests {
             data: "$(whoami)".into(),
             score: 0.0,
             current: false,
+            keep_open: false,
         };
         let command = template
             .replace("{id}", &shell_quote(&item.id))

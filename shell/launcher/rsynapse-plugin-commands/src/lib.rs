@@ -225,6 +225,7 @@ impl JsonResultItem {
             data: final_data,
             score: -(index as f64),
             current: false,
+            keep_open: false,
         }
     }
 }
