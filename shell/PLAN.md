@@ -267,6 +267,10 @@ Framework crates under `core/` own:
 - Completed in `rsynapse-shell`: app-local request CLI/server for
   `scheme-toggle` and `hints active|show|hide|toggle`, matching the useful AGS
   request-handler behavior without adding a framework-level command bus.
+- Completed: StatusNotifierItem tray discovery, watcher hosting, and DBusMenu
+  rendering. `shell-source::systray` owns the watcher/item/menu observables and
+  hosts `org.kde.StatusNotifierWatcher` when none exists; the bar renders live
+  icons, tooltips, nested menus, toggles, and action events without polling.
 - Replace placeholder app surfaces with typed D-Bus-backed widget sources.
 - Replace ad hoc consumer source code with user-authored observable source
   functions where it improves ergonomics.
@@ -274,5 +278,5 @@ Framework crates under `core/` own:
 ## Next Concrete Step
 
 Continue replacing ad hoc app sources with typed D-Bus-backed helper modules,
-starting with the remaining Niri, notification, audio, media, and tray paths
-that still need stable service contracts.
+starting with the remaining Niri, notification, audio, and media paths that
+still need stable service contracts.

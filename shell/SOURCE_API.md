@@ -146,6 +146,16 @@ input. The compositor owns the inactivity timeout; clients use async socket
 readiness, with no polling. Initial state is active as defined by the protocol.
 Subscriptions are shared by threshold and cancel their connection on drop.
 
+`shell_source::systray` exposes StatusNotifierItem tray discovery and DBusMenu
+snapshots. `start_watcher_host()` provides `org.kde.StatusNotifierWatcher` when
+no other host owns it, while leaving an existing host in place. `item_keys()`
+follows the watcher's registered-item property plus registration/unregistration
+signals; `item(key)` follows live item properties on the current unique owner;
+`menu(key)` follows the item's `Menu` property and DBusMenu
+`LayoutUpdated`/`ItemsPropertiesUpdated` signals. Activation, scroll, and menu
+event helpers write through the shared D-Bus write runtime. All sources are
+signal-driven and do not poll.
+
 `shell_core::source::dbus` owns generic D-Bus primitives:
 
 - `property(PropertyDescriptor)` for typed property values.

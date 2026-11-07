@@ -6,6 +6,7 @@ use rsynapse_shell::{
     request, rsynapse_app,
     widgets::{MainBar, MainBarInit},
 };
+use shell_core::source::systray;
 
 fn main() {
     let mut args = std::env::args_os();
@@ -18,6 +19,7 @@ fn main() {
     let launch_mode = LaunchMode::from_arg(command.as_deref());
 
     init_tracing();
+    systray::start_watcher_host();
 
     launch_mode
         .apply(

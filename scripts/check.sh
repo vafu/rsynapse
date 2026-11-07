@@ -183,6 +183,12 @@ run_dbus_tests() {
         fi
     done
 
+    echo "--- dbus-run-session: shell-source systray ---"
+    if ! dbus-run-session -- cargo test --manifest-path shell/Cargo.toml \
+        -p shell-source --test systray -- --ignored; then
+        status=1
+    fi
+
     if [[ $LIVE -eq 1 ]]; then
         echo "--- live tests ---"
         # These require a live compositor/session and are never part of the

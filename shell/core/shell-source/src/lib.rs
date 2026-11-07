@@ -20,6 +20,7 @@ pub mod steward;
 mod stream;
 mod support;
 pub mod system_stats;
+pub mod systray;
 pub mod text;
 pub mod wayland;
 pub mod workspace;

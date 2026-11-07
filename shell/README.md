@@ -93,6 +93,16 @@ GTK4/Relm4 framework crates plus concrete Rsynapse UI surfaces.
    dismisses it; Escape closes it when opened without hold. MPRIS property
    subscriptions exist only while the overlay is visible.
 
+   The bar's status area hosts StatusNotifierItem tray icons discovered through
+   `org.kde.StatusNotifierWatcher`. `shell-source::systray` provides both the
+   watcher host (unless another host already owns the name) and typed live item
+   and DBusMenu observables; `app` renders the icon and menu popover.
+   Left click opens the menu when the item has one, otherwise it activates the
+   item; right click opens the menu or performs the secondary action. Attention
+   and passive states, icon names/pixmaps, tooltips, separators, nested
+   submenus, toggles, and enabled/visible rows are honored. Menu layout and
+   property changes are signal-driven, with no polling.
+
 - `launcher`
   The launcher workspace. It owns the D-Bus launcher daemon, CLI, GTK launcher
   UI, plugin API, and bundled plugins.
