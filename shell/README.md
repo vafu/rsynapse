@@ -35,6 +35,17 @@ GTK4/Relm4 framework crates plus concrete Rsynapse UI surfaces.
   not create or resize a normal tiled window.
   See [the surface guide](remarked/README.md).
 
+- `rnotes`
+  The shell's CLI counterpart to the Tasks & Notes overlay. It speaks directly
+  to projd for project tasks and to the Remarked service for notes, Markdown
+  task lists, search, and triage, resolving the project notebook and task scope
+  itself. It replaces `remarked-cli` and `remarked-ui`.
+  See [the CLI guide](rnotes/README.md).
+
+- `core/task-notes`
+  Shell-owned convention crate for the project notebook path and task/main-note
+  tags shared by the overlay and `rnotes`.
+
 - `app`
   The current combined `rsynapse-shell` package. It owns the bar, OSD,
   notifications bridge, request socket, styles, and Rsynapse-specific UI

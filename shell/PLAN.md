@@ -100,7 +100,7 @@ Framework crates under `core/` own:
   It opens the Tasks & Notes overlay directly, including when the project has no
   tasks. The former checkbox popover and separate notes icon have been removed.
 - `app/` owns its Unix-socket request CLI for consumer runtime
-  commands such as theme switching, Super-key hints, and notification-center
+  commands such as theme switching and notification-center
   control. Notification-center commands route to the `rsynapse-notifications`
   socket; command names and product policy stay out of `shell-core` unless
   another consumer needs the same transport contract.
@@ -265,7 +265,7 @@ Framework crates under `core/` own:
   handwritten derived sources where reuse is expected, so widget authors do not
   need local `OnceLock` caches or manual `.shared()` calls.
 - Completed in `rsynapse-shell`: app-local request CLI/server for
-  `scheme-toggle` and `hints active|show|hide|toggle`, matching the useful AGS
+  `scheme-toggle` and surface visibility commands, matching the useful AGS
   request-handler behavior without adding a framework-level command bus.
 - Completed: StatusNotifierItem tray discovery, watcher hosting, and DBusMenu
   rendering. `shell-source::systray` owns the watcher/item/menu observables and

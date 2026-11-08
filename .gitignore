@@ -8,6 +8,9 @@ result
 .claude/settings.local.json
 .project.json
 
+# Per-project Remarked notebook (personal notes, zk index, task notes).
+.notes/
+
 # Generated verification artifacts.
 /output/
 __pycache__/

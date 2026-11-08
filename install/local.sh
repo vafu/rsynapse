@@ -11,6 +11,7 @@ dbus_dir="$prefix/share/dbus-1/services"
 applications_dir="$prefix/share/applications"
 script_dir="$config_home/scripts"
 systemd_user_dir="$config_home/systemd/user"
+codex_skills_dir="${CODEX_HOME:-"$HOME/.codex"}/skills"
 
 apply_policy=0
 for arg in "$@"; do
@@ -50,13 +51,13 @@ cargo_install "$repo_root/shell/launcher/rsynapse-daemon"
 cargo_install "$repo_root/shell/launcher/rsynapse-cli"
 cargo_install "$repo_root/shell/launcher/rsynapse-ui"
 cargo_install "$repo_root/shell/core/desktop-entry"
+cargo_install "$repo_root/shell/rnotes"
 
 cargo_install "$repo_root/steward"
 
 echo "Installing helper scripts to $local_bin"
 install -d "$local_bin" "$script_dir"
 install -m 0755 "$repo_root/install/bin/rsynapse-open-url" "$script_dir/rsynapse-open-url"
-install -m 0755 "$repo_root/install/bin/remarked-ui" "$local_bin/remarked-ui"
 ln -sfn "$script_dir/rsynapse-open-url" "$local_bin/rsynapse-open-url"
 install -m 0755 "$repo_root/install/bin/ghostty-project-window" "$script_dir/ghostty-project-window"
 ln -sfn "$script_dir/ghostty-project-window" "$local_bin/ghostty-project-window"
@@ -68,6 +69,30 @@ install -m 0755 "$repo_root/scripts/sone-cli" "$local_bin/sone-cli"
 # no plugin .so files are installed.
 echo "Installing desktop entries to $applications_dir"
 install_templates "$repo_root/install/applications" "$applications_dir" ".in"
+
+echo "Installing agent skills to $codex_skills_dir"
+install -d "$codex_skills_dir"
+install -d "$codex_skills_dir/rnotes"
+install -m 0644 "$repo_root/shell/rnotes/skills/rnotes/SKILL.md" "$codex_skills_dir/rnotes/SKILL.md"
+install -d "$codex_skills_dir/rnotes/references"
+install -m 0644 "$repo_root/shell/rnotes/skills/rnotes/references/"*.md "$codex_skills_dir/rnotes/references/"
+for retired in project-management remarked-cli; do
+    if [[ -e "$codex_skills_dir/$retired" ]]; then
+        archive_dir="${codex_skills_dir%/skills}-skills-archive-$(date +%Y%m%d)"
+        install -d "$archive_dir"
+        echo "Archiving retired skill: $retired -> $archive_dir"
+        mv "$codex_skills_dir/$retired" "$archive_dir/$retired"
+    fi
+done
+
+install -m 0755 "$repo_root/shell/rnotes/scripts/session-context.sh" "$local_bin/rnotes-session-context"
+if command -v codex >/dev/null 2>&1; then
+    python3 "$repo_root/install/bin/rnotes-hook-install.py" || \
+        echo "warning: could not register the rnotes SessionStart hook; emitting context via developer_instructions only" >&2
+else
+    echo "codex not found; skipped rnotes SessionStart hook registration"
+fi
+
 if [[ $apply_policy -eq 1 ]]; then
     if command -v xdg-mime >/dev/null 2>&1; then
         xdg-mime default rsynapse-open-url.desktop x-scheme-handler/http

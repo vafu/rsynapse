@@ -38,6 +38,7 @@ Installed binaries currently include:
 - `workspace-terminal-id` (terminal-specific window discovery over the neutral API)
 - `rsynapse-shell`
 - `rsynapse-notifications`
+- `rnotes` (project tasks and Remarked notes client for projd + `org.remarked.Service`)
 - `rsynapse-daemon`
 - `rsynapse-cli`
 - `rsynapse-ui`
@@ -49,6 +50,14 @@ Daemon binaries and their systemd units use matching `rsynapse-*` names; their
 public D-Bus names remain `org.rsynapse.*`. Short commands `workspace-dbus`,
 `steward`, `locusd`, and `projd` are installed as relative compatibility symlinks.
 The `proj` and `locus` command names remain the domain-facing CLIs.
+
+The installer also publishes the `rnotes` agent skill to
+`${CODEX_HOME:-~/.codex}/skills/rnotes/` and removes the retired
+`project-management` and `remarked-cli` skills (moved to a dated
+`~/.codex/skills-archive-*` directory), plus the
+`rnotes-session-context` hook helper. It registers that helper as a
+`SessionStart` hook and persists its per-handler trust hash through
+`install/bin/rnotes-hook-install.py`; re-run the installer if the helper changes.
 
 `install/session-services.py` owns daemon artifact/metadata installation and
 legacy-name migration. The full installer calls it after building the binaries.

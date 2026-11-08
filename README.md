@@ -45,6 +45,12 @@ than one top-level Cargo workspace.
   Goals are persistent nested checklists with per-project active selection and
   Markdown context notes, managed by the agent-facing `proj goal` CLI.
 
+- `shell/rnotes`
+  Task-and-notes CLI for agents and the user. It joins projd tasks with Remarked
+  notebooks: task/subtask management, task-attached note series in
+  `<project>/.notes/tasks/`, and frontmatter validation. Ships the `rnotes`
+  agent skill.
+
 - `steward/`
   Single-binary shell-source listener/side-effect host for metrics, naming,
   association policy and refresh triggers.

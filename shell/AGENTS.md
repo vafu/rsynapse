@@ -105,14 +105,26 @@ Consumer source rules:
   `task-main/<instance-id>` from the projd description; the zk note is
   authoritative after creation. The shell owns this convention; neither projd
   nor remarked may depend on the other for it.
+- The convention itself lives in `core/task-notes` and is shared by the overlay
+  and `rnotes`. Keep the project notebook path and task/main-note tags there
+  instead of duplicating literals in UI or CLI code.
+- `rnotes` is the shell's cross-service tasks-and-notes client and the CLI
+  counterpart to the overlay. It resolves project/task through projd and talks
+  to `org.remarked.Service` directly for notes. It must not import Remarked
+  internals. It may write note files for task-note creation, placement under
+  `tasks/`, canonical frontmatter normalization, and `task note check --fix`,
+  but it never owns note prose or task state, and the overlay must not depend
+  on `rnotes`.
+- `rnotes task` means projd project tasks. Markdown checkbox tasks in a notebook
+  stay under `rnotes markdown-task` so the two task models never share a name.
 
 ## Request CLI/Server
 
 - The Unix-socket request bridge is app product behavior, not a `shell-core`
   framework feature.
-- Keep command names and policies such as `hints
-  active|show|hide|toggle` in app unless another consumer needs the same
-  transport contract.
+- Keep command names and policies such as `workspace
+  show|hide|toggle` in app unless another consumer needs the same transport
+  contract.
 - Direct `.config/ags` runtime usages should be migrated to app commands when
   the behavior now lives in Rust.
 
@@ -168,5 +180,5 @@ systemctl --user status rsynapse-shell.service --no-pager
 Live checks that often catch integration mistakes:
 
 ```sh
-rsynapse-shell request hints toggle
+rsynapse-shell request workspace toggle
 ```
