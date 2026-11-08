@@ -1,0 +1,26 @@
+[package]
+name = "rnotes"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[[bin]]
+name = "rnotes"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1"
+base64 = "0.22"
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+shell-words = "1"
+uuid = { version = "1", features = ["v4"] }
+task-notes.workspace = true
+notebook-api = { path = "../notebook-api", features = ["dbus"] }
+proj-model = { package = "rsynapse-projd-model", path = "../../projd/model" }
+zbus = { version = "4.4", default-features = false, features = ["tokio"] }
+tokio = { version = "1.52", features = ["macros", "rt-multi-thread"] }
