@@ -1,6 +1,6 @@
 //! Typed D-Bus client for the remarked note service.
 use notebook_api::{
-    note::{CommandResult, Note, NoteBody, NoteId, NoteRevision, PatchResult, TagCount},
+    note::{CommandResult, Note, NoteBody, NoteId, NoteRevision, TagCount},
     notebook_scope::{NotebookHandle, NotebookScope},
 };
 
@@ -48,14 +48,13 @@ impl NotesClient {
     }
 
     pub(crate) async fn initialize(&self) -> Result<(), String> {
-        let result: CommandResult = self
-            .proxy
-            .call("BootstrapNotebook", &())
-            .await
-            .map_err(error)?;
-        if !result.changed && result.message != "notebook initialized" {
-            return Err(result.message);
-        }
+        // `zk init` fails when a notebook already exists, so bootstrap is
+        // best-effort: an existing notebook is already usable.
+        let result: CommandResult = match self.proxy.call("BootstrapNotebook", &()).await {
+            Ok(result) => result,
+            Err(_) => return Ok(()),
+        };
+        let _ = result;
         Ok(())
     }
 
@@ -63,8 +62,21 @@ impl NotesClient {
         self.proxy.call("ListScopeNotes", &()).await.map_err(error)
     }
 
+    /// The service exposes tag names, not counts. Derive counts from the scoped
+    /// notes so the overlay can show "N notes" per task without a nonexistent
+    /// `ListTagCounts` method.
     pub(crate) async fn tag_counts(&self) -> Result<Vec<TagCount>, String> {
-        self.proxy.call("ListTagCounts", &()).await.map_err(error)
+        let notes = self.list().await?;
+        let mut counts: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
+        for note in notes {
+            for tag in note.tags {
+                *counts.entry(tag).or_default() += 1;
+            }
+        }
+        Ok(counts
+            .into_iter()
+            .map(|(name, count)| TagCount { name, count })
+            .collect())
     }
 
     pub(crate) async fn body(&self, id: &NoteId) -> Result<NoteBody, String> {
@@ -81,10 +93,9 @@ impl NotesClient {
         id: &NoteId,
         revision: &NoteRevision,
         text: &str,
-        tags: Vec<String>,
-    ) -> Result<PatchResult, String> {
+    ) -> Result<notebook_api::note::NoteMutationResult, String> {
         self.proxy
-            .call("SaveNote", &(id, revision, text, tags))
+            .call("ReplaceNoteBody", &(id, revision, text))
             .await
             .map_err(error)
     }

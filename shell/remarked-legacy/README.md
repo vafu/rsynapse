@@ -50,19 +50,18 @@ legacy proj context file into this notebook once, retaining the original file.
 Tasks support planned, in-progress, completed, deferred and cancelled states.
 Cancelled tasks retain their notes and appear under **Show finished tasks**.
 
-The focused agent CLIs remain separate:
+The shell's project-aware CLI is `rnotes`:
 
 ```sh
-proj goal add --title 'Implement the feature'
-remarked-cli note --project "$PWD" --task TASK_KEY capture '# Design finding'
-remarked-cli note --project "$PWD" --task TASK_KEY list --json
-remarked-cli note --project "$PWD" read NOTE_ID --json
-remarked-cli note --project "$PWD" --task TASK_KEY import-context
+rnotes task add --title 'Implement the feature'
+rnotes --task TASK_KEY note capture '# Design finding'
+rnotes --task TASK_KEY note list --json
+rnotes note get NOTE_ID --body --format json
 ```
 
 `--task` resolves the immutable instance through projd. The note service only sees
-scope tags. The editor uses Remarked's atomic `SaveNote` operation: body and tags
-are replaced against one exact revision. Conflicts retain the local draft.
+scope tags. Note body replacement is revision-guarded; conflicts retain the local
+draft.
 
 ## Build and verification
 

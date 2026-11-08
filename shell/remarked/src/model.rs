@@ -5,15 +5,15 @@ use notebook_api::note::Note;
 use proj_model::GoalIdentityInfo;
 
 pub(crate) fn task_tag(instance: &str) -> String {
-    format!("task/{instance}")
+    task_notes::task_tag(instance)
 }
 
 pub(crate) fn main_note_tag(instance: &str) -> String {
-    format!("task-main/{instance}")
+    task_notes::main_note_tag(instance)
 }
 
 pub(crate) fn is_main_note(note: &Note, instance: &str) -> bool {
-    note.tags.iter().any(|tag| tag == &main_note_tag(instance))
+    task_notes::is_main_note(&note.tags, instance)
 }
 
 pub(crate) fn task_title(title: &str) -> &str {

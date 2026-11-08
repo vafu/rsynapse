@@ -109,6 +109,15 @@ pub(crate) enum Notes {
     },
 }
 
+impl Notes {
+    pub(crate) fn ready_notes(&self) -> Option<&[Note]> {
+        match self {
+            Self::Ready { notes, .. } => Some(notes),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub(crate) enum TagCounts {
     #[default]

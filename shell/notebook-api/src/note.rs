@@ -50,8 +50,51 @@ pub enum NoteKind {
     Unknown,
 }
 
+impl std::str::FromStr for NoteKind {
+    type Err = String;
+
+    fn from_str(value: &str) -> Result<Self, Self::Err> {
+        Ok(match value.trim().to_ascii_lowercase().as_str() {
+            "fleeting" => Self::Fleeting,
+            "task" => Self::Task,
+            "research" => Self::Research,
+            "idea" => Self::Idea,
+            "decision" => Self::Decision,
+            "permanent" => Self::Permanent,
+            "structure" => Self::Structure,
+            "synthesized" => Self::Synthesized,
+            "synthesis-rule" => Self::SynthesisRule,
+            "unknown" => Self::Unknown,
+            other => return Err(format!("unknown note kind: {other}")),
+        })
+    }
+}
+
+impl NoteKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Fleeting => "fleeting",
+            Self::Task => "task",
+            Self::Research => "research",
+            Self::Idea => "idea",
+            Self::Decision => "decision",
+            Self::Permanent => "permanent",
+            Self::Structure => "structure",
+            Self::Synthesized => "synthesized",
+            Self::SynthesisRule => "synthesis-rule",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
+impl fmt::Display for NoteKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.clone().as_str())
+    }
+}
+
 #[cfg_attr(feature = "dbus", derive(zbus::zvariant::Type))]
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct NoteMetadata {
     pub kind: NoteKind,
     pub synthesis_rule: String,
@@ -69,7 +112,7 @@ impl Default for NoteMetadata {
 }
 
 #[cfg_attr(feature = "dbus", derive(zbus::zvariant::Type))]
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Note {
     pub id: NoteId,
     pub title: String,
@@ -95,11 +138,47 @@ pub struct NoteBody {
     pub note_id: NoteId,
     pub revision: NoteRevision,
     pub text: String,
-    /// Frontmatter tags read from the same document revision as the body.
-    #[serde(default)]
-    pub tags: Vec<String>,
     pub blocks: Vec<NoteBlock>,
     pub spans: Vec<NoteSpan>,
+}
+
+#[cfg_attr(feature = "dbus", derive(zbus::zvariant::Type))]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NoteQuery {
+    pub required_tags: Vec<String>,
+    pub note_ids: Vec<NoteId>,
+    pub kind: Vec<NoteKind>,
+    pub limit: u64,
+}
+
+#[cfg_attr(feature = "dbus", derive(zbus::zvariant::Type))]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct NotePage {
+    pub notes: Vec<Note>,
+    pub limit: u64,
+    pub truncated: bool,
+}
+
+#[cfg_attr(feature = "dbus", derive(zbus::zvariant::Type))]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct NoteCapture {
+    pub body: String,
+    pub tags: Vec<String>,
+}
+
+#[cfg_attr(feature = "dbus", derive(zbus::zvariant::Type))]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NoteReference {
+    pub source_note_id: NoteId,
+    pub target: String,
+}
+
+#[cfg_attr(feature = "dbus", derive(zbus::zvariant::Type))]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NoteMutationResult {
+    pub changed: bool,
+    pub revision: NoteRevision,
+    pub message: String,
 }
 
 #[cfg_attr(feature = "dbus", derive(zbus::zvariant::Type))]

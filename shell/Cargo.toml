@@ -3,12 +3,14 @@ members = [
     "core/shell-core",
     "core/desktop-entry",
     "core/workspace-policy",
+    "core/task-notes",
     "core/shell-source",
     "core/macros",
     "core/rx-macros",
     "app",
     "notebook-api",
     "remarked",
+    "rnotes",
     "widgets/nerd-icon-picker",
     "examples/battery-status",
     "examples/volume-status",
@@ -31,4 +33,5 @@ shell-source = { path = "core/shell-source" }
 shell-macros = { path = "core/macros" }
 shell-rx-macros = { path = "core/rx-macros" }
 nerd-icon-picker = { path = "widgets/nerd-icon-picker" }
+task-notes = { path = "core/task-notes" }
 tracing = "0.1.44"

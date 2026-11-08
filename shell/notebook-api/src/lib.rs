@@ -6,3 +6,17 @@
 
 pub mod note;
 pub mod notebook_scope;
+pub mod search;
+pub mod task;
+pub mod triage;
+pub mod workspace;
+
+use serde::{Deserialize, Serialize};
+
+#[cfg_attr(feature = "dbus", derive(zbus::zvariant::Type))]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Capabilities {
+    pub api_schema_version: u16,
+    pub cli_schema_version: u16,
+    pub names: Vec<String>,
+}

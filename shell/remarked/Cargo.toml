@@ -12,6 +12,7 @@ sourceview5 = "0.11.2"
 shell-core.workspace = true
 shell-macros.workspace = true
 shell-source.workspace = true
+task-notes.workspace = true
 futures-util = "0.3"
 tokio = { version = "1.52", features = ["fs", "sync"] }
 uuid = { version = "1", features = ["v4"] }

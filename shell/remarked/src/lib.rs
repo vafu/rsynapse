@@ -36,7 +36,7 @@ pub enum RemarkedInput {
     SaveNote,
     ReloadNote,
     NoteLoaded(Result<notebook_api::note::NoteBody, String>),
-    NoteSaved(Result<notebook_api::note::PatchResult, String>),
+    NoteSaved(Result<notebook_api::note::NoteMutationResult, String>),
 }
 
 impl From<sources::Msg> for RemarkedInput {
@@ -121,7 +121,14 @@ impl RemarkedWindow {
     fn set_note_body(&mut self, body: notebook_api::note::NoteBody) {
         let buffer = self.source_view.buffer();
         buffer.set_text(&body.text);
-        let tags = body.tags.join(", ");
+        // NoteBody carries the document, not frontmatter. Keep the tags already
+        // derived from the scoped note listing for this selected note.
+        let tags = self
+            .notes
+            .ready_notes()
+            .and_then(|notes| notes.iter().find(|note| note.id == body.note_id))
+            .map(|note| note.tags.join(", "))
+            .unwrap_or_default();
         self.tags_entry.set_text(&tags);
         self.original_tags = tags;
         self.note_text = body.text;
@@ -260,7 +267,9 @@ impl RemarkedWindow {
             let cwd = &project.cwd;
             if !cwd.is_empty() {
                 self.notebook.set(Some(source::Notebook {
-                    path: format!("{cwd}/.notes"),
+                    path: task_notes::notebook_path(cwd)
+                        .to_string_lossy()
+                        .into_owned(),
                     generation: 0,
                 }));
             }
@@ -498,15 +507,18 @@ impl RemarkedWindow {
             )
             .to_string();
         let tags = model::parse_tags(&self.tags_entry.text());
+        if tags != model::parse_tags(&self.original_tags) {
+            eprintln!(
+                "[remarked] tag edits are not persisted: the Remarked service exposes body replacement only"
+            );
+        }
         self.note_busy = true;
         let tx = sender.input_sender().clone();
         relm4::spawn(async move {
             let result = async {
                 let client = client::NotesClient::open(&path, Vec::new()).await?;
                 let body = client.body(&id.clone().into()).await?;
-                client
-                    .save(&id.into(), &body.revision.into(), &text, tags)
-                    .await
+                client.save(&id.into(), &body.revision.into(), &text).await
             }
             .await;
             let _ = tx.send(RemarkedInput::NoteSaved(result));
