@@ -26,8 +26,10 @@ GTK4/Relm4 framework crates plus concrete Rsynapse UI surfaces.
 
 - `remarked` (`rsynapse-workspace`)
   Fresh **Tasks & Notes** layer-shell overlay, hosted inside the existing shell process.
-  It composes projd tasks and Remarked notes through shell-source Observables and
-  uses a native GtkSourceView Markdown editor. Click the bar's goal widget, press
+  It composes projd tasks and Remarked notes through shell-source Observables.
+  Notes are presented as a browsing grid of compact cards; double-clicking a
+  card opens a note detail bottom sheet with a themed Markdown preview and an
+  Edit toggle for the native GtkSourceView Markdown editor. Click the bar's goal widget, press
   **Mod+N** in Umbriel, or run `rsynapse-shell request workspace show|hide|toggle`.
   Project notebooks live in globally Git-ignored `<project-cwd>/.notes/` directories;
   immutable-instance `task/<id>` frontmatter tags associate notes with tasks.

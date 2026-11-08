@@ -1,0 +1,133 @@
+window.remarked-window {
+  background-color: transparent;
+}
+
+.remarked-root {
+  background: transparent;
+}
+
+.remarked-frame {
+  padding: 40px 48px;
+}
+
+.remarked-pane-header {
+  padding: 2px 4px 6px;
+}
+
+.remarked-sidebar .remarked-finished-row {
+  padding: 6px 10px;
+  margin-top: 4px;
+  border-radius: $rsx-surface-radius-small;
+}
+
+.remarked-content scrolledwindow,
+.remarked-content textview,
+.remarked-content textview text {
+  background: transparent;
+}
+
+.remarked-sheet-content .remarked-editor {
+  padding: 4px;
+}
+
+.remarked-main-split {
+  @include rsx-surface(
+    $container: $rsx-surface-container-high,
+    $radius: $rsx-surface-radius-large,
+    $elevation: 3
+  );
+}
+
+.remarked-sidebar {
+  background-color: #{$remarked_sidebar};
+  border-right: 0.5px solid #{$remarked_sidebar_border};
+  padding: 16px 10px;
+}
+
+.remarked-task-sidebar {
+  background: transparent;
+  min-width: 0;
+}
+
+.remarked-content {
+  padding: 18px;
+}
+
+.remarked-notes-grid {
+  padding: 6px;
+}
+
+.remarked-notes-grid > flowboxchild {
+  padding: 0;
+  outline: none;
+}
+
+.remarked-note-card {
+  padding: 14px;
+  border-radius: $rsx-surface-radius;
+  background-color: color-mix(in srgb, #{$rsx-on-surface} 5%, transparent);
+  border: 0.5px solid #{$rsx-outline-variant};
+}
+
+.remarked-note-card:hover {
+  background-color: color-mix(in srgb, #{$rsx-on-surface} 9%, transparent);
+}
+
+.remarked-note-card-title {
+  font-weight: 600;
+}
+
+.remarked-note-sheet {
+  background: transparent;
+}
+
+.remarked-sheet-content {
+  padding: 4px 18px 18px;
+}
+
+.remarked-sheet-header {
+  padding-bottom: 4px;
+}
+
+.remarked-preview-scroll,
+.remarked-preview {
+  background: transparent;
+}
+
+.remarked-preview {
+  padding: 8px 10px;
+}
+
+.remarked-preview .remarked-markdown-paragraph {
+  color: #{$rsx-on-surface};
+  line-height: 1.45;
+}
+
+.remarked-preview .remarked-markdown-heading {
+  color: #{$rsx-on-surface};
+  padding-top: 8px;
+}
+
+.remarked-preview .remarked-markdown-quote {
+  border-left: 3px solid #{$rsx-outline};
+  padding-left: 14px;
+  color: $rsx-on-surface-variant;
+}
+
+.remarked-preview .remarked-markdown-code-block {
+  background-color: color-mix(in srgb, #{$rsx-on-surface} 7%, transparent);
+  border-radius: $rsx-surface-radius-small;
+  padding: 10px 12px;
+}
+
+.remarked-preview .remarked-markdown-code {
+  font-family: monospace;
+}
+
+.remarked-preview .remarked-markdown-marker {
+  color: $rsx-on-surface-variant;
+}
+
+.remarked-preview .remarked-markdown-table {
+  padding: 4px 0;
+}

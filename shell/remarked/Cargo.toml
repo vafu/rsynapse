@@ -5,10 +5,11 @@ edition = "2024"
 publish = false
 
 [dependencies]
-adw = { package = "libadwaita", version = "0.9.1", features = ["v1_7"] }
+adw = { package = "libadwaita", version = "0.9.1", features = ["v1_9"] }
 gtk.workspace = true
 relm4 = { version = "0.11.0", features = ["libadwaita"] }
 sourceview5 = "0.11.2"
+markdown = "1.0.0"
 shell-core.workspace = true
 shell-macros.workspace = true
 shell-source.workspace = true

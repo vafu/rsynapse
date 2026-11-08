@@ -117,3 +117,73 @@ pub(crate) fn task_rows<'a>(
     }
     out
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use proj_model::{GoalIdentityInfo, GoalInfo};
+
+    fn task(instance: &str, key: &str, parent: &str, status: &str) -> GoalIdentityInfo {
+        GoalIdentityInfo {
+            instance_id: instance.into(),
+            key: key.into(),
+            goal: GoalInfo {
+                id: key.into(),
+                title: key.into(),
+                status: status.into(),
+                parent_id: parent.into(),
+                ..Default::default()
+            },
+            project_name: String::new(),
+            created_at_ms: 0,
+            observed_at_ms: 0,
+            deleted_at_ms: 0,
+            ancestor_ids: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn subtasks_are_ordered_under_their_parent_with_depth() {
+        let tasks = vec![
+            task("child", "child", "parent", "planned"),
+            task("parent", "parent", "", "planned"),
+            task("grandchild", "grandchild", "child", "planned"),
+        ];
+        let rows = task_rows(&tasks, false, &HashSet::new());
+        let summary: Vec<_> = rows
+            .iter()
+            .map(|(task, depth, has_children)| (task.key.as_str(), *depth, *has_children))
+            .collect();
+        assert_eq!(
+            summary,
+            vec![
+                ("parent", 0, true),
+                ("child", 1, true),
+                ("grandchild", 2, false)
+            ]
+        );
+    }
+
+    #[test]
+    fn collapsed_parent_hides_descendants() {
+        let tasks = vec![
+            task("parent", "parent", "", "planned"),
+            task("child", "child", "parent", "planned"),
+            task("grandchild", "grandchild", "child", "planned"),
+        ];
+        let collapsed = HashSet::from(["parent".to_string()]);
+        let rows = task_rows(&tasks, false, &collapsed);
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].0.key, "parent");
+    }
+
+    #[test]
+    fn finished_subtasks_follow_show_finished() {
+        let tasks = vec![
+            task("parent", "parent", "", "planned"),
+            task("done", "done", "parent", "completed"),
+        ];
+        assert_eq!(task_rows(&tasks, false, &HashSet::new()).len(), 1);
+        assert_eq!(task_rows(&tasks, true, &HashSet::new()).len(), 2);
+    }
+}

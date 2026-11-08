@@ -46,6 +46,8 @@ $shell-surface-opacity: 1 !default;
 
 @define-color shadow #22262d8a;
 @define-color shadow_active #0003;
+@define-color remarked_sidebar @sidebar_bg_color;
+@define-color remarked_sidebar_border @sidebar_border_color;
 
 /* accent palette */
 @define-color session_blue @blue_1;
@@ -91,3 +93,5 @@ $bg_tint: "alpha(@bg, #{$shell-surface-opacity})";
 $osd_bg_tint: "alpha(@osd_bg, #{$shell-surface-opacity})";
 $shadow: "@shadow";
 $shadow_active: "@shadow_active";
+$remarked_sidebar: "@remarked_sidebar";
+$remarked_sidebar_border: "@remarked_sidebar_border";

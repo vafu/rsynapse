@@ -5,11 +5,12 @@ use relm4::prelude::*;
 use shell_core::{
     gtk4_layer_shell::{KeyboardMode, LayerShell},
     source::{StateSignal, workspace_project},
-    window::{Anchors, Layer, WindowConfig},
+    window::{Layer, WindowConfig},
 };
 use sourceview5::prelude::*;
 
 mod client;
+mod markdown;
 mod model;
 mod source;
 
@@ -21,6 +22,7 @@ pub enum RemarkedInput {
     Hide,
     Toggle,
     SelectTask(String),
+    SelectTaskIndex(u32),
     ClearTask,
     SelectNote(String),
     ClearNote,
@@ -30,6 +32,8 @@ pub enum RemarkedInput {
     StopTracking,
     SetTaskStatus { key: String, status: String },
     ToggleTaskCollapse(String),
+    ToggleTaskSidebar(Option<bool>),
+    SetEditingNote(bool),
     NoteFilter(String),
     TagsChanged,
     NoteChanged,
@@ -50,15 +54,21 @@ pub struct RemarkedWindow {
     window: adw::ApplicationWindow,
     main_box: gtk::Box,
     task_pane: gtk::Box,
-    task_list: gtk::ListBox,
+    task_sidebar: adw::Sidebar,
     note_pane: gtk::Box,
-    note_list: gtk::ListBox,
+    note_grid: gtk::FlowBox,
+    notes_stack: gtk::Stack,
     note_filter_entry: gtk::Entry,
+    tasks_toggle: gtk::ToggleButton,
+    note_sheet: adw::BottomSheet,
+    note_title_label: gtk::Label,
     editor_box: gtk::Box,
     source_view: sourceview5::View,
+    note_preview: gtk::Box,
+    editor_stack: gtk::Stack,
+    edit_toggle: gtk::ToggleButton,
     tags_entry: gtk::Entry,
     save_button: gtk::Button,
-    editor_status_page: adw::StatusPage,
     show_finished_switch: gtk::Switch,
     clear_filter_button: gtk::Button,
     header_subtitle: gtk::Label,
@@ -72,10 +82,12 @@ pub struct RemarkedWindow {
     original_tags: String,
     note_dirty: bool,
     note_busy: bool,
+    edit_mode: bool,
     visible: bool,
     collapsed_tasks: std::collections::HashSet<String>,
     main_note_attempted: std::collections::HashSet<String>,
-    task_rows_by_id: std::collections::HashMap<String, adw::ActionRow>,
+    task_items_by_id: std::collections::HashMap<String, adw::SidebarItem>,
+    task_indices: Vec<String>,
     #[source(source::catalog(workspace_project::focused_project_id(None)))]
     catalog: source::Catalog,
     #[source(source::notes(notebook.observable(), selected_task.observable()))]
@@ -106,6 +118,7 @@ impl RemarkedWindow {
     fn select_task(&mut self, task: Option<String>) {
         if self.selected_task.get().as_deref() != task.as_deref() {
             self.select_note(None);
+            self.note_sheet.set_open(false);
         }
         self.selected_task.set(task);
     }
@@ -114,13 +127,24 @@ impl RemarkedWindow {
         self.selected_note.set(note);
         self.note_text.clear();
         self.original_tags.clear();
+        markdown::render(&self.note_preview, "");
+        self.set_editing(false);
         self.note_dirty = false;
         self.note_busy = false;
+        self.note_sheet.set_open(self.selected_note.get().is_some());
     }
 
     fn set_note_body(&mut self, body: notebook_api::note::NoteBody) {
         let buffer = self.source_view.buffer();
         buffer.set_text(&body.text);
+        markdown::render(&self.note_preview, &body.text);
+        if let Some(note) = self
+            .notes
+            .ready_notes()
+            .and_then(|notes| notes.iter().find(|note| note.id == body.note_id))
+        {
+            self.note_title_label.set_label(&note.title);
+        }
         // NoteBody carries the document, not frontmatter. Keep the tags already
         // derived from the scoped note listing for this selected note.
         let tags = self
@@ -136,6 +160,24 @@ impl RemarkedWindow {
         self.note_busy = false;
     }
 
+    fn selected_note_title(&self) -> Option<String> {
+        let id = self.selected_note.get()?;
+        self.notes
+            .ready_notes()?
+            .iter()
+            .find(|note| note.id.as_str() == id)
+            .map(|note| note.title.clone())
+    }
+
+    fn set_editing(&mut self, editing: bool) {
+        self.edit_mode = editing;
+        self.editor_stack
+            .set_visible_child_name(if editing { "edit" } else { "preview" });
+        self.edit_toggle.set_active(editing);
+        self.save_button.set_visible(editing);
+        self.update_editor_state();
+    }
+
     fn refresh_panes(&mut self, sender: &ComponentSender<Self>) {
         if let Some(id) = self.selected_task.get() {
             if !self
@@ -148,9 +190,8 @@ impl RemarkedWindow {
             }
         }
 
-        self.rebuild_note_list(sender);
+        self.rebuild_note_grid(sender);
         self.ensure_main_note();
-        self.auto_select_note(sender);
         self.update_editor_state();
         self.clear_changed();
     }
@@ -202,50 +243,6 @@ impl RemarkedWindow {
         });
     }
 
-    fn auto_select_note(&mut self, sender: &ComponentSender<Self>) {
-        let Some(task_id) = self.selected_task.get() else {
-            if self.selected_note.get().is_some() {
-                self.select_note(None);
-            }
-            return;
-        };
-        let source::Notes::Ready {
-            task: notes_task,
-            notes,
-            ..
-        } = &self.notes
-        else {
-            return;
-        };
-        if notes_task.as_deref() != Some(task_id.as_str()) {
-            return;
-        }
-        if self
-            .selected_note
-            .get()
-            .as_ref()
-            .is_some_and(|id| notes.iter().any(|note| note.id.to_string() == *id))
-        {
-            return;
-        }
-        let next = notes
-            .iter()
-            .find(|note| model::is_main_note(note, &task_id))
-            .or_else(|| notes.first())
-            .map(|note| note.id.to_string());
-        match next {
-            Some(id) => {
-                self.select_note(Some(id.clone()));
-                self.load_note(sender, id);
-            }
-            None => {
-                self.select_note(None);
-                self.source_view.buffer().set_text("");
-                self.tags_entry.set_text("");
-            }
-        }
-    }
-
     fn reconcile(&mut self, sender: &ComponentSender<Self>) {
         self.reconcile_catalog(sender);
     }
@@ -279,7 +276,24 @@ impl RemarkedWindow {
         }
 
         self.rebuild_task_list(sender);
+        self.ensure_task_selection();
         self.refresh_panes(sender);
+    }
+
+    fn ensure_task_selection(&mut self) {
+        if self.selected_task.get().is_some() {
+            return;
+        }
+        let source::Catalog::Ready { tasks, active, .. } = &self.catalog else {
+            return;
+        };
+        let next = active
+            .first()
+            .cloned()
+            .or_else(|| tasks.first().map(|task| task.instance_id.clone()));
+        if let Some(id) = next {
+            self.selected_task.set(Some(id));
+        }
     }
 
     fn reconcile_notes(&mut self, sender: &ComponentSender<Self>) {
@@ -295,14 +309,15 @@ impl RemarkedWindow {
     }
 
     fn update_task_counts(&self) {
-        for (instance_id, row) in &self.task_rows_by_id {
-            row.set_subtitle(&self.task_count_label(instance_id));
+        for (instance_id, item) in &self.task_items_by_id {
+            item.set_subtitle(Some(&self.task_count_label(instance_id)));
         }
     }
 
     fn rebuild_task_list(&mut self, sender: &ComponentSender<Self>) {
-        self.task_list.remove_all();
-        self.task_rows_by_id.clear();
+        self.task_sidebar.remove_all();
+        self.task_items_by_id.clear();
+        self.task_indices.clear();
         let tasks: &[proj_model::GoalIdentityInfo] = match &self.catalog {
             source::Catalog::Ready { tasks, .. } => tasks,
             _ => &[],
@@ -311,49 +326,32 @@ impl RemarkedWindow {
             source::Catalog::Ready { active, .. } => active,
             _ => &[],
         };
+        let section = adw::SidebarSection::new();
         for (task, depth, has_children) in
             model::task_rows(tasks, self.show_finished, &self.collapsed_tasks)
         {
-            let escaped_title = glib::markup_escape_text(model::task_title(&task.goal.title));
-            let title = if model::is_finished(&task.goal.status) {
-                format!("<span alpha=\"55%\">{escaped_title}</span>")
-            } else {
-                escaped_title.to_string()
-            };
-            let row = adw::ActionRow::builder()
+            let title = model::task_title(&task.goal.title);
+            let item = adw::SidebarItem::builder()
                 .title(title)
-                .use_markup(true)
-                .title_lines(2)
                 .subtitle(self.task_count_label(&task.instance_id))
-                .subtitle_lines(1)
-                .activatable(true)
+                .icon_name(status_icon(
+                    &task.goal.status,
+                    active.contains(&task.instance_id),
+                ))
                 .build();
-            row.add_css_class("remarked-task-row");
-
-            let menu = build_task_menu(task, active.contains(&task.instance_id), sender);
-            let click = gtk::GestureClick::builder()
-                .button(gtk::gdk::BUTTON_SECONDARY)
-                .build();
-            let menu_for_click = menu.clone();
-            click.connect_released(move |_, _, _, _| menu_for_click.popup());
-            row.add_controller(click);
-            row.add_prefix(&menu);
             if depth > 0 {
-                let spacer = gtk::Box::builder()
-                    .width_request(depth as i32 * 16)
-                    .valign(gtk::Align::Center)
-                    .build();
-                row.add_prefix(&spacer);
+                let spacer = gtk::Box::builder().width_request(depth as i32 * 14).build();
+                item.set_property("prefix", spacer);
             }
-
+            let menu = build_task_menu(task, active.contains(&task.instance_id), sender);
+            item.set_suffix(Some(&menu));
             if has_children {
-                let icon = if self.collapsed_tasks.contains(&task.key) {
-                    "pan-end-symbolic"
-                } else {
-                    "pan-down-symbolic"
-                };
                 let button = gtk::Button::builder()
-                    .icon_name(icon)
+                    .icon_name(if self.collapsed_tasks.contains(&task.key) {
+                        "pan-end-symbolic"
+                    } else {
+                        "pan-down-symbolic"
+                    })
                     .css_classes(["flat", "circular"])
                     .width_request(24)
                     .height_request(24)
@@ -363,27 +361,22 @@ impl RemarkedWindow {
                 button.connect_clicked(move |_| {
                     let _ = tx.send(RemarkedInput::ToggleTaskCollapse(key.clone()));
                 });
-                row.add_suffix(&button);
+                let suffix = gtk::Box::new(gtk::Orientation::Horizontal, 4);
+                suffix.append(&button);
+                suffix.append(&menu);
+                item.set_suffix(Some(&suffix));
             }
-
-            self.task_rows_by_id
-                .insert(task.instance_id.clone(), row.clone());
-            row.set_widget_name(&task.instance_id);
-            self.task_list.append(&row);
+            section.append(item.clone());
+            self.task_indices.push(task.instance_id.clone());
+            self.task_items_by_id.insert(task.instance_id.clone(), item);
         }
-        if let Some(selected) = self.selected_task.get() {
-            let mut child = self.task_list.first_child();
-            while let Some(widget) = child {
-                if let Some(row) = widget.downcast_ref::<gtk::ListBoxRow>() {
-                    if row.widget_name().as_str() == selected.as_str() {
-                        self.task_list.select_row(Some(row));
-                        break;
-                    }
-                }
-                child = widget.next_sibling();
-            }
+        self.task_sidebar.append(section);
+        if let Some(selected) = self.selected_task.get()
+            && let Some(index) = self.task_indices.iter().position(|id| id == &selected)
+        {
+            self.task_sidebar.set_selected(index as u32);
         }
-        if self.task_list.observe_children().n_items() == 0 {
+        if self.task_indices.is_empty() {
             let label = gtk::Label::builder()
                 .label("No tasks for this project.")
                 .halign(gtk::Align::Center)
@@ -393,17 +386,14 @@ impl RemarkedWindow {
                 .margin_top(24)
                 .margin_bottom(24)
                 .build();
-            let row = gtk::ListBoxRow::builder()
-                .child(&label)
-                .activatable(false)
-                .selectable(false)
-                .build();
-            self.task_list.append(&row);
+            self.task_sidebar.set_placeholder(Some(&label));
+        } else {
+            self.task_sidebar.set_placeholder(gtk::Widget::NONE);
         }
     }
 
-    fn rebuild_note_list(&self, sender: &ComponentSender<Self>) {
-        self.note_list.remove_all();
+    fn rebuild_note_grid(&self, sender: &ComponentSender<Self>) {
+        self.note_grid.remove_all();
         let selected_task = self.selected_task.get();
         let notes = match &self.notes {
             source::Notes::Ready { task, notes, .. }
@@ -432,54 +422,64 @@ impl RemarkedWindow {
                     continue;
                 }
             }
-            let row = adw::ActionRow::builder()
-                .title(&note.title)
-                .subtitle(&note.tags.join(", "))
-                .activatable(true)
-                .build();
-            row.add_css_class("remarked-row");
+            let card = gtk::Box::new(gtk::Orientation::Vertical, 6);
+            card.add_css_class("remarked-note-card");
+            card.set_size_request(240, 124);
+            let title = gtk::Label::new(Some(&note.title));
+            title.set_xalign(0.0);
+            title.set_wrap(true);
+            title.set_lines(2);
+            title.set_ellipsize(gtk::pango::EllipsizeMode::End);
+            title.add_css_class("remarked-note-card-title");
+            card.append(&title);
+
+            let kind = note.metadata.kind.to_string();
+            let modified = note.modified.trim();
+            let meta = if modified.is_empty() {
+                kind
+            } else {
+                format!("{kind} · {modified}")
+            };
+            let meta = gtk::Label::new(Some(&meta));
+            meta.set_xalign(0.0);
+            meta.add_css_class("dim-label");
+            meta.add_css_class("caption");
+            card.append(&meta);
+
+            let child = gtk::FlowBoxChild::new();
+            child.set_child(Some(&card));
+            child.set_widget_name(note.id.as_str());
             if selected_task
                 .as_ref()
                 .is_some_and(|id| note.tags.contains(&model::task_tag(id)))
             {
-                row.add_css_class("remarked-note-active");
+                child.add_css_class("remarked-note-active");
             }
-            let id = note.id.to_string();
-            let tx = sender.input_sender().clone();
-            row.connect_activated(move |_| {
-                let _ = tx.send(RemarkedInput::SelectNote(id.clone()));
-            });
-            self.note_list.append(&row);
+            self.note_grid.append(&child);
         }
-        if self.note_list.observe_children().n_items() == 0 {
-            let label = gtk::Label::builder()
-                .label("No notes yet.")
-                .halign(gtk::Align::Center)
-                .valign(gtk::Align::Center)
-                .vexpand(true)
-                .css_classes(["dim-label"])
-                .margin_top(24)
-                .margin_bottom(24)
-                .build();
-            let row = gtk::ListBoxRow::builder()
-                .child(&label)
-                .activatable(false)
-                .selectable(false)
-                .build();
-            self.note_list.append(&row);
-        }
+        self.notes_stack
+            .set_visible_child_name(if notes.is_empty() { "empty" } else { "grid" });
+        let _ = sender;
     }
 
     fn update_editor_state(&self) {
         if self.selected_note.get().is_some() {
             self.editor_box.set_visible(true);
-            self.editor_status_page.set_visible(false);
+            if let Some(title) = self.selected_note_title() {
+                self.note_title_label.set_label(&title);
+            }
             self.save_button
-                .set_sensitive(self.note_dirty && !self.note_busy);
+                .set_sensitive(self.edit_mode && self.note_dirty && !self.note_busy);
         } else {
             self.editor_box.set_visible(false);
-            self.editor_status_page.set_visible(true);
         }
+    }
+
+    fn open_note(&mut self, sender: &ComponentSender<Self>, id: String) {
+        self.select_note(Some(id.clone()));
+        self.note_sheet.set_open(true);
+        self.load_note(sender, id);
+        self.update_editor_state();
     }
 
     fn note_path(&self) -> Option<String> {
@@ -542,14 +542,15 @@ impl RemarkedWindow {
     fn fit_to_monitor(&self) {
         let display = WidgetExt::display(&self.window);
         let monitors = display.monitors();
-        let (mut width, mut height) = (i32::MAX, i32::MAX);
+        let (mut width, mut height) = (2100, 1320);
         for i in 0..monitors.n_items() {
             if let Some(monitor) = monitors.item(i).and_downcast::<gdk::Monitor>() {
                 let geo = monitor.geometry();
-                width = width.min(geo.width());
-                height = height.min(geo.height());
+                width = width.min(geo.width() - 100);
+                height = height.min(geo.height() - 100);
             }
         }
+        self.main_box.set_size_request(width.max(1), height.max(1));
         self.window
             .set_default_size(width.clamp(1, i32::MAX), height.clamp(1, i32::MAX));
     }
@@ -578,9 +579,7 @@ impl SimpleComponent for RemarkedWindow {
     ) -> ComponentParts<Self> {
         shell_core::window::apply_layer_shell_config(
             &root,
-            WindowConfig::new(Layer::Overlay)
-                .with_anchors(Anchors::ALL)
-                .with_namespace("rsynapse-remarked"),
+            WindowConfig::new(Layer::Overlay).with_namespace("rsynapse-remarked"),
         );
         root.set_decorated(false);
         load_styles(&root);
@@ -593,65 +592,77 @@ impl SimpleComponent for RemarkedWindow {
             }
         });
 
-        let toolbar = adw::ToolbarView::builder()
-            .vexpand(true)
-            .hexpand(true)
-            .build();
-        let header = adw::HeaderBar::builder()
-            .show_end_title_buttons(true)
-            .show_start_title_buttons(false)
-            .build();
-        let title_box = gtk::Box::builder()
-            .orientation(gtk::Orientation::Vertical)
-            .build();
-        let title_label = gtk::Label::builder()
-            .label("Tasks & Notes")
-            .css_classes(["heading"])
-            .build();
-        let header_subtitle = gtk::Label::builder()
-            .label("")
-            .css_classes(["dim-label", "caption"])
-            .build();
-        title_box.append(&title_label);
-        title_box.append(&header_subtitle);
-        header.set_title_widget(Some(&title_box));
-        toolbar.add_top_bar(&header);
-
-        let (task_pane, task_list, show_finished_switch) = build_task_pane(&sender);
+        let (task_pane, task_sidebar, show_finished_switch, header_subtitle) =
+            build_task_pane(&sender);
         task_pane.set_hexpand(false);
-        task_pane.set_width_request(400);
-        let tx = sender.input_sender().clone();
-        task_list.connect_row_selected(move |_, row| {
-            if let Some(row) = row {
-                let name = row.widget_name();
-                if !name.is_empty() {
-                    let _ = tx.send(RemarkedInput::SelectTask(name.to_string()));
-                }
-            }
-        });
+        task_pane.set_vexpand(true);
 
         let (
             note_pane,
-            note_list,
+            note_grid,
+            notes_stack,
             note_filter_entry,
+            clear_filter_button,
+            tasks_toggle,
+        ) = build_notes_surface(&sender);
+        note_pane.set_hexpand(true);
+        let (
+            sheet_content,
+            note_title_label,
             editor_box,
             source_view,
+            note_preview,
+            editor_stack,
+            edit_toggle,
             tags_entry,
             save_button,
-            editor_status_page,
-            clear_filter_button,
-        ) = build_note_pane(&sender);
-        note_pane.set_hexpand(true);
+        ) = build_note_sheet(&sender);
 
-        let main_box = gtk::Box::builder()
-            .orientation(gtk::Orientation::Horizontal)
+        let main_surface = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        main_surface.set_vexpand(true);
+        main_surface.set_hexpand(true);
+        let body = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        body.add_css_class("remarked-main-split");
+        body.set_vexpand(true);
+        body.set_hexpand(true);
+        body.append(&task_pane);
+        body.append(&note_pane);
+        main_surface.append(&body);
+        let note_sheet = adw::BottomSheet::builder()
+            .content(&main_surface)
+            .sheet(&sheet_content)
+            .show_drag_handle(true)
+            .modal(true)
+            .can_close(true)
+            .can_open(true)
+            .open(false)
+            .build();
+        note_sheet.add_css_class("remarked-note-sheet");
+        let tx = sender.input_sender().clone();
+        note_sheet.connect_close_attempt(move |sheet| {
+            sheet.set_open(false);
+            let _ = tx.send(RemarkedInput::ClearNote);
+        });
+
+        let main_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        main_box.add_css_class("remarked-cluster");
+        main_box.append(&note_sheet);
+
+        let frame = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
             .vexpand(true)
             .hexpand(true)
             .build();
-        main_box.append(&task_pane);
-        main_box.append(&note_pane);
+        frame.add_css_class("remarked-frame");
+        frame.append(&main_box);
 
-        toolbar.set_content(Some(&main_box));
+        let clamp = adw::Clamp::builder()
+            .maximum_size(2400)
+            .tightening_threshold(1500)
+            .vexpand(true)
+            .hexpand(true)
+            .child(&frame)
+            .build();
 
         let root_box = gtk::Box::builder()
             .orientation(gtk::Orientation::Vertical)
@@ -659,7 +670,7 @@ impl SimpleComponent for RemarkedWindow {
             .hexpand(true)
             .build();
         root_box.add_css_class("remarked-root");
-        root_box.append(&toolbar);
+        root_box.append(&clamp);
         root.set_content(Some(&root_box));
 
         add_keyboard_handlers(&root, &sender);
@@ -668,15 +679,21 @@ impl SimpleComponent for RemarkedWindow {
             root.clone(),
             main_box,
             task_pane,
-            task_list,
+            task_sidebar,
             note_pane,
-            note_list,
+            note_grid,
+            notes_stack,
             note_filter_entry,
+            tasks_toggle,
+            note_sheet,
+            note_title_label,
             editor_box,
             source_view,
+            note_preview,
+            editor_stack,
+            edit_toggle,
             tags_entry,
             save_button,
-            editor_status_page,
             show_finished_switch,
             clear_filter_button,
             header_subtitle,
@@ -691,9 +708,11 @@ impl SimpleComponent for RemarkedWindow {
             false,
             false,
             false,
+            false,
             std::collections::HashSet::new(),
             std::collections::HashSet::new(),
             std::collections::HashMap::new(),
+            Vec::new(),
         );
         let widgets = view_output!();
         model.reconcile(&sender);
@@ -728,6 +747,12 @@ impl SimpleComponent for RemarkedWindow {
                 self.select_task(Some(id));
                 self.refresh_panes(&sender);
             }
+            RemarkedInput::SelectTaskIndex(index) => {
+                if let Some(id) = self.task_indices.get(index as usize).cloned() {
+                    self.select_task(Some(id));
+                    self.refresh_panes(&sender);
+                }
+            }
             RemarkedInput::ClearTask => {
                 self.select_task(None);
                 self.refresh_panes(&sender);
@@ -741,10 +766,24 @@ impl SimpleComponent for RemarkedWindow {
                 self.rebuild_task_list(&sender);
                 self.clear_changed();
             }
+            RemarkedInput::SetEditingNote(editing) => {
+                self.set_editing(editing);
+                self.clear_changed();
+            }
             RemarkedInput::SelectNote(id) => {
-                self.select_note(Some(id.clone()));
-                self.load_note(&sender, id);
-                self.update_editor_state();
+                self.open_note(&sender, id);
+                self.clear_changed();
+            }
+            RemarkedInput::ToggleTaskSidebar(value) => {
+                let show = value.unwrap_or(!self.task_pane.is_visible());
+                self.task_pane.set_visible(show);
+                self.tasks_toggle.set_active(show);
+                self.tasks_toggle.set_icon_name(if show {
+                    "view-conceal-symbolic"
+                } else {
+                    "view-reveal-symbolic"
+                });
+                self.tasks_toggle.set_active(show);
                 self.clear_changed();
             }
             RemarkedInput::ClearNote => {
@@ -805,7 +844,7 @@ impl SimpleComponent for RemarkedWindow {
             }
             RemarkedInput::NoteFilter(value) => {
                 self.note_filter = value;
-                self.rebuild_note_list(&sender);
+                self.rebuild_note_grid(&sender);
                 self.clear_changed();
             }
             RemarkedInput::TagsChanged => {
@@ -857,6 +896,7 @@ impl SimpleComponent for RemarkedWindow {
                                 false,
                             )
                             .to_string();
+                        markdown::render(&self.note_preview, &self.note_text);
                         self.note_dirty = false;
                         if let Some(id) = self.selected_note.get() {
                             self.load_note(&sender, id);
@@ -967,7 +1007,7 @@ fn build_task_menu(
     }
 
     let button = gtk::MenuButton::builder()
-        .icon_name(status_icon(&task.goal.status, active))
+        .icon_name("view-more-symbolic")
         .tooltip_text("Task actions")
         .css_classes(["flat", "circular"])
         .build();
@@ -978,7 +1018,7 @@ fn build_task_menu(
 
 fn build_task_pane(
     sender: &ComponentSender<RemarkedWindow>,
-) -> (gtk::Box, gtk::ListBox, gtk::Switch) {
+) -> (gtk::Box, adw::Sidebar, gtk::Switch, gtk::Label) {
     let content = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
         .spacing(12)
@@ -987,34 +1027,55 @@ fn build_task_pane(
         .build();
     content.add_css_class("remarked-pane");
     content.add_css_class("remarked-task-pane");
+    content.add_css_class("remarked-sidebar");
 
     let header = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
         .spacing(8)
-        .css_classes(["toolbar"])
+        .css_classes(["remarked-pane-header"])
+        .build();
+    let title_box = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .spacing(2)
+        .hexpand(true)
         .build();
     let title = gtk::Label::builder()
         .label("Tasks")
         .halign(gtk::Align::Start)
-        .hexpand(true)
         .css_classes(["heading"])
         .build();
-    header.append(&title);
+    let header_subtitle = gtk::Label::builder()
+        .label("No project")
+        .halign(gtk::Align::Start)
+        .ellipsize(gtk::pango::EllipsizeMode::End)
+        .css_classes(["dim-label", "caption"])
+        .build();
+    title_box.append(&title);
+    title_box.append(&header_subtitle);
+    header.append(&title_box);
+
     content.append(&header);
 
-    let list_box = gtk::ListBox::builder()
-        .css_classes(["boxed-list"])
-        .selection_mode(gtk::SelectionMode::Single)
+    let sidebar = adw::Sidebar::builder()
+        .mode(adw::SidebarMode::Sidebar)
         .vexpand(true)
         .build();
-    content.append(&list_box);
+    sidebar.add_css_class("remarked-task-sidebar");
+    let tx = sender.input_sender().clone();
+    sidebar.connect_activated(move |sidebar, index| {
+        let _ = sidebar;
+        let _ = tx.send(RemarkedInput::SelectTaskIndex(index));
+    });
+    content.append(&sidebar);
 
-    let finished_row = adw::ActionRow::builder()
-        .title("Show finished tasks")
-        .build();
+    let finished_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+    let finished_label = gtk::Label::new(Some("Show finished tasks"));
+    finished_label.set_xalign(0.0);
+    finished_label.set_hexpand(true);
+    finished_row.append(&finished_label);
+    finished_row.add_css_class("remarked-finished-row");
     let show_finished_switch = gtk::Switch::builder().valign(gtk::Align::Center).build();
-    finished_row.add_suffix(&show_finished_switch);
-    finished_row.set_activatable_widget(Some(&show_finished_switch));
+    finished_row.append(&show_finished_switch);
     let tx = sender.input_sender().clone();
     show_finished_switch.connect_state_set(move |_, state| {
         let _ = tx.send(RemarkedInput::SetShowFinished(state));
@@ -1022,41 +1083,33 @@ fn build_task_pane(
     });
     content.append(&finished_row);
 
-    (content, list_box, show_finished_switch)
+    (content, sidebar, show_finished_switch, header_subtitle)
 }
 
-fn build_note_pane(
+fn build_notes_surface(
     sender: &ComponentSender<RemarkedWindow>,
 ) -> (
     gtk::Box,
-    gtk::ListBox,
-    gtk::Entry,
-    gtk::Box,
-    sourceview5::View,
+    gtk::FlowBox,
+    gtk::Stack,
     gtk::Entry,
     gtk::Button,
-    adw::StatusPage,
-    gtk::Button,
+    gtk::ToggleButton,
 ) {
-    let split = gtk::Box::builder()
-        .orientation(gtk::Orientation::Horizontal)
+    let surface = gtk::Box::builder()
+        .orientation(gtk::Orientation::Vertical)
+        .spacing(14)
         .vexpand(true)
         .hexpand(true)
         .build();
-
-    let sidebar = gtk::Box::builder()
-        .orientation(gtk::Orientation::Vertical)
-        .spacing(12)
-        .width_request(260)
-        .vexpand(true)
-        .hexpand(false)
-        .build();
-    sidebar.add_css_class("remarked-pane");
+    surface.add_css_class("remarked-pane");
+    surface.add_css_class("remarked-content");
+    surface.add_css_class("remarked-notes-surface");
 
     let header = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
         .spacing(8)
-        .css_classes(["toolbar"])
+        .css_classes(["remarked-pane-header"])
         .build();
     let title = gtk::Label::builder()
         .label("Notes")
@@ -1064,6 +1117,16 @@ fn build_note_pane(
         .hexpand(true)
         .css_classes(["heading"])
         .build();
+    let tasks_toggle = gtk::ToggleButton::builder()
+        .icon_name("view-conceal-symbolic")
+        .tooltip_text("Hide tasks")
+        .active(true)
+        .css_classes(["flat", "circular"])
+        .build();
+    let tx = sender.input_sender().clone();
+    tasks_toggle.connect_toggled(move |button| {
+        let _ = tx.send(RemarkedInput::ToggleTaskSidebar(Some(button.is_active())));
+    });
     let clear_button = gtk::Button::builder()
         .label("Clear filter")
         .css_classes(["flat"])
@@ -1075,9 +1138,10 @@ fn build_note_pane(
         .css_classes(["flat", "circular"])
         .build();
     header.append(&title);
+    header.append(&tasks_toggle);
     header.append(&clear_button);
     header.append(&refresh_button);
-    sidebar.append(&header);
+    surface.append(&header);
 
     let note_filter_entry = gtk::Entry::builder()
         .placeholder_text("Filter notes by title or tag")
@@ -1088,66 +1152,144 @@ fn build_note_pane(
     note_filter_entry.connect_changed(move |entry| {
         let _ = tx.send(RemarkedInput::NoteFilter(entry.text().to_string()));
     });
-    sidebar.append(&note_filter_entry);
+    surface.append(&note_filter_entry);
 
-    let list_box = gtk::ListBox::builder()
-        .css_classes(["boxed-list"])
-        .selection_mode(gtk::SelectionMode::Single)
+    let note_grid = gtk::FlowBox::builder()
+        .selection_mode(gtk::SelectionMode::None)
+        .activate_on_single_click(true)
+        .column_spacing(12)
+        .row_spacing(12)
+        .homogeneous(true)
+        .max_children_per_line(8)
+        .valign(gtk::Align::Start)
         .vexpand(true)
         .build();
-    sidebar.append(&list_box);
+    note_grid.add_css_class("remarked-notes-grid");
+    let tx = sender.input_sender().clone();
+    note_grid.connect_child_activated(move |_, child| {
+        let id = child.widget_name();
+        if !id.is_empty() {
+            let _ = tx.send(RemarkedInput::SelectNote(id.to_string()));
+        }
+    });
 
-    split.append(&sidebar);
+    let grid_scrolled = gtk::ScrolledWindow::builder()
+        .child(&note_grid)
+        .vexpand(true)
+        .hexpand(true)
+        .build();
+    grid_scrolled.add_css_class("remarked-grid-scroll");
 
-    let content = gtk::Box::builder()
+    let empty = adw::StatusPage::builder()
+        .title("No notes yet")
+        .description("Select a task to seed its main note, or press Ctrl+N.")
+        .icon_name("document-new-symbolic")
+        .vexpand(true)
+        .hexpand(true)
+        .build();
+    empty.add_css_class("remarked-empty");
+
+    let notes_stack = gtk::Stack::new();
+    notes_stack.set_vexpand(true);
+    notes_stack.set_hexpand(true);
+    notes_stack.add_named(&grid_scrolled, Some("grid"));
+    notes_stack.add_named(&empty, Some("empty"));
+    notes_stack.set_visible_child_name("grid");
+    surface.append(&notes_stack);
+
+    let tx = sender.input_sender().clone();
+    clear_button.connect_clicked(move |_| {
+        let _ = tx.send(RemarkedInput::ClearTask);
+    });
+
+    (
+        surface,
+        note_grid,
+        notes_stack,
+        note_filter_entry,
+        clear_button,
+        tasks_toggle,
+    )
+}
+
+fn build_note_sheet(
+    sender: &ComponentSender<RemarkedWindow>,
+) -> (
+    gtk::Box,
+    gtk::Label,
+    gtk::Box,
+    sourceview5::View,
+    gtk::Box,
+    gtk::Stack,
+    gtk::ToggleButton,
+    gtk::Entry,
+    gtk::Button,
+) {
+    let sheet_box = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
         .spacing(12)
         .vexpand(true)
         .hexpand(true)
         .build();
-    content.add_css_class("remarked-pane");
+    sheet_box.add_css_class("remarked-sheet-content");
 
     let header = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
         .spacing(8)
-        .css_classes(["toolbar"])
-        .build();
-    let header_title = gtk::Box::builder()
-        .orientation(gtk::Orientation::Vertical)
-        .hexpand(true)
+        .css_classes(["remarked-sheet-header"])
         .build();
     let title_label = gtk::Label::builder()
-        .label("Select a note")
+        .label("Note")
+        .halign(gtk::Align::Start)
+        .hexpand(true)
+        .ellipsize(gtk::pango::EllipsizeMode::End)
         .css_classes(["heading"])
         .build();
-    let sub_label = gtk::Label::builder()
-        .label("Markdown")
-        .css_classes(["dim-label", "caption"])
+    let edit_toggle = gtk::ToggleButton::builder()
+        .icon_name("document-edit-symbolic")
+        .tooltip_text("Edit Markdown")
+        .css_classes(["flat", "circular"])
         .build();
-    header_title.append(&title_label);
-    header_title.append(&sub_label);
-    header.append(&header_title);
+    let tx = sender.input_sender().clone();
+    edit_toggle.connect_toggled(move |button| {
+        let _ = tx.send(RemarkedInput::SetEditingNote(button.is_active()));
+    });
     let save_button = gtk::Button::builder()
         .label("Save")
         .css_classes(["suggested-action"])
         .sensitive(false)
+        .visible(false)
         .build();
     let tx = sender.input_sender().clone();
     save_button.connect_clicked(move |_| {
         let _ = tx.send(RemarkedInput::SaveNote);
     });
+    let close_button = gtk::Button::builder()
+        .icon_name("window-close-symbolic")
+        .tooltip_text("Close note")
+        .css_classes(["flat", "circular"])
+        .build();
+    let tx = sender.input_sender().clone();
+    close_button.connect_clicked(move |_| {
+        let _ = tx.send(RemarkedInput::ClearNote);
+    });
+    header.append(&title_label);
+    header.append(&edit_toggle);
     header.append(&save_button);
-    content.append(&header);
+    header.append(&close_button);
+    sheet_box.append(&header);
 
     let tags_entry = gtk::Entry::builder()
         .placeholder_text("Tags, separated by commas")
+        .editable(false)
+        .visible(false)
         .hexpand(true)
         .build();
     let tx = sender.input_sender().clone();
     tags_entry.connect_changed(move |_| {
         let _ = tx.send(RemarkedInput::TagsChanged);
     });
-    content.append(&tags_entry);
+    sheet_box.append(&tags_entry);
 
     let buffer = sourceview5::Buffer::new(None);
     buffer.set_language(
@@ -1170,7 +1312,7 @@ fn build_note_pane(
     source_view.set_hexpand(true);
     source_view.set_wrap_mode(gtk::WrapMode::WordChar);
     source_view.set_monospace(true);
-    source_view.add_css_class("frame");
+    source_view.add_css_class("remarked-editor");
     let tx = sender.input_sender().clone();
     buffer.connect_changed(move |_| {
         let _ = tx.send(RemarkedInput::NoteChanged);
@@ -1182,42 +1324,39 @@ fn build_note_pane(
         .hexpand(true)
         .build();
 
-    let editor_box = gtk::Box::builder()
-        .orientation(gtk::Orientation::Vertical)
-        .spacing(12)
+    let preview = gtk::Box::new(gtk::Orientation::Vertical, 12);
+    preview.add_css_class("remarked-preview");
+    let preview_scrolled = gtk::ScrolledWindow::builder()
+        .child(&preview)
         .vexpand(true)
         .hexpand(true)
         .build();
-    editor_box.append(&scrolled);
-    content.append(&editor_box);
+    preview_scrolled.add_css_class("remarked-preview-scroll");
 
-    let status_page = adw::StatusPage::builder()
-        .title("Your project knowledge")
-        .description("Select a note, or create one with Ctrl+N.")
-        .icon_name("document-edit-symbolic")
-        .vexpand(true)
-        .hexpand(true)
-        .visible(false)
-        .build();
-    content.append(&status_page);
+    let editor_stack = gtk::Stack::new();
+    editor_stack.set_vexpand(true);
+    editor_stack.set_hexpand(true);
+    editor_stack.add_named(&preview_scrolled, Some("preview"));
+    editor_stack.add_named(&scrolled, Some("edit"));
+    editor_stack.set_visible_child_name("preview");
 
-    split.append(&content);
-
-    let tx = sender.input_sender().clone();
-    clear_button.connect_clicked(move |_| {
-        let _ = tx.send(RemarkedInput::ClearTask);
-    });
+    let editor_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
+    editor_box.set_vexpand(true);
+    editor_box.set_hexpand(true);
+    editor_box.set_height_request(560);
+    editor_box.append(&editor_stack);
+    sheet_box.append(&editor_box);
 
     (
-        split,
-        list_box,
-        note_filter_entry,
+        sheet_box,
+        title_label,
         editor_box,
         source_view,
+        preview,
+        editor_stack,
+        edit_toggle,
         tags_entry,
         save_button,
-        status_page,
-        clear_button,
     )
 }
 
@@ -1238,14 +1377,9 @@ fn load_styles(window: &adw::ApplicationWindow) {
     let provider = gtk::CssProvider::new();
     provider.load_from_string(
         "
-        .remarked-pane {
-            padding: 12px;
-        }
-        .remarked-task-details {
-            padding: 16px;
-        }
-        .remarked-row {
-            margin: 4px 0;
+        window.remarked-window,
+        .remarked-root {
+            background: transparent;
         }
         ",
     );
@@ -1268,6 +1402,9 @@ fn add_keyboard_handlers(
             glib::Propagation::Stop
         } else if keyval == gtk::gdk::Key::n && mods.contains(gdk::ModifierType::CONTROL_MASK) {
             s.input(RemarkedInput::CaptureNote(String::new()));
+            glib::Propagation::Stop
+        } else if keyval == gtk::gdk::Key::e && mods.contains(gdk::ModifierType::CONTROL_MASK) {
+            s.input(RemarkedInput::SetEditingNote(true));
             glib::Propagation::Stop
         } else {
             glib::Propagation::Proceed

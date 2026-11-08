@@ -2,7 +2,6 @@ use std::{collections::HashMap, fmt, future::Future, path::PathBuf, pin::Pin, sy
 
 use futures_util::{Stream, StreamExt, stream};
 use rxrust::prelude::Observable as _;
-use tokio::sync::OnceCell;
 use zbus::{
     Connection, Message, Proxy,
     names::{OwnedBusName, OwnedInterfaceName},
@@ -45,19 +44,40 @@ impl Bus {
 }
 
 async fn cached_session_connection() -> zbus::Result<Connection> {
-    static CONNECTION: OnceCell<Connection> = OnceCell::const_new();
-    CONNECTION
-        .get_or_try_init(Connection::session)
-        .await
-        .cloned()
+    static CONNECTION: std::sync::Mutex<Option<Connection>> = std::sync::Mutex::new(None);
+    cached_connection(&CONNECTION, Connection::session()).await
 }
 
 async fn cached_system_connection() -> zbus::Result<Connection> {
-    static CONNECTION: OnceCell<Connection> = OnceCell::const_new();
-    CONNECTION
-        .get_or_try_init(Connection::system)
+    static CONNECTION: std::sync::Mutex<Option<Connection>> = std::sync::Mutex::new(None);
+    cached_connection(&CONNECTION, Connection::system()).await
+}
+
+async fn cached_connection(
+    cache: &std::sync::Mutex<Option<Connection>>,
+    connect: impl Future<Output = zbus::Result<Connection>>,
+) -> zbus::Result<Connection> {
+    let cached = cache
+        .lock()
+        .expect("D-Bus connection cache poisoned")
+        .clone();
+    if let Some(connection) = cached
+        && connection_healthy(&connection).await
+    {
+        return Ok(connection);
+    }
+    let connection = connect.await?;
+    *cache.lock().expect("D-Bus connection cache poisoned") = Some(connection.clone());
+    Ok(connection)
+}
+
+async fn connection_healthy(connection: &Connection) -> bool {
+    let Ok(proxy) = zbus::fdo::DBusProxy::new(connection).await else {
+        return false;
+    };
+    tokio::time::timeout(std::time::Duration::from_secs(1), proxy.get_id())
         .await
-        .cloned()
+        .is_ok_and(|reply| reply.is_ok())
 }
 
 /// Identifies one D-Bus object/interface pair.
@@ -1887,5 +1907,37 @@ mod tests {
             remove_model_path(&mut paths, &two),
             ObjectManagerChange::Ignore
         ));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn cached_connection_is_reused_while_healthy() {
+        let Ok(first) = Connection::session().await else {
+            return;
+        };
+        let cache = std::sync::Mutex::new(Some(first.clone()));
+        let second = cached_connection(&cache, Connection::session())
+            .await
+            .expect("healthy cached connection should be reused");
+        assert_eq!(
+            first.unique_name().map(ToString::to_string),
+            second.unique_name().map(ToString::to_string)
+        );
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    async fn connection_health_rejects_a_closed_socket() {
+        let Ok(connection) = Connection::session().await else {
+            return;
+        };
+        assert!(connection_healthy(&connection).await);
+        drop(connection);
+        let Ok(dead) = Connection::session().await else {
+            return;
+        };
+        let observer = dead.clone();
+        dead.close().await.expect("close test connection");
+        assert!(!connection_healthy(&observer).await);
     }
 }
