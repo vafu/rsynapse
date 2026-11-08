@@ -25,7 +25,7 @@ use super::{
     WorkspaceNode,
     bar_indicator::{self, BarIndicatorExt},
 };
-use crate::{hints::hints_active, widgets::nerd_icon::NerdIconLabelExt};
+use crate::widgets::nerd_icon::NerdIconLabelExt;
 
 #[derive(Debug)]
 #[shell_macros::model(module = project_label_sources)]
@@ -40,9 +40,6 @@ pub(super) struct ProjectLabel {
 
     #[source(workspace.workspace.active())]
     pub selected: bool,
-
-    #[source(hints_active())]
-    pub hints_active: bool,
 }
 
 #[shell_macros::component(
@@ -138,19 +135,6 @@ impl SimpleComponent for ProjectLabel {
                             }
                         },
 
-                        gtk::Label {
-                            add_css_class: "bar-badge",
-                            add_css_class: "workspace-number-badge",
-
-                            #[watch]
-                            set_label: workspace_badge_label(model.vm.index).as_str(),
-
-                            #[watch]
-                            set_visible: model.hints_active,
-
-                            set_halign: gtk::Align::Center,
-                            set_valign: gtk::Align::Center,
-                        },
                     }
                 },
 

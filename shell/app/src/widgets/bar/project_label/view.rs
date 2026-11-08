@@ -82,7 +82,3 @@ pub(super) fn non_empty_text(value: &str) -> Option<&str> {
     let value = value.trim();
     (!value.is_empty()).then_some(value)
 }
-
-pub(super) fn workspace_badge_label(sort_index: u32) -> String {
-    sort_index.to_string()
-}

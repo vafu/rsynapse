@@ -75,7 +75,7 @@ use super::{
     OsdAudioView, OsdBrightnessView, OsdInit, OsdInput, OsdWindow, WorkspaceSelector,
     WorkspaceSelectorInput, has_notification_items,
 };
-use crate::{hints, request};
+use crate::request;
 
 type WindowNode = workspace::WindowObject;
 pub(super) const WORKSPACE_RAIL_WIDTH: i32 = bar_indicator::SIZE;
@@ -1203,10 +1203,6 @@ impl MainBar {
                 } else {
                     request::RequestResponse::Error("Project picker is unavailable".to_owned())
                 }
-            }
-            request::ShellRequest::Hints(action) => {
-                hints::apply(action);
-                request::RequestResponse::Ok
             }
             request::ShellRequest::WorkspaceSelector(action) => {
                 self.workspace_selector_action(action);

@@ -42,15 +42,13 @@ pub enum ShellRequest {
     WorkspaceSelector(ToggleAction),
     Remarked(ToggleAction),
     Mpris { action: ToggleAction, hold: bool },
-    Hints(ToggleAction),
     Notifications(ToggleAction),
 }
 
 impl ShellRequest {
     pub const fn target(&self) -> RequestTarget {
         match self {
-            Self::Hints(_)
-            | Self::ProjectInit
+            Self::ProjectInit
             | Self::Workspace(_)
             | Self::WorkspaceSelector(_)
             | Self::Remarked(_)
@@ -60,7 +58,7 @@ impl ShellRequest {
     }
 }
 
-/// Show/hide/toggle action shared by overlay surfaces and hints.
+/// Show/hide/toggle action shared by overlay surfaces.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ToggleAction {
     Set(bool),
@@ -345,7 +343,6 @@ fn parse_request(args: &[String]) -> Result<ShellRequest, String> {
             parse_toggle_request(&args[1..], "remarked", true).map(ShellRequest::Remarked)
         }
         "mpris" | "media" => parse_mpris_request(&args[1..]),
-        "hints" => parse_toggle_request(&args[1..], "hints", false).map(ShellRequest::Hints),
         "notifications" | "notification-center" => {
             parse_toggle_request(&args[1..], "notifications", false)
                 .map(ShellRequest::Notifications)
@@ -524,11 +521,11 @@ mod tests {
         .unwrap();
 
         let slow_path = path.clone();
-        let slow = thread::spawn(move || send_raw(&slow_path, b"hints\0toggle"));
+        let slow = thread::spawn(move || send_raw(&slow_path, b"workspace\0toggle"));
         thread::sleep(Duration::from_millis(100));
 
         let started = Instant::now();
-        let fast = send_raw(&path, b"hints\0toggle");
+        let fast = send_raw(&path, b"workspace\0toggle");
         assert!(started.elapsed() < Duration::from_millis(700));
         assert_eq!(fast.trim_end(), "ok");
 
@@ -538,26 +535,6 @@ mod tests {
 
     fn args(values: &[&str]) -> Vec<String> {
         values.iter().map(|value| (*value).to_owned()).collect()
-    }
-
-    #[test]
-    fn parses_hints_active_bool() {
-        assert_eq!(
-            parse_request(&args(&["hints", "active", "true"])).unwrap(),
-            ShellRequest::Hints(ToggleAction::Set(true))
-        );
-        assert_eq!(
-            parse_request(&args(&["hints", "active", "false"])).unwrap(),
-            ShellRequest::Hints(ToggleAction::Set(false))
-        );
-    }
-
-    #[test]
-    fn parses_hints_toggle() {
-        assert_eq!(
-            parse_request(&args(&["hints", "toggle"])).unwrap(),
-            ShellRequest::Hints(ToggleAction::Toggle)
-        );
     }
 
     #[test]
@@ -644,7 +621,9 @@ mod tests {
         assert_eq!(ShellRequest::ProjectInit.target(), RequestTarget::Shell);
         assert!(parse_request(&args(&["project-init", "extra"])).is_err());
         assert_eq!(
-            parse_request(&args(&["hints", "toggle"])).unwrap().target(),
+            parse_request(&args(&["workspace", "toggle"]))
+                .unwrap()
+                .target(),
             RequestTarget::Shell
         );
         assert_eq!(
@@ -687,7 +666,7 @@ mod tests {
 
     #[test]
     fn round_trips_request_args() {
-        let input = args(&["hints", "active", "true"]);
+        let input = args(&["notifications", "show"]);
         assert_eq!(decode_args(&encode_args(&input)).unwrap(), input);
     }
 

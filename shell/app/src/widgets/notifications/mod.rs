@@ -274,8 +274,7 @@ impl NotificationsWindow {
                 };
                 request::RequestResponse::Ok
             }
-            request::ShellRequest::Hints(_)
-            | request::ShellRequest::ProjectInit
+            request::ShellRequest::ProjectInit
             | request::ShellRequest::Workspace(_)
             | request::ShellRequest::WorkspaceSelector(_)
             | request::ShellRequest::Remarked(_)

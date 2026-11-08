@@ -1,5 +1,4 @@
 mod desktop_icon;
-mod hints;
 pub mod launch;
 pub mod request;
 pub mod session;

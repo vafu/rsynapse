@@ -481,7 +481,6 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
   font-weight: 700;
 }
 
-.bar-badge.workspace-number-badge,
 .bar-badge.bar-count-badge {
   background-color: color-mix(in srgb, #{$fg} 16%, #{$panel-bg});
   color: color-mix(in srgb, #{$fg} 72%, transparent);
