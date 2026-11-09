@@ -33,6 +33,7 @@ pub trait Manager {
     fn remove_goal(&self, date: &str, id: &str) -> zbus::Result<bool>;
     fn create_goal(&self, info: &GoalInfo) -> zbus::Result<GoalInfo>;
     fn edit_goal(&self, key: &str, fields: HashMap<String, String>) -> zbus::Result<GoalInfo>;
+    fn move_goal_hierarchy(&self, key: &str, project_id: &str) -> zbus::Result<Vec<GoalInfo>>;
     fn add_project_labels(
         &self,
         project_id: &str,

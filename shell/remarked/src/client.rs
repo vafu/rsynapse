@@ -117,6 +117,10 @@ pub(crate) enum TaskAction {
     Delete {
         key: String,
     },
+    DeriveProject {
+        key: String,
+        project_id: String,
+    },
     Create {
         project: proj_model::ProjectInfo,
         parent: String,
@@ -152,6 +156,12 @@ pub(crate) async fn task_action(action: TaskAction) -> Result<(), String> {
             let (date, id) = key.split_once('/').unwrap_or(("", &key));
             let _: bool = proxy.remove_goal(date, id).await.map_err(error)?;
         }
+        TaskAction::DeriveProject { key, project_id } => {
+            let _: Vec<GoalInfo> = proxy
+                .move_goal_hierarchy(&key, &project_id)
+                .await
+                .map_err(error)?;
+        }
         TaskAction::Create {
             project,
             parent,
@@ -185,6 +195,14 @@ pub(crate) async fn task_action(action: TaskAction) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+/// Registers (or resolves) a project for `path` and returns its ID.
+pub(crate) async fn register_project(path: &str) -> Result<proj_model::ProjectInfo, String> {
+    use proj_model::api::ManagerProxy;
+    let conn = zbus::Connection::session().await.map_err(error)?;
+    let proxy = ManagerProxy::new(&conn).await.map_err(error)?;
+    proxy.register_project(path).await.map_err(error)
 }
 
 fn error(error: impl std::fmt::Display) -> String {

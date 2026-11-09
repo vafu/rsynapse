@@ -43,6 +43,7 @@ pub(crate) enum TaskRowInput {
     Start,
     Stop,
     Delete,
+    DeriveProject(String),
 }
 
 impl From<task_row_sources::Msg> for TaskRowInput {
@@ -58,6 +59,7 @@ pub enum TaskRowOutput {
     Start { key: String, project: String },
     Stop,
     Delete { key: String },
+    DeriveProject { key: String, path: String },
 }
 
 #[shell_macros::model(module = task_row_sources)]
@@ -209,6 +211,12 @@ impl SimpleComponent for TaskRow {
                     key: self.key.clone(),
                 });
             }
+            TaskRowInput::DeriveProject(path) => {
+                let _ = sender.output(TaskRowOutput::DeriveProject {
+                    key: self.key.clone(),
+                    path,
+                });
+            }
         }
     }
 }
@@ -289,15 +297,25 @@ fn build_actions_menu(
     delete_action.connect_activate(move |_, _| confirm_delete(&delete_row, &tx));
     actions.add_action(&delete_action);
 
+    let derive_action = gtk::gio::SimpleAction::new("derive-project", None);
+    let derive_row = row.clone();
+    let tx = sender.input_sender().clone();
+    derive_action.connect_activate(move |_, _| derive_project(&derive_row, &tx));
+    actions.add_action(&derive_action);
+
     let tracking = gtk::gio::Menu::new();
     tracking.append(Some("Start tracking"), Some("task.start"));
     tracking.append(Some("Stop tracking"), Some("task.stop"));
+
+    let project = gtk::gio::Menu::new();
+    project.append(Some("Derive Project…"), Some("task.derive-project"));
 
     let delete = gtk::gio::Menu::new();
     delete.append(Some("Delete Task…"), Some("task.delete"));
 
     let menu = gtk::gio::Menu::new();
     menu.append_section(None, &tracking);
+    menu.append_section(None, &project);
     menu.append_section(None, &delete);
 
     let popover = gtk::PopoverMenu::from_model(Some(&menu));
@@ -345,6 +363,31 @@ fn confirm_delete(row: &adw::ActionRow, tx: &relm4::Sender<TaskRowInput>) {
     });
     let window = row.root().and_downcast::<gtk::Window>();
     dialog.present(window.as_ref());
+}
+
+fn derive_project(row: &adw::ActionRow, tx: &relm4::Sender<TaskRowInput>) {
+    let dialog = gtk::FileDialog::builder()
+        .title("Choose project directory")
+        .modal(true)
+        .build();
+    let window = row.root().and_downcast::<gtk::Window>();
+    let tx = tx.clone();
+    dialog.select_folder(
+        window.as_ref(),
+        None::<&gtk::gio::Cancellable>,
+        move |result| {
+            let Ok(folder) = result else {
+                return;
+            };
+            let Some(path) = folder.path() else {
+                eprintln!("[remarked] derive project: selected path is not local");
+                return;
+            };
+            let _ = tx.send(TaskRowInput::DeriveProject(
+                path.to_string_lossy().into_owned(),
+            ));
+        },
+    );
 }
 
 fn task_note_count(tag_counts: Observable<TagCounts>, instance_id: String) -> Observable<u32> {

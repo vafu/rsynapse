@@ -172,6 +172,71 @@ impl Manager {
         Ok(())
     }
 
+    /// Reassigns a task and all of its descendants to `project_id`. The
+    /// hierarchy's internal parent links and identities are preserved; only
+    /// project membership (and therefore the stored project path) changes.
+    pub(super) async fn move_hierarchy(
+        &self,
+        key: &str,
+        project_id: &str,
+        conn: &Connection,
+    ) -> zbus::fdo::Result<Vec<GoalInfo>> {
+        let _lock = self.mutation.lock().await;
+        let projects = self.store.projects().map_err(error)?;
+        let project = projects
+            .iter()
+            .find(|p| p.id == project_id)
+            .ok_or_else(|| zbus::fdo::Error::FileNotFound("Project not found".into()))?;
+        let project_cwd = project.cwd.clone();
+        let goals = self.store.goals().map_err(error)?;
+        let root = goals
+            .iter()
+            .find(|g| g.key() == key)
+            .ok_or_else(|| zbus::fdo::Error::FileNotFound("Goal not found".into()))?
+            .clone();
+        if root.project_id == project_id {
+            return Ok(vec![root]);
+        }
+
+        // Collect the subtree breadth-first so parents are published before
+        // their children.
+        let mut ordered: Vec<GoalInfo> = vec![root.clone()];
+        let mut seen = std::collections::HashSet::from([root.key()]);
+        let mut index = 0;
+        while index < ordered.len() {
+            let parent_key = ordered[index].key();
+            for goal in goals.iter().filter(|g| g.parent_id == parent_key) {
+                if seen.insert(goal.key()) {
+                    ordered.push(goal.clone());
+                }
+            }
+            index += 1;
+        }
+
+        let at = crate::metrics::now_ms();
+        for goal in &ordered {
+            let mut updated = goal.clone();
+            updated.project = project_cwd.clone();
+            updated.project_id = project_id.to_owned();
+            updated = tokio::task::spawn_blocking(move || {
+                notes::ensure(&mut updated)?;
+                Ok::<_, anyhow::Error>(updated)
+            })
+            .await
+            .map_err(error)?
+            .map_err(error)?;
+            self.store.save_goal(&updated, false, at).map_err(error)?;
+            publish_goal(conn, updated).await.map_err(error)?;
+        }
+
+        // An active selection for this hierarchy belonged to the old project;
+        // clear it so the new project starts without a stale active task.
+        for goal in &ordered {
+            self.clear_active(&goal.key(), conn).await?;
+        }
+        Ok(ordered)
+    }
+
     pub(super) async fn active_changed(
         &self,
         conn: &Connection,

@@ -975,6 +975,26 @@ fn apply_task_row_output(
                 }
             });
         }
+        TaskRowOutput::DeriveProject { key, path } => {
+            let old_project = model.catalog.project().map(|project| project.id.clone());
+            relm4::spawn(async move {
+                let result = async {
+                    let project = client::register_project(&path).await?;
+                    if Some(&project.id) == old_project.as_ref() {
+                        return Err("Task already belongs to this project".to_string());
+                    }
+                    client::task_action(client::TaskAction::DeriveProject {
+                        key,
+                        project_id: project.id,
+                    })
+                    .await
+                }
+                .await;
+                if let Err(error) = result {
+                    eprintln!("[remarked] derive project failed: {error}");
+                }
+            });
+        }
     }
 }
 

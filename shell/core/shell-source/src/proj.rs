@@ -66,39 +66,6 @@ macro_rules! manager_snapshot {
     }};
 }
 
-macro_rules! metrics_snapshot {
-    ($key:expr, $list:ident, $arg:expr) => {{
-        crate::shared_by_key("projd-snapshots", $key, move || {
-            crate::from_task(move |sender| async move {
-                let run = async {
-                    let conn = zbus::Connection::session()
-                        .await
-                        .map_err(|e| e.to_string())?;
-                    let proxy = MetricsProxy::new(&conn).await.map_err(|e| e.to_string())?;
-                    let mut changes = proxy
-                        .receive_work_changed()
-                        .await
-                        .map_err(|e| e.to_string())?;
-                    loop {
-                        let rows = proxy.$list($arg).await.map_err(|e| e.to_string())?;
-                        if sender.send(Ok(rows)).await.is_err() {
-                            return Ok::<(), String>(());
-                        }
-                        if changes.next().await.is_none() {
-                            return Err("projd work stream ended".to_owned());
-                        }
-                    }
-                }
-                .await;
-                if let Err(error) = run {
-                    let _ = sender.send(Err(error)).await;
-                }
-            })
-            .box_it()
-        })
-    }};
-}
-
 pub fn projects() -> Observable<Vec<ProjectInfo>> {
     manager_snapshot!("manager:ListProjects", list_projects)
         .distinct_until_changed()
@@ -140,11 +107,55 @@ pub fn goals() -> Observable<Vec<GoalInfo>> {
         .box_it()
 }
 /// Task-instance snapshots, including creation timestamps and retained deleted instances.
-/// Refreshed by Metrics1 work changes; consumers choose whether to include deleted tasks.
+/// Refreshed by both Metrics1 work changes and Manager goal changes (status,
+/// edits, and project moves), so moves between projects become visible.
+/// Consumers choose whether to include deleted tasks.
 pub fn goal_identities() -> Observable<Vec<GoalIdentityInfo>> {
-    metrics_snapshot!("metrics:ListGoalIdentities", list_goal_identities, "")
-        .distinct_until_changed()
+    crate::shared_by_key("projd-snapshots", "metrics:ListGoalIdentities", || {
+        crate::from_task(|sender| async move {
+            let run = async {
+                let conn = zbus::Connection::session()
+                    .await
+                    .map_err(|e| e.to_string())?;
+                let metrics = MetricsProxy::new(&conn).await.map_err(|e| e.to_string())?;
+                let manager = ManagerProxy::new(&conn).await.map_err(|e| e.to_string())?;
+                let mut work_changes = metrics
+                    .receive_work_changed()
+                    .await
+                    .map_err(|e| e.to_string())?;
+                let mut goal_changes =
+                    manager.receive_changed().await.map_err(|e| e.to_string())?;
+                loop {
+                    let rows = metrics
+                        .list_goal_identities("")
+                        .await
+                        .map_err(|e| e.to_string())?;
+                    if sender.send(Ok(rows)).await.is_err() {
+                        return Ok::<(), String>(());
+                    }
+                    tokio::select! {
+                        event = work_changes.next() => {
+                            if event.is_none() {
+                                return Err("projd work stream ended".to_owned());
+                            }
+                        }
+                        event = goal_changes.next() => {
+                            if event.is_none() {
+                                return Err("projd change stream ended".to_owned());
+                            }
+                        }
+                    }
+                }
+            }
+            .await;
+            if let Err(error) = run {
+                let _ = sender.send(Err(error)).await;
+            }
+        })
         .box_it()
+    })
+    .distinct_until_changed()
+    .box_it()
 }
 pub fn goal_title(key: impl Into<String>) -> Observable<String> {
     goal_property(key.into(), "Title")

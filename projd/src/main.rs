@@ -835,6 +835,24 @@ impl Manager {
         }
         Ok(removed)
     }
+    /// Reassigns a task and all of its descendants to another project. The
+    /// subtree keeps its internal parent links and ids; only the project
+    /// membership changes. Returns the moved goals in hierarchy order.
+    async fn move_goal_hierarchy(
+        &self,
+        key: String,
+        project_id: String,
+        #[zbus(connection)] conn: &Connection,
+        #[zbus(signal_context)] e: SignalContext<'_>,
+    ) -> zbus::fdo::Result<Vec<GoalInfo>> {
+        let moved = self.move_hierarchy(&key, &project_id, conn).await?;
+        for goal in &moved {
+            Self::changed(&e, "goal", &goal.key())
+                .await
+                .map_err(error)?;
+        }
+        Ok(moved)
+    }
     #[zbus(signal)]
     async fn changed(e: &SignalContext<'_>, kind: &str, id: &str) -> zbus::Result<()>;
     #[zbus(signal)]
