@@ -114,6 +114,9 @@ pub(crate) enum TaskAction {
     Clear {
         project: String,
     },
+    Delete {
+        key: String,
+    },
     Create {
         project: proj_model::ProjectInfo,
         parent: String,
@@ -144,6 +147,10 @@ pub(crate) async fn task_action(action: TaskAction) -> Result<(), String> {
         }
         TaskAction::Clear { project } => {
             let _: () = proxy.set_active_goal(&project, "").await.map_err(error)?;
+        }
+        TaskAction::Delete { key } => {
+            let (date, id) = key.split_once('/').unwrap_or(("", &key));
+            let _: bool = proxy.remove_goal(date, id).await.map_err(error)?;
         }
         TaskAction::Create {
             project,

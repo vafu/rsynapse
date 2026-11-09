@@ -29,6 +29,72 @@ pub(crate) fn is_finished(status: &str) -> bool {
     matches!(status, "completed" | "cancelled")
 }
 
+/// Sort order for the task tree.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum TaskSort {
+    #[default]
+    Status,
+    Created,
+    Priority,
+}
+
+impl TaskSort {
+    pub(crate) const ALL: [Self; 3] = [Self::Status, Self::Created, Self::Priority];
+
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::Status => "Status",
+            Self::Created => "Date created",
+            Self::Priority => "Priority",
+        }
+    }
+
+    pub(crate) fn id(self) -> &'static str {
+        match self {
+            Self::Status => "status",
+            Self::Created => "created",
+            Self::Priority => "priority",
+        }
+    }
+
+    pub(crate) fn icon(self) -> &'static str {
+        match self {
+            Self::Status => "view-list-symbolic",
+            Self::Created => "x-office-calendar-symbolic",
+            Self::Priority => "starred-symbolic",
+        }
+    }
+}
+
+fn status_rank(status: &str) -> u8 {
+    match status {
+        "in-progress" => 0,
+        "planned" => 1,
+        "deferred" => 2,
+        _ => 3,
+    }
+}
+
+fn priority_rank(priority: &str) -> u8 {
+    match priority {
+        "high" => 0,
+        "low" => 2,
+        _ => 1,
+    }
+}
+
+fn matches_query(task: &GoalIdentityInfo, query: &str) -> bool {
+    if query.is_empty() {
+        return true;
+    }
+    let hay = format!(
+        "{} {} {} {}",
+        task.goal.title, task.goal.description, task.goal.status, task.goal.priority
+    )
+    .to_lowercase();
+    hay.contains(query)
+}
+
 pub(crate) fn parse_tags(text: &str) -> Vec<String> {
     let mut tags: Vec<_> = text
         .split(',')
@@ -58,23 +124,45 @@ pub(crate) fn task_nodes(
     tasks: &[GoalIdentityInfo],
     show_finished: bool,
     active: &[String],
+    query: &str,
+    sort: TaskSort,
 ) -> Vec<TaskNode> {
+    let matching_keys: HashSet<&str> = tasks
+        .iter()
+        .filter(|task| task.deleted_at_ms == 0 && matches_query(task, query))
+        .map(|task| task.key.as_str())
+        .collect();
+    let mut visible_keys = matching_keys.clone();
+    if !query.is_empty() {
+        for task in tasks
+            .iter()
+            .filter(|task| task.deleted_at_ms == 0 && matching_keys.contains(task.key.as_str()))
+        {
+            let mut parent = task.goal.parent_id.as_str();
+            while !parent.is_empty() && visible_keys.insert(parent) {
+                match tasks.iter().find(|candidate| candidate.key == parent) {
+                    Some(found) => parent = found.goal.parent_id.as_str(),
+                    None => break,
+                }
+            }
+        }
+    }
     let mut tasks: Vec<_> = tasks
         .iter()
         .filter(|task| task.deleted_at_ms == 0)
+        .filter(|task| query.is_empty() || visible_keys.contains(task.key.as_str()))
         .collect();
     tasks.sort_by(|a, b| {
-        let rank = |status: &str| match status {
-            "in-progress" => 0,
-            "planned" => 1,
-            "deferred" => 2,
-            _ => 3,
+        let primary = match sort {
+            TaskSort::Status => status_rank(&a.goal.status).cmp(&status_rank(&b.goal.status)),
+            TaskSort::Created => a.created_at_ms.cmp(&b.created_at_ms),
+            TaskSort::Priority => {
+                priority_rank(&a.goal.priority).cmp(&priority_rank(&b.goal.priority))
+            }
         };
-        (rank(&a.goal.status), a.created_at_ms, &a.instance_id).cmp(&(
-            rank(&b.goal.status),
-            b.created_at_ms,
-            &b.instance_id,
-        ))
+        primary
+            .then_with(|| a.created_at_ms.cmp(&b.created_at_ms))
+            .then_with(|| a.instance_id.cmp(&b.instance_id))
     });
 
     fn build(
@@ -177,7 +265,7 @@ mod test {
             task("parent", "parent", "", "planned"),
             task("grandchild", "grandchild", "child", "planned"),
         ];
-        let nodes = task_nodes(&tasks, false, &[]);
+        let nodes = task_nodes(&tasks, false, &[], "", TaskSort::Status);
         assert_eq!(summary(&nodes), vec!["parent[child[grandchild]]"]);
     }
 
@@ -187,7 +275,7 @@ mod test {
             task("parent", "parent", "", "completed"),
             task("child", "child", "parent", "planned"),
         ];
-        let nodes = task_nodes(&tasks, false, &[]);
+        let nodes = task_nodes(&tasks, false, &[], "", TaskSort::Status);
         assert_eq!(summary(&nodes), vec!["parent[child]"]);
     }
 
@@ -197,12 +285,68 @@ mod test {
             task("parent", "parent", "", "planned"),
             task("done", "done", "parent", "completed"),
         ];
-        let hidden = task_nodes(&tasks, false, &[]);
+        let hidden = task_nodes(&tasks, false, &[], "", TaskSort::Status);
         assert_eq!(hidden.len(), 1);
         assert!(hidden[0].children.is_empty());
 
-        let shown = task_nodes(&tasks, true, &[]);
+        let shown = task_nodes(&tasks, true, &[], "", TaskSort::Status);
         assert_eq!(shown.len(), 1);
         assert_eq!(shown[0].children[0].key, "done");
+    }
+
+    fn titled(
+        mut task: GoalIdentityInfo,
+        title: &str,
+        priority: &str,
+        created: u64,
+    ) -> GoalIdentityInfo {
+        task.goal.title = title.into();
+        task.goal.priority = priority.into();
+        task.created_at_ms = created;
+        task
+    }
+
+    #[test]
+    fn search_keeps_matching_subtask_and_its_ancestors() {
+        let tasks = vec![
+            titled(
+                task("parent", "parent", "", "planned"),
+                "Alpha parent",
+                "low",
+                1,
+            ),
+            titled(
+                task("child", "child", "parent", "planned"),
+                "Beta child",
+                "low",
+                2,
+            ),
+        ];
+        let nodes = task_nodes(&tasks, false, &[], "beta", TaskSort::Status);
+        assert_eq!(summary(&nodes), vec!["parent[child]"]);
+
+        let none = task_nodes(&tasks, false, &[], "gamma", TaskSort::Status);
+        assert!(none.is_empty());
+    }
+
+    #[test]
+    fn priority_sort_orders_high_before_medium_before_low() {
+        let tasks = vec![
+            titled(task("low", "low", "", "planned"), "Low", "low", 1),
+            titled(task("high", "high", "", "planned"), "High", "high", 3),
+            titled(task("medium", "medium", "", "planned"), "Med", "medium", 2),
+        ];
+        let nodes = task_nodes(&tasks, false, &[], "", TaskSort::Priority);
+        assert_eq!(summary(&nodes), vec!["high", "medium", "low"]);
+    }
+
+    #[test]
+    fn created_sort_orders_oldest_first() {
+        let tasks = vec![
+            titled(task("newer", "newer", "", "planned"), "Newer", "high", 30),
+            titled(task("older", "older", "", "planned"), "Older", "low", 10),
+        ];
+        let nodes = task_nodes(&tasks, false, &[], "", TaskSort::Created);
+        assert_eq!(summary(&nodes), vec!["older", "newer"]);
     }
 }

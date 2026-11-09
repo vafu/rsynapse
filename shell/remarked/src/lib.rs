@@ -34,8 +34,9 @@ pub enum RemarkedInput {
     StartTask { key: String, project: String },
     StopTracking,
     SetTaskStatus { key: String, status: String },
-    ToggleTaskPane(Option<bool>),
     SetEditingNote(bool),
+    TaskFilter(String),
+    SetTaskSort(model::TaskSort),
     NoteFilter(String),
     TagsChanged,
     NoteChanged,
@@ -66,7 +67,6 @@ pub struct RemarkedWindow {
     note_grid: gtk::FlowBox,
     notes_stack: gtk::Stack,
     note_filter_entry: gtk::Entry,
-    tasks_toggle: gtk::ToggleButton,
     note_sheet: adw::BottomSheet,
     note_title_label: gtk::Label,
     editor_box: gtk::Box,
@@ -79,11 +79,15 @@ pub struct RemarkedWindow {
     show_finished_switch: gtk::Switch,
     clear_filter_button: gtk::Button,
     header_subtitle: gtk::Label,
+    task_filter_entry: gtk::Entry,
+    task_sort_button: gtk::MenuButton,
     selected_task: StateSignal<Option<String>>,
     selected_note: StateSignal<Option<String>>,
     notebook: StateSignal<Option<source::Notebook>>,
     last_project_id: Option<String>,
     show_finished: bool,
+    task_filter: String,
+    task_sort: model::TaskSort,
     note_filter: String,
     note_text: String,
     original_tags: String,
@@ -102,9 +106,9 @@ pub struct RemarkedWindow {
 
 impl RemarkedWindow {
     fn show(&mut self) {
-        self.fit_to_monitor();
         self.visible = true;
         self.window.present();
+        self.fit_to_monitor();
         self.window.set_keyboard_mode(KeyboardMode::Exclusive);
     }
 
@@ -314,7 +318,13 @@ impl RemarkedWindow {
             source::Catalog::Ready { active, .. } => active,
             _ => &[],
         };
-        let nodes = model::task_nodes(tasks, self.show_finished, active);
+        let nodes = model::task_nodes(
+            tasks,
+            self.show_finished,
+            active,
+            &self.task_filter.trim().to_lowercase(),
+            self.task_sort,
+        );
         self.task_rows = task_row_inits(nodes, &self.collapsed_tasks, &self.task_tag_counts);
         self.task_stack
             .set_visible_child_name(if self.task_rows.is_empty() {
@@ -496,17 +506,20 @@ impl RemarkedWindow {
     fn fit_to_monitor(&self) {
         let display = WidgetExt::display(&self.window);
         let monitors = display.monitors();
-        let (mut width, mut height) = (2100, 1320);
-        for i in 0..monitors.n_items() {
-            if let Some(monitor) = monitors.item(i).and_downcast::<gdk::Monitor>() {
-                let geo = monitor.geometry();
-                width = width.min(geo.width() - 100);
-                height = height.min(geo.height() - 100);
-            }
-        }
-        self.main_box.set_size_request(width.max(1), height.max(1));
-        self.window
-            .set_default_size(width.clamp(1, i32::MAX), height.clamp(1, i32::MAX));
+        let monitor = self
+            .window
+            .surface()
+            .and_then(|surface| display.monitor_at_surface(&surface))
+            .or_else(|| monitors.item(0).and_downcast::<gdk::Monitor>());
+        let Some(monitor) = monitor else {
+            return;
+        };
+        let geo = monitor.geometry();
+        const OUTER_MARGIN: i32 = 32;
+        let width = (geo.width() - OUTER_MARGIN * 2).max(1);
+        let height = (geo.height() - 100).clamp(1, 1320);
+        self.main_box.set_size_request(width, height);
+        self.window.set_default_size(width, height);
     }
 }
 
@@ -549,20 +562,20 @@ impl SimpleComponent for RemarkedWindow {
         let collapsed_tasks = std::rc::Rc::new(std::cell::RefCell::new(
             std::collections::HashSet::<String>::new(),
         ));
-        let (task_pane, task_stack, task_list, show_finished_switch, header_subtitle) =
-            build_task_pane(&sender);
+        let (
+            task_pane,
+            task_stack,
+            task_list,
+            show_finished_switch,
+            header_subtitle,
+            clear_filter_button,
+            task_filter_entry,
+            task_sort_button,
+        ) = build_task_pane(&sender);
         task_pane.set_hexpand(false);
-        task_pane.set_width_request(360);
         task_pane.set_vexpand(true);
 
-        let (
-            note_pane,
-            note_grid,
-            notes_stack,
-            note_filter_entry,
-            clear_filter_button,
-            tasks_toggle,
-        ) = build_notes_surface(&sender);
+        let (note_pane, note_grid, notes_stack, note_filter_entry) = build_notes_surface(&sender);
         note_pane.set_hexpand(true);
         let (
             sheet_content,
@@ -615,7 +628,7 @@ impl SimpleComponent for RemarkedWindow {
         frame.append(&main_box);
 
         let clamp = adw::Clamp::builder()
-            .maximum_size(2400)
+            .maximum_size(i32::MAX)
             .tightening_threshold(1500)
             .vexpand(true)
             .hexpand(true)
@@ -646,7 +659,6 @@ impl SimpleComponent for RemarkedWindow {
             note_grid,
             notes_stack,
             note_filter_entry,
-            tasks_toggle,
             note_sheet,
             note_title_label,
             editor_box,
@@ -659,11 +671,15 @@ impl SimpleComponent for RemarkedWindow {
             show_finished_switch,
             clear_filter_button,
             header_subtitle,
+            task_filter_entry,
+            task_sort_button,
             StateSignal::new(None),
             StateSignal::new(None),
             StateSignal::new(None),
             None,
             false,
+            String::new(),
+            model::TaskSort::default(),
             String::new(),
             String::new(),
             String::new(),
@@ -719,18 +735,6 @@ impl SimpleComponent for RemarkedWindow {
                 self.open_note(&sender, id);
                 self.clear_changed();
             }
-            RemarkedInput::ToggleTaskPane(value) => {
-                let show = value.unwrap_or(!self.task_pane.is_visible());
-                self.task_pane.set_visible(show);
-                self.tasks_toggle.set_active(show);
-                self.tasks_toggle.set_icon_name(if show {
-                    "view-conceal-symbolic"
-                } else {
-                    "view-reveal-symbolic"
-                });
-                self.tasks_toggle.set_active(show);
-                self.clear_changed();
-            }
             RemarkedInput::ClearNote => {
                 self.select_note(None);
                 self.update_editor_state();
@@ -757,6 +761,19 @@ impl SimpleComponent for RemarkedWindow {
             RemarkedInput::SetShowFinished(value) => {
                 self.show_finished = value;
                 self.reconcile(&sender);
+            }
+            RemarkedInput::TaskFilter(value) => {
+                self.task_filter = value;
+                self.rebuild_task_list(&sender);
+                self.clear_changed();
+            }
+            RemarkedInput::SetTaskSort(sort) => {
+                self.task_sort = sort;
+                self.task_sort_button.set_icon_name(sort.icon());
+                self.task_sort_button
+                    .set_tooltip_text(Some(&format!("Sort tasks: {}", sort.label())));
+                self.rebuild_task_list(&sender);
+                self.clear_changed();
             }
             RemarkedInput::StartTask { key, project } => {
                 relm4::spawn(async move {
@@ -945,12 +962,34 @@ fn apply_task_row_output(
                 });
             }
         }
+        TaskRowOutput::Delete { key } => {
+            if model
+                .selected_task_info()
+                .is_some_and(|task| task.key == key)
+            {
+                model.select_task(None);
+            }
+            relm4::spawn(async move {
+                if let Err(error) = client::task_action(client::TaskAction::Delete { key }).await {
+                    eprintln!("[remarked] delete task failed: {error}");
+                }
+            });
+        }
     }
 }
 
 fn build_task_pane(
     sender: &ComponentSender<RemarkedWindow>,
-) -> (gtk::Box, gtk::Stack, gtk::ListBox, gtk::Switch, gtk::Label) {
+) -> (
+    gtk::Box,
+    gtk::Stack,
+    gtk::ListBox,
+    gtk::Switch,
+    gtk::Label,
+    gtk::Button,
+    gtk::Entry,
+    gtk::MenuButton,
+) {
     let content = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
         .spacing(12)
@@ -984,7 +1023,71 @@ fn build_task_pane(
     title_box.append(&title);
     title_box.append(&header_subtitle);
     header.append(&title_box);
+    let clear_filter_button = gtk::Button::builder()
+        .icon_name("view-app-grid-symbolic")
+        .tooltip_text("Show all notes")
+        .valign(gtk::Align::Center)
+        .css_classes(["flat", "circular"])
+        .visible(false)
+        .build();
+    let tx = sender.input_sender().clone();
+    clear_filter_button.connect_clicked(move |_| {
+        let _ = tx.send(RemarkedInput::ClearTask);
+    });
+    header.append(&clear_filter_button);
+    let sort_button = gtk::MenuButton::builder()
+        .icon_name(model::TaskSort::default().icon())
+        .tooltip_text("Sort tasks")
+        .valign(gtk::Align::Center)
+        .css_classes(["flat", "circular"])
+        .build();
+    {
+        use gtk::glib::variant::ToVariant;
+        let actions = gtk::gio::SimpleActionGroup::new();
+        let sort_action = gtk::gio::SimpleAction::new_stateful(
+            "sort",
+            Some(gtk::glib::VariantTy::STRING),
+            &model::TaskSort::default().id().to_variant(),
+        );
+        let tx = sender.input_sender().clone();
+        sort_action.connect_activate(move |action, parameter| {
+            let Some(parameter) = parameter.and_then(|parameter| parameter.str()) else {
+                return;
+            };
+            action.set_state(&parameter.to_variant());
+            let sort = match parameter {
+                "created" => model::TaskSort::Created,
+                "priority" => model::TaskSort::Priority,
+                _ => model::TaskSort::Status,
+            };
+            let _ = tx.send(RemarkedInput::SetTaskSort(sort));
+        });
+        actions.add_action(&sort_action);
+        let sort_menu = gtk::gio::Menu::new();
+        let section = gtk::gio::Menu::new();
+        for sort in model::TaskSort::ALL {
+            let item = gtk::gio::MenuItem::new(Some(sort.label()), None);
+            item.set_icon(&gtk::gio::ThemedIcon::new(sort.icon()));
+            item.set_action_and_target_value(Some("tasksort.sort"), Some(&sort.id().to_variant()));
+            section.append_item(&item);
+        }
+        sort_menu.append_section(None, &section);
+        sort_button.set_menu_model(Some(&sort_menu));
+        sort_button.insert_action_group("tasksort", Some(&actions));
+    }
+    header.append(&sort_button);
     content.append(&header);
+
+    let task_filter_entry = gtk::Entry::builder()
+        .placeholder_text("Search tasks")
+        .primary_icon_name("edit-find-symbolic")
+        .hexpand(true)
+        .build();
+    let tx = sender.input_sender().clone();
+    task_filter_entry.connect_changed(move |entry| {
+        let _ = tx.send(RemarkedInput::TaskFilter(entry.text().to_string()));
+    });
+    content.append(&task_filter_entry);
 
     let task_list = gtk::ListBox::new();
     task_list.set_selection_mode(gtk::SelectionMode::Single);
@@ -995,6 +1098,8 @@ fn build_task_pane(
 
     let list_scrolled = gtk::ScrolledWindow::builder()
         .child(&task_list)
+        .propagate_natural_width(true)
+        .hscrollbar_policy(gtk::PolicyType::Never)
         .vexpand(true)
         .hexpand(true)
         .build();
@@ -1048,19 +1153,15 @@ fn build_task_pane(
         task_list,
         show_finished_switch,
         header_subtitle,
+        clear_filter_button,
+        task_filter_entry,
+        sort_button,
     )
 }
 
 fn build_notes_surface(
     sender: &ComponentSender<RemarkedWindow>,
-) -> (
-    gtk::Box,
-    gtk::FlowBox,
-    gtk::Stack,
-    gtk::Entry,
-    gtk::Button,
-    gtk::ToggleButton,
-) {
+) -> (gtk::Box, gtk::FlowBox, gtk::Stack, gtk::Entry) {
     let surface = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
         .spacing(14)
@@ -1082,29 +1183,12 @@ fn build_notes_surface(
         .hexpand(true)
         .css_classes(["heading"])
         .build();
-    let tasks_toggle = gtk::ToggleButton::builder()
-        .icon_name("view-conceal-symbolic")
-        .tooltip_text("Hide tasks")
-        .active(true)
-        .css_classes(["flat", "circular"])
-        .build();
-    let tx = sender.input_sender().clone();
-    tasks_toggle.connect_toggled(move |button| {
-        let _ = tx.send(RemarkedInput::ToggleTaskPane(Some(button.is_active())));
-    });
-    let clear_button = gtk::Button::builder()
-        .label("Clear filter")
-        .css_classes(["flat"])
-        .visible(false)
-        .build();
     let refresh_button = gtk::Button::builder()
         .icon_name("view-refresh-symbolic")
         .tooltip_text("Refresh")
         .css_classes(["flat", "circular"])
         .build();
     header.append(&title);
-    header.append(&tasks_toggle);
-    header.append(&clear_button);
     header.append(&refresh_button);
     surface.append(&header);
 
@@ -1162,19 +1246,7 @@ fn build_notes_surface(
     notes_stack.set_visible_child_name("grid");
     surface.append(&notes_stack);
 
-    let tx = sender.input_sender().clone();
-    clear_button.connect_clicked(move |_| {
-        let _ = tx.send(RemarkedInput::ClearTask);
-    });
-
-    (
-        surface,
-        note_grid,
-        notes_stack,
-        note_filter_entry,
-        clear_button,
-        tasks_toggle,
-    )
+    (surface, note_grid, notes_stack, note_filter_entry)
 }
 
 fn build_note_sheet(

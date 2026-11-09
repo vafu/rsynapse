@@ -155,6 +155,9 @@ pub fn goal_status(key: impl Into<String>) -> Observable<String> {
 pub fn goal_description(key: impl Into<String>) -> Observable<String> {
     goal_property(key.into(), "Description")
 }
+pub fn goal_priority(key: impl Into<String>) -> Observable<String> {
+    goal_property(key.into(), "Priority")
+}
 
 /// Whether the task instance is currently the selected tracked task.
 pub fn goal_tracked(instance_id: impl Into<String>) -> Observable<bool> {
