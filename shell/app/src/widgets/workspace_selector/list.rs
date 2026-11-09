@@ -1,89 +1,70 @@
-//! Incremental GTK list updates for the workspace selector.
+//! Keyed list reconciliation and selection for the workspace selector.
 use relm4::prelude::*;
-use shell_core::{gtk::prelude::*, source::ListChange};
+use shell_core::{
+    gtk::prelude::*,
+    list::{ComponentListBoxExt, ComponentListUpdate},
+};
 
 use super::{
     WorkspaceSelector,
-    rows::{self, Entry},
+    rows::{self, EntryKey, WorkspaceEntryRow},
 };
 
 impl WorkspaceSelector {
-    pub(super) fn apply_list_diff(&mut self) {
-        let diff = self.list_diff.clone();
-        if diff.is_empty() {
-            self.empty.set_visible(self.entries.is_empty());
-            return;
-        }
-        let selected_index = self
-            .list
-            .selected_row()
-            .map(|row| row.index())
-            .filter(|index| *index >= 0)
-            .map(|index| index as usize);
-        let selected_key = selected_index
-            .and_then(|index| self.entries.get(index))
-            .map(Entry::key);
-
-        let mut entries = self.entries.clone();
-        for change in &diff.changes {
-            match change {
-                ListChange::Insert { index, item } => {
-                    let index = (*index).min(self.list.observe_children().n_items() as usize);
-                    self.list.insert(&rows::row(item), index as i32);
-                }
-                ListChange::Remove { index } => {
-                    if let Some(row) = self.list.row_at_index(*index as i32) {
-                        self.list.remove(&row);
-                    }
-                }
-                ListChange::Move { from, to } => {
-                    if let Some(row) = self.list.row_at_index(*from as i32) {
-                        self.list.remove(&row);
-                        let position =
-                            (*to).min(self.list.observe_children().n_items() as usize) as i32;
-                        self.list.insert(&row, position);
-                    }
-                }
-            }
-        }
-        diff.apply(&mut entries);
+    pub(super) fn refresh_entries(&mut self) {
+        let entries = rows::sync_entries(&mut self.row_states, &self.view, &self.query);
         self.entries = entries;
-        self.empty.set_visible(self.entries.is_empty());
-
-        let target = selected_key
-            .and_then(|key| self.entries.iter().position(|entry| entry.key() == key))
-            .or_else(|| selected_index.map(|index| index.min(self.entries.len().saturating_sub(1))))
-            .or_else(|| self.default_selection_index());
-
-        if let Some(index) = target {
-            self.select_index(index);
-        } else {
-            self.list.unselect_all();
-        }
+        self.reconcile_list();
+        self.sync_selection();
     }
 
-    fn default_selection_index(&self) -> Option<usize> {
+    fn reconcile_list(&self) {
+        let Some(list) = self.list.as_ref() else {
+            return;
+        };
+        list.set_component_list_by_key(
+            ComponentListUpdate::<WorkspaceEntryRow>::new(&self.entries),
+            |entry| entry.key(),
+        );
+    }
+
+    fn sync_selection(&self) {
+        let selected = self
+            .selected_key
+            .get()
+            .filter(|key| self.entries.iter().any(|entry| entry.key() == *key))
+            .or_else(|| self.default_selection_key());
+        self.selected_key.set(selected.clone());
+
+        let Some(list) = self.list.as_ref() else {
+            return;
+        };
+        self.suppress_selection.set(true);
+        match selected.and_then(|key| self.row_for_key(&key)) {
+            Some(row) => {
+                list.select_row(Some(&row));
+                if let Some(scrolled) = self.scrolled.as_ref() {
+                    shell_core::list::scroll_row_into_view(scrolled, &row);
+                }
+            }
+            None => list.unselect_all(),
+        }
+        self.suppress_selection.set(false);
+    }
+
+    fn default_selection_key(&self) -> Option<EntryKey> {
         if self.entries.is_empty() {
             return None;
         }
-        if self.query.trim().is_empty() {
-            if let Some(index) = self
+        if self.query.trim().is_empty()
+            && let Some(current) = self
                 .entries
                 .iter()
-                .position(|entry| matches!(entry, Entry::Project { current: true, .. }))
-            {
-                return Some(index);
-            }
+                .find(|entry| entry.state().get().is_some_and(|state| state.current()))
+        {
+            return Some(current.key());
         }
-        Some(0)
-    }
-
-    pub(super) fn select_default(&self) {
-        if let Some(index) = self.default_selection_index() {
-            self.select_index(index);
-        } else {
-            self.list.unselect_all();
-        }
+        self.entries.first().map(|entry| entry.key())
     }
 
     pub(super) fn move_selection(&self, delta: i32) {
@@ -92,20 +73,42 @@ impl WorkspaceSelector {
         }
 
         let count = self.entries.len() as i32;
-        let current = self.list.selected_row().map(|row| row.index());
+        let current = self
+            .selected_key
+            .get()
+            .and_then(|key| rows::entry_index(&self.entries, &key))
+            .map(|index| index as i32);
         let next = match current {
             Some(index) if index >= 0 => (index + delta).rem_euclid(count),
             _ if delta < 0 => count - 1,
             _ => 0,
         };
-        self.select_index(next as usize);
+        self.selected_key
+            .set(self.entries.get(next as usize).map(|entry| entry.key()));
+        self.sync_selection();
     }
 
-    fn select_index(&self, index: usize) {
-        let Some(row) = self.list.row_at_index(index as i32) else {
-            return;
-        };
-        self.list.select_row(Some(&row));
-        shell_core::list::scroll_row_into_view(&self.scrolled, &row);
+    pub(super) fn selected_entry(&self) -> Option<rows::EntryState> {
+        self.selected_key.get().and_then(|key| {
+            self.entries
+                .iter()
+                .find(|entry| entry.key() == key)
+                .and_then(|entry| entry.state().get())
+        })
+    }
+
+    pub(super) fn selected_project_id(&self) -> Option<String> {
+        match self.selected_key.get()? {
+            EntryKey::Project(id) => Some(id),
+            _ => None,
+        }
+    }
+
+    fn row_for_key(&self, key: &EntryKey) -> Option<gtk::ListBoxRow> {
+        let list = self.list.as_ref()?;
+        let target = key.row_name();
+        (0..list.observe_children().n_items() as i32)
+            .filter_map(|index| list.row_at_index(index))
+            .find(|row| rows::row_identity(row) == target)
     }
 }

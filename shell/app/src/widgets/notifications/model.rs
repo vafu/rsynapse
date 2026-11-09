@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use shell_core::gtk::glib;
+use shell_core::source::StateSignal;
 use zvariant::OwnedValue;
 
 const DEFAULT_EXPIRE_TIMEOUT_MS: i32 = 5000;
@@ -19,7 +20,7 @@ pub struct NotificationRequest {
     pub(crate) expire_timeout_ms: i32,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(crate) struct NotificationView {
     pub(crate) id: u32,
     pub(crate) app_name: String,
@@ -31,6 +32,29 @@ pub(crate) struct NotificationView {
     pub(crate) urgency: NotificationUrgency,
     pub(crate) created_at: String,
     pub(crate) generation: u64,
+}
+
+/// Structural notification list entry. Live notification fields belong to
+/// `view`, not to the entry, so same-id updates never change list identity.
+#[derive(Clone, Debug)]
+pub(crate) struct NotificationEntry {
+    pub(crate) id: u32,
+    pub(crate) generation: u64,
+    pub(crate) view: StateSignal<NotificationView>,
+}
+
+impl NotificationEntry {
+    pub(crate) fn new(view: NotificationView) -> Self {
+        Self {
+            id: view.id,
+            generation: view.generation,
+            view: StateSignal::new(view),
+        }
+    }
+
+    pub(crate) fn current_view(&self) -> NotificationView {
+        self.view.get()
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

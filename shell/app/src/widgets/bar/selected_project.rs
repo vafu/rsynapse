@@ -4,9 +4,11 @@ use super::project::ProjectDetails;
 
 mod git;
 mod init;
+mod item;
 mod source;
 mod workspace;
 pub(super) use init::ProjectInitializer;
+pub(super) use item::{SelectedProjectItem, SelectedProjectItemInput, SelectedProjectItemOutput};
 pub(super) use source::{selected_project_context, selected_project_status};
 
 use git::{GitStatus, summary as git_summary};

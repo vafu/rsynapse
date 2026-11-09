@@ -1,6 +1,9 @@
+mod component;
 mod model;
 mod source;
 mod view;
+
+pub(super) use component::BluetoothIndicator;
 
 use shell_core::source::Observable;
 use zbus::zvariant::OwnedObjectPath;

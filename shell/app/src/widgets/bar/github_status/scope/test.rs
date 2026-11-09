@@ -1,6 +1,9 @@
 use super::*;
 use crate::widgets::bar::{
-    github_status::{category::Category, source::view},
+    github_status::{
+        category::Category,
+        source::{row_view, view},
+    },
     selected_project::ProjectView,
 };
 use github::{PrStatus, PullRequest, PullRequestActivity};
@@ -120,8 +123,9 @@ fn filtered_categories_conserve_inventory_and_preserve_failure_guard() {
             .filter(|row| row.url == original.pr.url)
             .collect();
         assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].revision, original.revision);
-        assert_eq!(rows[0].unseen, original.unseen);
+        let row = row_view(Category::Failed, Some(original.clone()));
+        assert_eq!(row.revision, original.revision);
+        assert_eq!(row.unseen, original.unseen);
     }
     assert_eq!(view(Category::Failed, filtered).rows[0].url, prs[2].pr.url);
 }

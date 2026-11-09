@@ -1,4 +1,7 @@
+mod component;
 mod model;
+
+pub(super) use component::NetworkIndicators;
 
 use shell_core::source::{self, Observable, rx::Observable as _};
 

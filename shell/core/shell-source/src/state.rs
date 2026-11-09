@@ -17,6 +17,22 @@ pub struct StateSignal<T> {
     state: Arc<StateSignalState<T>>,
 }
 
+impl<T> std::fmt::Debug for StateSignal<T> {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("StateSignal")
+            .finish_non_exhaustive()
+    }
+}
+
+impl<T> PartialEq for StateSignal<T> {
+    fn eq(&self, other: &Self) -> bool {
+        std::sync::Arc::ptr_eq(&self.state, &other.state)
+    }
+}
+
+impl<T> Eq for StateSignal<T> {}
+
 struct StateSignalState<T> {
     value: Mutex<T>,
     subject: Mutex<SharedSubject<'static, T, String>>,

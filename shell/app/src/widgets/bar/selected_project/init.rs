@@ -21,6 +21,15 @@ pub(in crate::widgets::bar) struct ProjectInitializer {
     active: Rc<Cell<bool>>,
 }
 
+impl std::fmt::Debug for ProjectInitializer {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ProjectInitializer")
+            .field("active", &self.active.get())
+            .finish_non_exhaustive()
+    }
+}
+
 impl ProjectInitializer {
     pub(in crate::widgets::bar) fn new(button: &gtk::Button) -> Self {
         Self {

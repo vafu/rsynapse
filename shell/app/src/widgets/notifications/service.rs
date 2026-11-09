@@ -13,6 +13,58 @@ pub(super) const NOTIFICATIONS_BUS_NAME: &str = "org.freedesktop.Notifications";
 pub(super) const NOTIFICATIONS_OBJECT_PATH: &str = "/org/freedesktop/Notifications";
 pub(super) const RSYNAPSE_NOTIFICATIONS_INTERFACE: &str = "org.rsynapse.Notifications1";
 
+static CONNECTION: tokio::sync::OnceCell<zbus::Connection> = tokio::sync::OnceCell::const_new();
+
+pub(super) fn request_close_notification(id: u32) {
+    relm4::spawn_local(async move {
+        if let Err(error) = close_notification(id).await {
+            eprintln!("[notifications] failed to close notification {id}: {error}");
+        }
+    });
+}
+
+pub(super) fn request_action_invoked(id: u32, action_key: String) {
+    relm4::spawn_local(async move {
+        if let Err(error) = action_invoked(id, action_key.as_str()).await {
+            eprintln!("[notifications] failed to invoke notification action {id}: {error}");
+            return;
+        }
+        if let Err(error) = close_notification(id).await {
+            eprintln!("[notifications] failed to close notification {id}: {error}");
+        }
+    });
+}
+
+async fn connection() -> zbus::Result<&'static zbus::Connection> {
+    CONNECTION.get_or_try_init(zbus::Connection::session).await
+}
+
+async fn close_notification(id: u32) -> zbus::Result<()> {
+    let connection = connection().await?;
+    let proxy = zbus::Proxy::new(
+        connection,
+        NOTIFICATIONS_BUS_NAME,
+        NOTIFICATIONS_OBJECT_PATH,
+        NOTIFICATIONS_BUS_NAME,
+    )
+    .await?;
+    proxy.call_method("CloseNotification", &(id)).await?;
+    Ok(())
+}
+
+async fn action_invoked(id: u32, action_key: &str) -> zbus::Result<()> {
+    let connection = connection().await?;
+    connection
+        .emit_signal(
+            None::<&str>,
+            NOTIFICATIONS_OBJECT_PATH,
+            NOTIFICATIONS_BUS_NAME,
+            "ActionInvoked",
+            &(id, action_key),
+        )
+        .await
+}
+
 pub(super) struct NotificationsService {
     _task: tokio::task::JoinHandle<()>,
     state: NotificationStateHandle,

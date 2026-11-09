@@ -1,10 +1,11 @@
 mod box_container;
+mod list_box_container;
 
 #[cfg(test)]
 mod test;
 
 use gtk::prelude::*;
-use relm4::Component;
+use relm4::{Component, Sender};
 
 pub struct ComponentListUpdate<'a, C>
 where
@@ -38,10 +39,41 @@ pub trait ComponentListBoxExt {
     fn set_component_list_by_key<C, K, F>(&self, update: ComponentListUpdate<'_, C>, key: F)
     where
         C: Component,
-        C::Init: Clone + 'static,
+        C::Init: Clone + PartialEq + 'static,
         K: Eq + std::hash::Hash + 'static,
         F: Fn(&C::Init) -> K + 'static,
         C::Root: AsRef<gtk::Widget> + Clone + std::fmt::Debug;
+
+    /// Reconciles child components and forwards their outputs to `output`.
+    fn set_component_list_forward<C, O, F>(
+        &self,
+        update: ComponentListUpdate<'_, C>,
+        output: &Sender<O>,
+        forward: F,
+    ) where
+        C: Component,
+        C::Init: Clone + PartialEq + 'static,
+        C::Output: 'static,
+        C::Root: AsRef<gtk::Widget> + Clone + std::fmt::Debug,
+        O: 'static,
+        F: Fn(C::Output) -> O + Clone + 'static;
+
+    /// Reconciles keyed child components and forwards their outputs to `output`.
+    fn set_component_list_by_key_forward<C, K, F, O, M>(
+        &self,
+        update: ComponentListUpdate<'_, C>,
+        key: F,
+        output: &Sender<O>,
+        forward: M,
+    ) where
+        C: Component,
+        C::Init: Clone + PartialEq + 'static,
+        C::Output: 'static,
+        C::Root: AsRef<gtk::Widget> + Clone + std::fmt::Debug,
+        K: Eq + std::hash::Hash + 'static,
+        F: Fn(&C::Init) -> K + 'static,
+        O: 'static,
+        M: Fn(C::Output) -> O + Clone + 'static;
 }
 
 /// Scrolls `scrolled` so `row` is fully visible.

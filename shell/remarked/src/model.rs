@@ -41,14 +41,24 @@ pub(crate) fn parse_tags(text: &str) -> Vec<String> {
     tags
 }
 
-/// Flattens a project's goals into a displayable, depth-ordered task list.
-/// Descendants of collapsed parents are omitted. The boolean flag indicates
-/// whether the task has any children.
-pub(crate) fn task_rows<'a>(
-    tasks: &'a [GoalIdentityInfo],
+/// A displayable task with its visible subtasks nested underneath it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct TaskNode {
+    pub instance_id: String,
+    pub key: String,
+    pub project_id: String,
+    pub depth: usize,
+    pub has_children: bool,
+    pub children: Vec<TaskNode>,
+}
+
+/// Builds a project's task tree in display order. Finished tasks are omitted
+/// unless requested or they still have visible descendants.
+pub(crate) fn task_nodes(
+    tasks: &[GoalIdentityInfo],
     show_finished: bool,
-    collapsed: &HashSet<String>,
-) -> Vec<(&'a GoalIdentityInfo, usize, bool)> {
+    active: &[String],
+) -> Vec<TaskNode> {
     let mut tasks: Vec<_> = tasks
         .iter()
         .filter(|task| task.deleted_at_ms == 0)
@@ -67,52 +77,51 @@ pub(crate) fn task_rows<'a>(
         ))
     });
 
-    fn walk<'a>(
-        all: &[&'a GoalIdentityInfo],
-        parent: &str,
+    fn build(
+        task: &GoalIdentityInfo,
+        all: &[&GoalIdentityInfo],
         depth: usize,
         show: bool,
-        collapsed: &HashSet<String>,
-        out: &mut Vec<(&'a GoalIdentityInfo, usize, bool)>,
-    ) {
-        for task in all.iter().filter(|task| task.goal.parent_id == parent) {
-            if out
-                .iter()
-                .any(|(seen, _, _)| seen.instance_id == task.instance_id)
-            {
-                continue;
-            }
-            if show
-                || !is_finished(&task.goal.status)
-                || all.iter().any(|child| {
-                    child.goal.parent_id == task.key && !is_finished(&child.goal.status)
-                })
-            {
-                let has_children = all.iter().any(|child| child.goal.parent_id == task.key);
-                out.push((task, depth, has_children));
-                if has_children && !collapsed.contains(&task.key) {
-                    walk(all, &task.key, depth + 1, show, collapsed, out);
-                }
-            }
+        active: &[String],
+        visited: &mut HashSet<String>,
+    ) -> Option<TaskNode> {
+        if !visited.insert(task.instance_id.clone()) {
+            return None;
         }
+        let children = all
+            .iter()
+            .filter(|child| child.goal.parent_id == task.key)
+            .filter_map(|child| build(child, all, depth + 1, show, active, visited))
+            .collect::<Vec<_>>();
+        if !show && is_finished(&task.goal.status) && children.is_empty() {
+            return None;
+        }
+        Some(TaskNode {
+            instance_id: task.instance_id.clone(),
+            key: task.key.clone(),
+            project_id: task.goal.project_id.clone(),
+            depth,
+            has_children: !children.is_empty(),
+            children,
+        })
     }
 
-    let keys: HashSet<_> = tasks.iter().map(|task| task.key.as_str()).collect();
+    let keys: HashSet<_> = tasks.iter().map(|task| task.key.clone()).collect();
     let mut out = Vec::new();
-    walk(&tasks, "", 0, show_finished, collapsed, &mut out);
-    for task in tasks {
-        if out
-            .iter()
-            .any(|(seen, _, _)| seen.instance_id == task.instance_id)
+    let mut visited = HashSet::new();
+    for task in &tasks {
+        let parent_missing = task.goal.parent_id.is_empty()
+            || !keys.contains(&task.goal.parent_id)
+            || task.goal.parent_id == task.key;
+        if parent_missing
+            && let Some(node) = build(task, &tasks, 0, show_finished, active, &mut visited)
         {
-            continue;
+            out.push(node);
         }
-        if show_finished || !is_finished(&task.goal.status) {
-            let parent_missing =
-                task.goal.parent_id.is_empty() || !keys.contains(task.goal.parent_id.as_str());
-            if parent_missing {
-                out.push((task, 0, false));
-            }
+    }
+    for task in &tasks {
+        if let Some(node) = build(task, &tasks, 0, show_finished, active, &mut visited) {
+            out.push(node);
         }
     }
     out
@@ -142,39 +151,44 @@ mod test {
         }
     }
 
-    #[test]
-    fn subtasks_are_ordered_under_their_parent_with_depth() {
-        let tasks = vec![
-            task("child", "child", "parent", "planned"),
-            task("parent", "parent", "", "planned"),
-            task("grandchild", "grandchild", "child", "planned"),
-        ];
-        let rows = task_rows(&tasks, false, &HashSet::new());
-        let summary: Vec<_> = rows
-            .iter()
-            .map(|(task, depth, has_children)| (task.key.as_str(), *depth, *has_children))
-            .collect();
-        assert_eq!(
-            summary,
-            vec![
-                ("parent", 0, true),
-                ("child", 1, true),
-                ("grandchild", 2, false)
-            ]
-        );
+    fn summary(nodes: &[TaskNode]) -> Vec<String> {
+        fn branch(node: &TaskNode) -> String {
+            if node.children.is_empty() {
+                node.key.clone()
+            } else {
+                format!(
+                    "{}[{}]",
+                    node.key,
+                    node.children
+                        .iter()
+                        .map(branch)
+                        .collect::<Vec<_>>()
+                        .join(",")
+                )
+            }
+        }
+        nodes.iter().map(branch).collect()
     }
 
     #[test]
-    fn collapsed_parent_hides_descendants() {
+    fn subtasks_are_nested_under_their_parent() {
         let tasks = vec![
-            task("parent", "parent", "", "planned"),
             task("child", "child", "parent", "planned"),
+            task("parent", "parent", "", "planned"),
             task("grandchild", "grandchild", "child", "planned"),
         ];
-        let collapsed = HashSet::from(["parent".to_string()]);
-        let rows = task_rows(&tasks, false, &collapsed);
-        assert_eq!(rows.len(), 1);
-        assert_eq!(rows[0].0.key, "parent");
+        let nodes = task_nodes(&tasks, false, &[]);
+        assert_eq!(summary(&nodes), vec!["parent[child[grandchild]]"]);
+    }
+
+    #[test]
+    fn finished_parent_stays_visible_when_it_has_open_descendants() {
+        let tasks = vec![
+            task("parent", "parent", "", "completed"),
+            task("child", "child", "parent", "planned"),
+        ];
+        let nodes = task_nodes(&tasks, false, &[]);
+        assert_eq!(summary(&nodes), vec!["parent[child]"]);
     }
 
     #[test]
@@ -183,7 +197,12 @@ mod test {
             task("parent", "parent", "", "planned"),
             task("done", "done", "parent", "completed"),
         ];
-        assert_eq!(task_rows(&tasks, false, &HashSet::new()).len(), 1);
-        assert_eq!(task_rows(&tasks, true, &HashSet::new()).len(), 2);
+        let hidden = task_nodes(&tasks, false, &[]);
+        assert_eq!(hidden.len(), 1);
+        assert!(hidden[0].children.is_empty());
+
+        let shown = task_nodes(&tasks, true, &[]);
+        assert_eq!(shown.len(), 1);
+        assert_eq!(shown[0].children[0].key, "done");
     }
 }

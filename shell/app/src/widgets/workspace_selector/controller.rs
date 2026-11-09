@@ -6,32 +6,29 @@ use shell_core::{
     gtk4_layer_shell::{KeyboardMode, LayerShell},
 };
 
-use super::{
-    WorkspaceSelector, WorkspaceSelectorInput, actions,
-    rows::{self, Entry},
-};
+use super::{WorkspaceSelector, WorkspaceSelectorInput, actions, rows::EntryState};
 
 impl WorkspaceSelector {
     pub(super) fn show(&mut self) {
         self.visible = true;
         self.busy = false;
-        self.error.set_text("");
-        self.error.set_visible(false);
+        self.set_error_text(None);
         if !self.query.is_empty() {
             self.query.clear();
-            self.search.set_text("");
+            if let Some(search) = self.search.as_ref() {
+                search.set_text("");
+            }
         }
-        self.selection_reset = true;
-        if !self.refresh_entries() {
-            self.selection_reset = false;
-            self.select_default();
+        self.selected_key.set(None);
+        self.refresh_entries();
+        if let Some(search) = self.search.as_ref() {
+            let search = search.clone();
+            gtk::glib::idle_add_local_once(move || {
+                search.grab_focus();
+            });
         }
         self.window.set_keyboard_mode(KeyboardMode::Exclusive);
         self.window.present();
-        let search = self.search.clone();
-        gtk::glib::idle_add_local_once(move || {
-            search.grab_focus();
-        });
     }
 
     pub(super) fn hide(&mut self) {
@@ -40,39 +37,11 @@ impl WorkspaceSelector {
         self.window.set_visible(false);
     }
 
-    pub(super) fn refresh_entries(&mut self) -> bool {
-        let title = self
-            .view
-            .workspace_name
-            .as_deref()
-            .filter(|name| !name.trim().is_empty())
-            .unwrap_or("Workspace");
-        self.header_title.set_text(title);
-
-        let subtitle = match (
-            &self.view.current_project_name,
-            &self.view.current_project_id,
-        ) {
-            (Some(name), _) => format!("Current project · {name}"),
-            (None, Some(_)) => "Current project".to_owned(),
-            (None, None) => "No project assigned".to_owned(),
-        };
-        self.header_subtitle.set_text(&subtitle);
-
-        let entries = rows::entries(&self.view, &self.query);
-        let changed = self.entries_signal.get() != entries;
-        self.entries_signal.set(entries);
-        changed
-    }
-
     pub(super) fn activate(&mut self, sender: &ComponentSender<Self>) {
         if self.busy {
             return;
         }
-        let Some(index) = self.list.selected_row().map(|row| row.index()) else {
-            return;
-        };
-        let Some(entry) = self.entries.get(index as usize).cloned() else {
+        let Some(entry) = self.selected_entry() else {
             return;
         };
         let Some(workspace) = self.view.workspace_id.clone() else {
@@ -81,8 +50,8 @@ impl WorkspaceSelector {
         };
 
         match entry {
-            Entry::Project { current: true, .. } => self.hide(),
-            Entry::Project { path, .. } => {
+            EntryState::Project { current: true, .. } => self.hide(),
+            EntryState::Project { path, .. } => {
                 self.busy = true;
                 let input = sender.input_sender().clone();
                 relm4::spawn(async move {
@@ -92,7 +61,7 @@ impl WorkspaceSelector {
                     let _ = input.send(WorkspaceSelectorInput::ApplyResult(result));
                 });
             }
-            Entry::Unassign => {
+            EntryState::Unassign => {
                 self.busy = true;
                 let input = sender.input_sender().clone();
                 relm4::spawn(async move {
@@ -102,7 +71,7 @@ impl WorkspaceSelector {
                     let _ = input.send(WorkspaceSelectorInput::ApplyResult(result));
                 });
             }
-            Entry::Rename { name } => {
+            EntryState::Rename { name } => {
                 let name = name.trim().to_owned();
                 if name.is_empty() {
                     self.set_error("Enter a workspace name.");
@@ -125,10 +94,14 @@ impl WorkspaceSelector {
     }
 
     pub(super) fn delete_selected(&mut self, sender: &ComponentSender<Self>) {
-        let Some(index) = self.list.selected_row().map(|row| row.index()) else {
+        let Some(id) = self.selected_project_id() else {
             return;
         };
-        let Some(Entry::Project { id, name, .. }) = self.entries.get(index as usize).cloned()
+        let Some(name) = self
+            .entries
+            .iter()
+            .find(|entry| entry.key() == super::rows::EntryKey::Project(id.clone()))
+            .and_then(|entry| entry.state().get().as_ref().map(EntryState::title))
         else {
             return;
         };
@@ -181,7 +154,7 @@ impl WorkspaceSelector {
     pub(super) fn remove_result(&mut self, result: Result<(), String>) {
         self.busy = false;
         match result {
-            Ok(()) => self.error.set_visible(false),
+            Ok(()) => self.set_error_text(None),
             Err(error) => self.set_error(&error),
         }
     }
@@ -195,7 +168,13 @@ impl WorkspaceSelector {
     }
 
     fn set_error(&mut self, message: &str) {
-        self.error.set_text(message);
-        self.error.set_visible(true);
+        self.set_error_text(Some(message));
+    }
+
+    fn set_error_text(&mut self, message: Option<&str>) {
+        if let Some(error) = self.error.as_ref() {
+            error.set_text(message.unwrap_or_default());
+            error.set_visible(message.is_some());
+        }
     }
 }

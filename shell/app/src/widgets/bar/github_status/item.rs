@@ -9,7 +9,7 @@ use super::{
     Scope,
     category::Category,
     row::PullRequestRow,
-    source::{self, GitHubView},
+    source::{self, GitHubView, PrEntry},
 };
 use crate::widgets::nerd_icon::NerdIconLabelExt;
 
@@ -97,7 +97,10 @@ impl SimpleComponent for GitHubItem {
                                 set_orientation: gtk::Orientation::Vertical,
                                 set_spacing: 4,
                                 #[watch]
-                                set_component_list: ComponentListUpdate::<PullRequestRow>::new(&model.status.rows),
+                                set_component_list_by_key: (
+                                    ComponentListUpdate::<PullRequestRow>::new(&model.status.rows),
+                                    PrEntry::key,
+                                ),
                             },
                         },
                     },

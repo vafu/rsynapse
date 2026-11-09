@@ -2,19 +2,28 @@ use shell_core::source::{Observable, github, rx::Observable as _};
 
 use super::{Scope, category::Category, scope};
 
+/// Structural list descriptor for one pull request row.
+///
+/// Only the URL (row identity) and the category (display policy) are stored
+/// here. Live fields such as title, detail, unseen state and revision are
+/// subscribed by the row component itself.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct PrEntry {
-    pub title: String,
     pub url: String,
-    pub detail: String,
-    pub revision: String,
-    pub unseen: bool,
+    pub category: Category,
+}
+
+impl PrEntry {
+    pub(super) fn key(&self) -> String {
+        self.url.clone()
+    }
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub(super) struct GitHubView {
     pub available: bool,
     pub rows: Vec<PrEntry>,
+    pub unseen: usize,
 }
 
 impl GitHubView {
@@ -22,7 +31,7 @@ impl GitHubView {
         self.available && !self.rows.is_empty()
     }
     pub fn unseen_count(&self) -> usize {
-        self.rows.iter().filter(|row| row.unseen).count()
+        self.unseen
     }
     pub fn count(&self) -> String {
         if self.available {
@@ -61,44 +70,84 @@ pub(super) fn view(
     let Some(prs) = prs else {
         return GitHubView::default();
     };
-    let rows = prs
+    let matching: Vec<_> = prs
         .into_iter()
         .filter(|item| Category::for_pr(&item.pr) == category)
-        .map(|item| {
-            let mut detail = format!(
-                "{} #{} · {}",
-                item.pr.repo,
-                item.pr.number,
-                status_name(category, &item.pr)
-            );
-            if category.is_activity() {
-                detail.push_str(" · ");
-                detail.push_str(category.title());
-            }
-            if item.pr.unresolved_threads > 0 {
-                detail.push_str(&format!(
-                    " · {} unresolved review {}",
-                    item.pr.unresolved_threads,
-                    if item.pr.unresolved_threads == 1 {
-                        "thread"
-                    } else {
-                        "threads"
-                    }
-                ));
-            }
-            PrEntry {
-                detail,
-                title: item.pr.title,
-                url: item.pr.url,
-                revision: item.revision,
-                unseen: item.unseen,
-            }
+        .collect();
+    let unseen = matching.iter().filter(|item| item.unseen).count();
+    let rows = matching
+        .into_iter()
+        .map(|item| PrEntry {
+            url: item.pr.url,
+            category,
         })
         .collect();
     GitHubView {
         available: true,
         rows,
+        unseen,
     }
+}
+
+/// Display view for one row, derived from that PR's live activity snapshot.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub(super) struct PrRowView {
+    pub title: String,
+    pub detail: String,
+    pub revision: String,
+    pub unseen: bool,
+    pub available: bool,
+}
+
+impl PrRowView {
+    pub fn tooltip(&self, url: &str) -> String {
+        if self.available {
+            format!(
+                "{}\n{}\nLeft-click to open · Right-click to mark seen",
+                self.title, url
+            )
+        } else {
+            format!("{url}\nThis pull request is no longer available")
+        }
+    }
+}
+
+/// Live row projection. The URL is the stable identity; everything else here
+/// may change without the parent rebuilding the list.
+pub(super) fn row_view(
+    category: Category,
+    entry: Option<github::PullRequestActivity>,
+) -> PrRowView {
+    let Some(item) = entry else {
+        return PrRowView::default();
+    };
+    PrRowView {
+        title: item.pr.title.clone(),
+        detail: detail_text(category, &item.pr),
+        revision: item.revision,
+        unseen: item.unseen,
+        available: true,
+    }
+}
+
+fn detail_text(category: Category, pr: &github::PullRequest) -> String {
+    let mut detail = format!("{} #{} · {}", pr.repo, pr.number, status_name(category, pr));
+    if category.is_activity() {
+        detail.push_str(" · ");
+        detail.push_str(category.title());
+    }
+    if pr.unresolved_threads > 0 {
+        detail.push_str(&format!(
+            " · {} unresolved review {}",
+            pr.unresolved_threads,
+            if pr.unresolved_threads == 1 {
+                "thread"
+            } else {
+                "threads"
+            }
+        ));
+    }
+    detail
 }
 
 fn status_name(category: Category, pr: &github::PullRequest) -> &'static str {

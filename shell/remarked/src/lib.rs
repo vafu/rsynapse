@@ -2,6 +2,7 @@
 use adw::prelude::*;
 use gtk::{gdk, glib, prelude::WidgetExt};
 use relm4::prelude::*;
+use shell_core::list::{ComponentListBoxExt, ComponentListUpdate};
 use shell_core::{
     gtk4_layer_shell::{KeyboardMode, LayerShell},
     source::{StateSignal, workspace_project},
@@ -13,6 +14,9 @@ mod client;
 mod markdown;
 mod model;
 mod source;
+mod task_row;
+
+use task_row::{TaskRow, TaskRowInit, TaskRowOutput};
 
 /// Input messages for the remarked overlay.
 #[derive(Debug)]
@@ -22,7 +26,6 @@ pub enum RemarkedInput {
     Hide,
     Toggle,
     SelectTask(String),
-    SelectTaskIndex(u32),
     ClearTask,
     SelectNote(String),
     ClearNote,
@@ -31,8 +34,7 @@ pub enum RemarkedInput {
     StartTask { key: String, project: String },
     StopTracking,
     SetTaskStatus { key: String, status: String },
-    ToggleTaskCollapse(String),
-    ToggleTaskSidebar(Option<bool>),
+    ToggleTaskPane(Option<bool>),
     SetEditingNote(bool),
     NoteFilter(String),
     TagsChanged,
@@ -41,6 +43,7 @@ pub enum RemarkedInput {
     ReloadNote,
     NoteLoaded(Result<notebook_api::note::NoteBody, String>),
     NoteSaved(Result<notebook_api::note::NoteMutationResult, String>),
+    TaskRow(TaskRowOutput),
 }
 
 impl From<sources::Msg> for RemarkedInput {
@@ -54,7 +57,11 @@ pub struct RemarkedWindow {
     window: adw::ApplicationWindow,
     main_box: gtk::Box,
     task_pane: gtk::Box,
-    task_sidebar: adw::Sidebar,
+    task_stack: gtk::Stack,
+    task_list: gtk::ListBox,
+    task_rows: Vec<TaskRowInit>,
+    task_tag_counts: StateSignal<source::TagCounts>,
+    collapsed_tasks: std::rc::Rc<std::cell::RefCell<std::collections::HashSet<String>>>,
     note_pane: gtk::Box,
     note_grid: gtk::FlowBox,
     notes_stack: gtk::Stack,
@@ -84,10 +91,7 @@ pub struct RemarkedWindow {
     note_busy: bool,
     edit_mode: bool,
     visible: bool,
-    collapsed_tasks: std::collections::HashSet<String>,
     main_note_attempted: std::collections::HashSet<String>,
-    task_items_by_id: std::collections::HashMap<String, adw::SidebarItem>,
-    task_indices: Vec<String>,
     #[source(source::catalog(workspace_project::focused_project_id(None)))]
     catalog: source::Catalog,
     #[source(source::notes(notebook.observable(), selected_task.observable()))]
@@ -121,6 +125,7 @@ impl RemarkedWindow {
             self.note_sheet.set_open(false);
         }
         self.selected_task.set(task);
+        self.sync_task_selection();
     }
 
     fn select_note(&mut self, note: Option<String>) {
@@ -300,24 +305,7 @@ impl RemarkedWindow {
         self.refresh_panes(sender);
     }
 
-    fn task_count_label(&self, instance_id: &str) -> String {
-        match self.tag_counts.count(&model::task_tag(instance_id)) {
-            Some(1) => "1 note".to_string(),
-            Some(count) => format!("{count} notes"),
-            None => String::new(),
-        }
-    }
-
-    fn update_task_counts(&self) {
-        for (instance_id, item) in &self.task_items_by_id {
-            item.set_subtitle(Some(&self.task_count_label(instance_id)));
-        }
-    }
-
     fn rebuild_task_list(&mut self, sender: &ComponentSender<Self>) {
-        self.task_sidebar.remove_all();
-        self.task_items_by_id.clear();
-        self.task_indices.clear();
         let tasks: &[proj_model::GoalIdentityInfo] = match &self.catalog {
             source::Catalog::Ready { tasks, .. } => tasks,
             _ => &[],
@@ -326,70 +314,36 @@ impl RemarkedWindow {
             source::Catalog::Ready { active, .. } => active,
             _ => &[],
         };
-        let section = adw::SidebarSection::new();
-        for (task, depth, has_children) in
-            model::task_rows(tasks, self.show_finished, &self.collapsed_tasks)
-        {
-            let title = model::task_title(&task.goal.title);
-            let item = adw::SidebarItem::builder()
-                .title(title)
-                .subtitle(self.task_count_label(&task.instance_id))
-                .icon_name(status_icon(
-                    &task.goal.status,
-                    active.contains(&task.instance_id),
-                ))
-                .build();
-            if depth > 0 {
-                let spacer = gtk::Box::builder().width_request(depth as i32 * 14).build();
-                item.set_property("prefix", spacer);
+        let nodes = model::task_nodes(tasks, self.show_finished, active);
+        self.task_rows = task_row_inits(nodes, &self.collapsed_tasks, &self.task_tag_counts);
+        self.task_stack
+            .set_visible_child_name(if self.task_rows.is_empty() {
+                "empty"
+            } else {
+                "list"
+            });
+        self.task_list.set_component_list_by_key_forward(
+            ComponentListUpdate::<TaskRow>::new(&self.task_rows),
+            TaskRowInit::row_key,
+            sender.input_sender(),
+            RemarkedInput::TaskRow,
+        );
+        self.sync_task_selection();
+        let _ = sender;
+    }
+
+    fn sync_task_selection(&self) {
+        let selected = self.selected_task.get();
+        for index in 0..self.task_list.observe_children().n_items() as i32 {
+            let Some(row) = self.task_list.row_at_index(index) else {
+                continue;
+            };
+            if selected.as_deref() == Some(list_box_row_identity(&row).as_str()) {
+                self.task_list.select_row(Some(&row));
+                return;
             }
-            let menu = build_task_menu(task, active.contains(&task.instance_id), sender);
-            item.set_suffix(Some(&menu));
-            if has_children {
-                let button = gtk::Button::builder()
-                    .icon_name(if self.collapsed_tasks.contains(&task.key) {
-                        "pan-end-symbolic"
-                    } else {
-                        "pan-down-symbolic"
-                    })
-                    .css_classes(["flat", "circular"])
-                    .width_request(24)
-                    .height_request(24)
-                    .build();
-                let key = task.key.clone();
-                let tx = sender.input_sender().clone();
-                button.connect_clicked(move |_| {
-                    let _ = tx.send(RemarkedInput::ToggleTaskCollapse(key.clone()));
-                });
-                let suffix = gtk::Box::new(gtk::Orientation::Horizontal, 4);
-                suffix.append(&button);
-                suffix.append(&menu);
-                item.set_suffix(Some(&suffix));
-            }
-            section.append(item.clone());
-            self.task_indices.push(task.instance_id.clone());
-            self.task_items_by_id.insert(task.instance_id.clone(), item);
         }
-        self.task_sidebar.append(section);
-        if let Some(selected) = self.selected_task.get()
-            && let Some(index) = self.task_indices.iter().position(|id| id == &selected)
-        {
-            self.task_sidebar.set_selected(index as u32);
-        }
-        if self.task_indices.is_empty() {
-            let label = gtk::Label::builder()
-                .label("No tasks for this project.")
-                .halign(gtk::Align::Center)
-                .valign(gtk::Align::Center)
-                .vexpand(true)
-                .css_classes(["dim-label"])
-                .margin_top(24)
-                .margin_bottom(24)
-                .build();
-            self.task_sidebar.set_placeholder(Some(&label));
-        } else {
-            self.task_sidebar.set_placeholder(gtk::Widget::NONE);
-        }
+        self.task_list.unselect_all();
     }
 
     fn rebuild_note_grid(&self, sender: &ComponentSender<Self>) {
@@ -592,9 +546,13 @@ impl SimpleComponent for RemarkedWindow {
             }
         });
 
-        let (task_pane, task_sidebar, show_finished_switch, header_subtitle) =
+        let collapsed_tasks = std::rc::Rc::new(std::cell::RefCell::new(
+            std::collections::HashSet::<String>::new(),
+        ));
+        let (task_pane, task_stack, task_list, show_finished_switch, header_subtitle) =
             build_task_pane(&sender);
         task_pane.set_hexpand(false);
+        task_pane.set_width_request(360);
         task_pane.set_vexpand(true);
 
         let (
@@ -621,8 +579,8 @@ impl SimpleComponent for RemarkedWindow {
         let main_surface = gtk::Box::new(gtk::Orientation::Vertical, 0);
         main_surface.set_vexpand(true);
         main_surface.set_hexpand(true);
-        let body = gtk::Box::new(gtk::Orientation::Horizontal, 0);
-        body.add_css_class("remarked-main-split");
+        let body = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+        body.add_css_class("remarked-workspace");
         body.set_vexpand(true);
         body.set_hexpand(true);
         body.append(&task_pane);
@@ -679,7 +637,11 @@ impl SimpleComponent for RemarkedWindow {
             root.clone(),
             main_box,
             task_pane,
-            task_sidebar,
+            task_stack,
+            task_list,
+            Vec::new(),
+            StateSignal::new(source::TagCounts::Loading),
+            collapsed_tasks,
             note_pane,
             note_grid,
             notes_stack,
@@ -710,9 +672,6 @@ impl SimpleComponent for RemarkedWindow {
             false,
             false,
             std::collections::HashSet::new(),
-            std::collections::HashSet::new(),
-            std::collections::HashMap::new(),
-            Vec::new(),
         );
         let widgets = view_output!();
         model.reconcile(&sender);
@@ -721,6 +680,7 @@ impl SimpleComponent for RemarkedWindow {
 
     fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>) {
         match message {
+            RemarkedInput::TaskRow(output) => apply_task_row_output(self, &sender, output),
             RemarkedInput::Source(message) => {
                 Self::update(self, message);
                 if self.changed(sources::Field::Catalog) {
@@ -728,7 +688,7 @@ impl SimpleComponent for RemarkedWindow {
                 } else if self.changed(sources::Field::Notes) {
                     self.reconcile_notes(&sender);
                 } else if self.changed(sources::Field::TagCounts) {
-                    self.update_task_counts();
+                    self.task_tag_counts.set(self.tag_counts.clone());
                     self.clear_changed();
                 } else {
                     self.clear_changed();
@@ -747,24 +707,9 @@ impl SimpleComponent for RemarkedWindow {
                 self.select_task(Some(id));
                 self.refresh_panes(&sender);
             }
-            RemarkedInput::SelectTaskIndex(index) => {
-                if let Some(id) = self.task_indices.get(index as usize).cloned() {
-                    self.select_task(Some(id));
-                    self.refresh_panes(&sender);
-                }
-            }
             RemarkedInput::ClearTask => {
                 self.select_task(None);
                 self.refresh_panes(&sender);
-            }
-            RemarkedInput::ToggleTaskCollapse(key) => {
-                if self.collapsed_tasks.contains(&key) {
-                    self.collapsed_tasks.remove(&key);
-                } else {
-                    self.collapsed_tasks.insert(key);
-                }
-                self.rebuild_task_list(&sender);
-                self.clear_changed();
             }
             RemarkedInput::SetEditingNote(editing) => {
                 self.set_editing(editing);
@@ -774,7 +719,7 @@ impl SimpleComponent for RemarkedWindow {
                 self.open_note(&sender, id);
                 self.clear_changed();
             }
-            RemarkedInput::ToggleTaskSidebar(value) => {
+            RemarkedInput::ToggleTaskPane(value) => {
                 let show = value.unwrap_or(!self.task_pane.is_visible());
                 self.task_pane.set_visible(show);
                 self.tasks_toggle.set_active(show);
@@ -911,114 +856,101 @@ impl SimpleComponent for RemarkedWindow {
     }
 }
 
-const TASK_STATUSES: [&str; 5] = [
-    "planned",
-    "in-progress",
-    "completed",
-    "deferred",
-    "cancelled",
-];
+fn list_box_row_identity(row: &gtk::ListBoxRow) -> String {
+    if !row.widget_name().is_empty() {
+        return row.widget_name().to_string();
+    }
+    row.child()
+        .map(|child| child.widget_name().to_string())
+        .unwrap_or_default()
+}
 
-fn status_icon(status: &str, active: bool) -> &'static str {
-    if active {
-        "find-location-symbolic"
-    } else {
-        match status {
-            "completed" => "emblem-ok-symbolic",
-            "cancelled" => "process-stop-symbolic",
-            "in-progress" => "media-playback-start-symbolic",
-            "deferred" => "media-playback-pause-symbolic",
-            _ => "radio-symbolic",
+fn task_row_inits(
+    nodes: Vec<model::TaskNode>,
+    collapsed_tasks: &std::rc::Rc<std::cell::RefCell<std::collections::HashSet<String>>>,
+    tag_counts: &StateSignal<source::TagCounts>,
+) -> Vec<TaskRowInit> {
+    let collapsed = collapsed_tasks.borrow();
+    let mut out = Vec::new();
+    fn walk(
+        node: model::TaskNode,
+        collapsed: &std::collections::HashSet<String>,
+        tag_counts: &StateSignal<source::TagCounts>,
+        out: &mut Vec<TaskRowInit>,
+    ) {
+        let is_collapsed = collapsed.contains(&node.key);
+        out.push(TaskRowInit {
+            instance_id: node.instance_id.clone(),
+            key: node.key.clone(),
+            project_id: node.project_id.clone(),
+            depth: node.depth,
+            has_children: node.has_children,
+            collapsed: is_collapsed,
+            tag_counts: tag_counts.clone(),
+        });
+        if !is_collapsed {
+            for child in node.children {
+                walk(child, collapsed, tag_counts, out);
+            }
+        }
+    }
+    for node in nodes {
+        walk(node, &collapsed, &tag_counts, &mut out);
+    }
+    out
+}
+
+fn apply_task_row_output(
+    model: &mut RemarkedWindow,
+    sender: &ComponentSender<RemarkedWindow>,
+    output: TaskRowOutput,
+) {
+    match output {
+        TaskRowOutput::ToggleCollapse(key) => {
+            let mut collapsed = model.collapsed_tasks.borrow_mut();
+            if !collapsed.remove(&key) {
+                collapsed.insert(key);
+            }
+            drop(collapsed);
+            model.rebuild_task_list(sender);
+        }
+        TaskRowOutput::SetStatus { key, status } => {
+            relm4::spawn(async move {
+                if let Err(error) =
+                    client::task_action(client::TaskAction::Status { key, status }).await
+                {
+                    eprintln!("[remarked] status change failed: {error}");
+                }
+            });
+        }
+        TaskRowOutput::Start { key, project } => {
+            relm4::spawn(async move {
+                if let Err(error) =
+                    client::task_action(client::TaskAction::Start { key, project }).await
+                {
+                    eprintln!("[remarked] start task failed: {error}");
+                }
+            });
+        }
+        TaskRowOutput::Stop => {
+            if let Some(project) = model.catalog.project().cloned() {
+                relm4::spawn(async move {
+                    if let Err(error) = client::task_action(client::TaskAction::Clear {
+                        project: project.id,
+                    })
+                    .await
+                    {
+                        eprintln!("[remarked] stop tracking failed: {error}");
+                    }
+                });
+            }
         }
     }
 }
 
-fn build_task_menu(
-    task: &proj_model::GoalIdentityInfo,
-    active: bool,
-    sender: &ComponentSender<RemarkedWindow>,
-) -> gtk::MenuButton {
-    use gtk::glib::variant::ToVariant;
-
-    let actions = gtk::gio::SimpleActionGroup::new();
-
-    let status_action = gtk::gio::SimpleAction::new_stateful(
-        "status",
-        Some(glib::VariantTy::STRING),
-        &task.goal.status.to_variant(),
-    );
-    let key = task.key.clone();
-    let tx = sender.input_sender().clone();
-    status_action.connect_activate(move |action, parameter| {
-        let Some(parameter) = parameter else {
-            return;
-        };
-        let Some(status) = parameter.str() else {
-            return;
-        };
-        action.set_state(parameter);
-        let _ = tx.send(RemarkedInput::SetTaskStatus {
-            key: key.clone(),
-            status: status.to_string(),
-        });
-    });
-    actions.add_action(&status_action);
-
-    let start_action = gtk::gio::SimpleAction::new("start", None);
-    let key = task.key.clone();
-    let project = task.goal.project_id.clone();
-    let tx = sender.input_sender().clone();
-    start_action.connect_activate(move |_, _| {
-        let _ = tx.send(RemarkedInput::StartTask {
-            key: key.clone(),
-            project: project.clone(),
-        });
-    });
-    actions.add_action(&start_action);
-
-    let stop_action = gtk::gio::SimpleAction::new("stop", None);
-    let tx = sender.input_sender().clone();
-    stop_action.connect_activate(move |_, _| {
-        let _ = tx.send(RemarkedInput::StopTracking);
-    });
-    actions.add_action(&stop_action);
-
-    let status_menu = gtk::gio::Menu::new();
-    for status in TASK_STATUSES {
-        let item = gtk::gio::MenuItem::new(Some(&status.replace('-', " ")), None);
-        item.set_action_and_target_value(Some("task.status"), Some(&status.to_variant()));
-        status_menu.append_item(&item);
-    }
-
-    let menu = gtk::gio::Menu::new();
-    menu.append_section(None, &status_menu);
-
-    let tracking = gtk::gio::Menu::new();
-    let mut has_tracking = true;
-    if active {
-        tracking.append(Some("Stop tracking"), Some("task.stop"));
-    } else if !model::is_finished(&task.goal.status) {
-        tracking.append(Some("Start tracking"), Some("task.start"));
-    } else {
-        has_tracking = false;
-    }
-    if has_tracking {
-        menu.append_section(None, &tracking);
-    }
-
-    let button = gtk::MenuButton::builder()
-        .icon_name("view-more-symbolic")
-        .tooltip_text("Task actions")
-        .css_classes(["flat", "circular"])
-        .build();
-    button.set_menu_model(Some(&menu));
-    button.insert_action_group("task", Some(&actions));
-    button
-}
-
 fn build_task_pane(
     sender: &ComponentSender<RemarkedWindow>,
-) -> (gtk::Box, adw::Sidebar, gtk::Switch, gtk::Label) {
+) -> (gtk::Box, gtk::Stack, gtk::ListBox, gtk::Switch, gtk::Label) {
     let content = gtk::Box::builder()
         .orientation(gtk::Orientation::Vertical)
         .spacing(12)
@@ -1027,7 +959,6 @@ fn build_task_pane(
         .build();
     content.add_css_class("remarked-pane");
     content.add_css_class("remarked-task-pane");
-    content.add_css_class("remarked-sidebar");
 
     let header = gtk::Box::builder()
         .orientation(gtk::Orientation::Horizontal)
@@ -1053,20 +984,48 @@ fn build_task_pane(
     title_box.append(&title);
     title_box.append(&header_subtitle);
     header.append(&title_box);
-
     content.append(&header);
 
-    let sidebar = adw::Sidebar::builder()
-        .mode(adw::SidebarMode::Sidebar)
+    let task_list = gtk::ListBox::new();
+    task_list.set_selection_mode(gtk::SelectionMode::Single);
+    task_list.set_activate_on_single_click(true);
+    task_list.add_css_class("navigation-sidebar");
+    task_list.set_vexpand(true);
+    task_list.set_hexpand(true);
+
+    let list_scrolled = gtk::ScrolledWindow::builder()
+        .child(&task_list)
         .vexpand(true)
+        .hexpand(true)
         .build();
-    sidebar.add_css_class("remarked-task-sidebar");
+    list_scrolled.add_css_class("remarked-task-list-scroll");
     let tx = sender.input_sender().clone();
-    sidebar.connect_activated(move |sidebar, index| {
-        let _ = sidebar;
-        let _ = tx.send(RemarkedInput::SelectTaskIndex(index));
+    task_list.connect_row_selected(move |_, row| {
+        let Some(row) = row else {
+            return;
+        };
+        let id = list_box_row_identity(row);
+        if !id.is_empty() {
+            let _ = tx.send(RemarkedInput::SelectTask(id));
+        }
     });
-    content.append(&sidebar);
+
+    let empty = adw::StatusPage::builder()
+        .title("No tasks yet")
+        .description("Tasks for the focused project will appear here.")
+        .icon_name("checkbox-symbolic")
+        .vexpand(true)
+        .hexpand(true)
+        .build();
+    empty.add_css_class("remarked-empty");
+
+    let task_stack = gtk::Stack::new();
+    task_stack.set_vexpand(true);
+    task_stack.set_hexpand(true);
+    task_stack.add_named(&list_scrolled, Some("list"));
+    task_stack.add_named(&empty, Some("empty"));
+    task_stack.set_visible_child_name("list");
+    content.append(&task_stack);
 
     let finished_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
     let finished_label = gtk::Label::new(Some("Show finished tasks"));
@@ -1083,7 +1042,13 @@ fn build_task_pane(
     });
     content.append(&finished_row);
 
-    (content, sidebar, show_finished_switch, header_subtitle)
+    (
+        content,
+        task_stack,
+        task_list,
+        show_finished_switch,
+        header_subtitle,
+    )
 }
 
 fn build_notes_surface(
@@ -1125,7 +1090,7 @@ fn build_notes_surface(
         .build();
     let tx = sender.input_sender().clone();
     tasks_toggle.connect_toggled(move |button| {
-        let _ = tx.send(RemarkedInput::ToggleTaskSidebar(Some(button.is_active())));
+        let _ = tx.send(RemarkedInput::ToggleTaskPane(Some(button.is_active())));
     });
     let clear_button = gtk::Button::builder()
         .label("Clear filter")

@@ -155,6 +155,18 @@ pub fn goal_status(key: impl Into<String>) -> Observable<String> {
 pub fn goal_description(key: impl Into<String>) -> Observable<String> {
     goal_property(key.into(), "Description")
 }
+
+/// Whether the task instance is currently the selected tracked task.
+pub fn goal_tracked(instance_id: impl Into<String>) -> Observable<bool> {
+    let instance_id = instance_id.into();
+    goal_tracking()
+        .map(move |rows| {
+            rows.into_iter()
+                .any(|row| row.instance_id == instance_id && row.selected)
+        })
+        .distinct_until_changed()
+        .box_it()
+}
 fn goal_property(key: String, property: &'static str) -> Observable<String> {
     let (date, id) = key.split_once('/').unwrap_or(("", &key));
     let descriptor = crate::dbus::ObjectDescriptor::parse(

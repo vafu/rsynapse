@@ -4,11 +4,10 @@ use std::{
 };
 
 use shell_core::gtk::{self, prelude::*};
+use shell_core::source::bzbus::Invocation;
 
 use crate::widgets::nerd_icon::NerdIcon;
 use crate::widgets::nerd_icon::{fa, md};
-
-const ACTIVE_STALE_MS: i64 = 2 * 60 * 60 * 1000;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct BzBusView {
@@ -33,26 +32,6 @@ impl Default for BzBusView {
     }
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub(super) struct Invocation {
-    pub(super) id: String,
-    pub(super) build_id: String,
-    pub(super) component: String,
-    pub(super) source: String,
-    pub(super) last_sequence: i64,
-    pub(super) status: String,
-    pub(super) outcome: String,
-    pub(super) command_name: String,
-    pub(super) started_at_unix_ms: i64,
-    pub(super) ended_at_unix_ms: i64,
-    pub(super) progress_completed: u32,
-    pub(super) progress_total: u32,
-    pub(super) actions_completed: u32,
-    pub(super) total_actions: u64,
-    pub(super) actions_failed: u32,
-    pub(super) running_actions: u32,
-}
-
 pub(super) fn view(active: bool, mut invocations: Vec<Invocation>) -> BzBusView {
     if !active {
         return BzBusView::default();
@@ -70,19 +49,6 @@ pub(super) fn view(active: bool, mut invocations: Vec<Invocation>) -> BzBusView 
     }
 }
 
-pub(super) fn ongoing_views(active: bool, mut invocations: Vec<Invocation>) -> Vec<BzBusView> {
-    if !active {
-        return Vec::new();
-    }
-
-    invocations.retain(is_active);
-    invocations.sort_by(compare_invocations);
-    invocations
-        .into_iter()
-        .map(|invocation| view(true, vec![invocation]))
-        .collect()
-}
-
 fn compare_invocations(left: &Invocation, right: &Invocation) -> std::cmp::Ordering {
     is_active(right)
         .cmp(&is_active(left))
@@ -92,47 +58,27 @@ fn compare_invocations(left: &Invocation, right: &Invocation) -> std::cmp::Order
 }
 
 fn is_active(invocation: &Invocation) -> bool {
-    !is_ended(invocation)
-        && !is_stale(invocation)
-        && !matches!(
-            normalized(invocation.status.as_str()).as_str(),
-            "finished" | "failed"
-        )
+    invocation.is_active()
 }
 
 fn is_failed(invocation: &Invocation) -> bool {
-    matches!(
-        normalized(invocation.status.as_str()).as_str(),
-        "failed" | "failure" | "error"
-    ) || matches!(
-        normalized(invocation.outcome.as_str()).as_str(),
-        "failed" | "failure" | "error"
-    )
+    invocation.is_failed()
 }
 
 fn is_finished(invocation: &Invocation) -> bool {
-    matches!(
-        normalized(invocation.status.as_str()).as_str(),
-        "finished" | "success"
-    ) || matches!(
-        normalized(invocation.outcome.as_str()).as_str(),
-        "finished" | "success"
-    )
+    invocation.is_finished()
 }
 
 fn is_ended(invocation: &Invocation) -> bool {
-    invocation.ended_at_unix_ms > 0 || is_failed(invocation) || is_finished(invocation)
+    invocation.is_ended()
 }
 
 fn is_stale(invocation: &Invocation) -> bool {
-    let last_observed = observed_time(invocation);
-    last_observed > 0 && now_unix_ms() - last_observed > ACTIVE_STALE_MS
+    invocation.is_stale()
 }
 
 fn observed_time(invocation: &Invocation) -> i64 {
-    invocation
-        .ended_at_unix_ms
-        .max(invocation.started_at_unix_ms)
+    invocation.observed_time()
 }
 
 fn display_status(invocation: &Invocation) -> String {
@@ -468,10 +414,6 @@ fn fallback(value: &str) -> &str {
 fn non_empty(value: &str) -> Option<&str> {
     let value = value.trim();
     (!value.is_empty()).then_some(value)
-}
-
-fn normalized(value: &str) -> String {
-    value.trim().to_ascii_lowercase()
 }
 
 fn now_unix_ms() -> i64 {

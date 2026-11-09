@@ -169,7 +169,7 @@ where
 /// equality. Linear for a stable key: O(old + new).
 pub fn diff_slices_by_key<T, K, F>(previous: &[T], next: &[T], key: F) -> ListDiff<T>
 where
-    T: Clone,
+    T: Clone + PartialEq,
     K: Eq + std::hash::Hash,
     F: Fn(&T) -> K,
 {
@@ -185,6 +185,15 @@ where
             if let Some(old_index) = indices.pop_front() {
                 new_to_old[new_index] = Some(old_index);
             }
+        }
+    }
+    // A matching key identifies the row, but structural init is still allowed
+    // to change. Recreate only those rows instead of reusing stale init data.
+    for (new_index, old_index) in new_to_old.iter_mut().enumerate() {
+        if let Some(index) = *old_index
+            && previous[index] != next[new_index]
+        {
+            *old_index = None;
         }
     }
     let mut used_old = vec![false; previous.len()];
@@ -235,7 +244,7 @@ where
 /// Observable variant of [`diff_slices_by_key`].
 pub fn diff_by_key<T, K, F>(source: Observable<Vec<T>>, key: F) -> Observable<ListDiff<T>>
 where
-    T: Clone + Send + 'static,
+    T: Clone + PartialEq + Send + 'static,
     K: Eq + std::hash::Hash + Send + 'static,
     F: Fn(&T) -> K + Clone + Send + 'static,
 {
@@ -433,10 +442,19 @@ mod keyed_tests {
     }
 
     #[test]
-    fn keyed_diff_keeps_updated_items_in_place() {
+    fn keyed_diff_recreates_updated_items_in_place() {
         let previous = [row("a", 1), row("b", 2)];
         let next = [row("a", 9), row("b", 2)];
         let diff = diff_slices_by_key(&previous, &next, |row| row.id);
-        assert!(diff.changes.is_empty());
+        assert_eq!(
+            diff.changes,
+            vec![
+                ListChange::Remove { index: 0 },
+                ListChange::Insert {
+                    index: 0,
+                    item: row("a", 9),
+                },
+            ]
+        );
     }
 }

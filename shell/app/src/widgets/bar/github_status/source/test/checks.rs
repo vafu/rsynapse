@@ -25,9 +25,10 @@ fn pr_148427_failed_check_overrides_owners_approval_wait() {
             if category == expected {
                 assert_eq!(bucket.unseen_count(), 1);
                 assert_eq!(bucket.rows[0].url, entry.pr.url);
-                assert_eq!(bucket.rows[0].revision, entry.revision);
+                let row = row_view(category, Some(entry.clone()));
+                assert_eq!(row.revision, entry.revision);
                 assert_eq!(
-                    bucket.rows[0].detail,
+                    row.detail,
                     format!(
                         "Snapchat/mobile #148427 · {}",
                         if category == Category::Failed {
@@ -74,7 +75,7 @@ fn failed_rollup_precedence_keeps_lifecycle_and_explicit_blockers() {
                 );
                 if status == PrStatus::MergeFailed {
                     assert!(
-                        view(expected, Some(vec![entry])).rows[0]
+                        row_view(expected, Some(entry.clone()))
                             .detail
                             .contains("Merge pipeline failed")
                     );

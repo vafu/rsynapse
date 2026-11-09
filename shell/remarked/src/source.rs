@@ -118,7 +118,7 @@ impl Notes {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub(crate) enum TagCounts {
     #[default]
     Loading,

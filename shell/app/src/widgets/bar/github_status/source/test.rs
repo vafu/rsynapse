@@ -30,6 +30,18 @@ fn pr(number: u64, status: PrStatus) -> PullRequestActivity {
     }
 }
 
+fn rows(category: Category, prs: &[PullRequestActivity]) -> Vec<PrRowView> {
+    view(category, Some(prs.to_vec()))
+        .rows
+        .into_iter()
+        .map(|row| row_view(category, find_pr(prs, &row.url)))
+        .collect()
+}
+
+fn find_pr(prs: &[PullRequestActivity], url: &str) -> Option<PullRequestActivity> {
+    prs.iter().find(|item| item.pr.url == url).cloned()
+}
+
 #[test]
 fn each_counter_matches_its_filtered_link_list() {
     let mut prs = vec![
@@ -87,9 +99,9 @@ fn each_counter_matches_its_filtered_link_list() {
                 .map(|number| format!("https://example.test/repo/pull/{number}"))
                 .collect::<Vec<_>>()
         );
+        assert!(result.rows.iter().all(|row| row.category == category));
         assert!(
-            result
-                .rows
+            rows(category, &prs)
                 .iter()
                 .all(|row| row.title.contains('<') && row.detail.contains("example/repo #"))
         );
@@ -171,13 +183,14 @@ fn a_pr_moves_between_piles_without_losing_its_unseen_revision() {
             if category == expected {
                 assert_eq!(bucket.count(), "1");
                 assert_eq!(bucket.unseen_count(), 1);
-                assert_eq!(bucket.rows[0].revision, entry.revision);
                 assert_eq!(bucket.rows[0].url, entry.pr.url);
+                let row = row_view(category, Some(entry.clone()));
+                assert_eq!(row.revision, entry.revision);
                 if threads > 0 {
-                    assert!(bucket.rows[0].detail.contains("unresolved review thread"));
+                    assert!(row.detail.contains("unresolved review thread"));
                 }
                 if status == PrStatus::OwnersRequired {
-                    assert!(bucket.rows[0].detail.contains("Needs review"));
+                    assert!(row.detail.contains("Needs review"));
                 }
             } else {
                 assert_eq!(bucket.count(), "0");
@@ -204,11 +217,90 @@ fn absence_and_a_loaded_empty_list_are_distinct() {
 }
 
 #[test]
+fn a_live_title_change_preserves_the_structural_row_identity() {
+    let mut before = vec![pr(3, PrStatus::CiFailed), pr(4, PrStatus::MergeFailed)];
+    let before_view = view(Category::Failed, Some(before.clone()));
+    before[0].pr.title = "Completely different title".into();
+    before[0].revision = "revision-3-updated".into();
+    before[0].pr.unresolved_threads = 4;
+    let after_view = view(Category::Failed, Some(before.clone()));
+
+    // Parent-side row descriptors only change with membership/order.
+    assert_eq!(before_view.rows, after_view.rows);
+    // The row still learns the new title and detail through its own source.
+    let row = row_view(Category::Failed, Some(before[0].clone()));
+    assert_eq!(row.title, "Completely different title");
+    assert_eq!(row.revision, "revision-3-updated");
+    assert!(row.detail.contains("4 unresolved review threads"));
+}
+
+#[test]
+fn structural_add_remove_and_move_change_the_row_descriptors() {
+    let first = pr(3, PrStatus::CiFailed);
+    let second = pr(4, PrStatus::MergeFailed);
+    let third = pr(5, PrStatus::MergeFailed);
+    let urls = |prs: Vec<PullRequestActivity>| {
+        view(Category::Failed, Some(prs))
+            .rows
+            .into_iter()
+            .map(|row| row.url)
+            .collect::<Vec<_>>()
+    };
+
+    let baseline = urls(vec![first.clone(), second.clone()]);
+    assert_eq!(
+        urls(vec![first.clone(), second.clone(), third.clone()]),
+        [baseline.clone(), vec![third.pr.url.clone()]].concat()
+    );
+    assert_eq!(urls(vec![first.clone()]), [baseline[0].clone()]);
+    assert_eq!(
+        urls(vec![second.clone(), first.clone()]),
+        [baseline[1].clone(), baseline[0].clone()]
+    );
+}
+
+#[test]
+fn mark_seen_reads_the_latest_revision_not_the_one_at_row_creation() {
+    let original = pr(3, PrStatus::CiFailed);
+    let mut updated = original.clone();
+    updated.revision = "revision-3-later".into();
+
+    let before = row_view(Category::Failed, Some(original.clone()));
+    let after = row_view(Category::Failed, Some(updated));
+
+    // The parent row descriptor is unchanged, so the row survives; the live
+    // revision used by MarkSeen comes from the row subscription.
+    assert_eq!(
+        view(Category::Failed, Some(vec![original])).rows,
+        view(Category::Failed, Some(vec![pr(3, PrStatus::CiFailed)])).rows
+    );
+    assert_ne!(before.revision, after.revision);
+    assert_eq!(after.revision, "revision-3-later");
+}
+
+#[test]
+fn row_view_projects_the_subscribed_entry_and_reports_missing_entries() {
+    let current = pr(3, PrStatus::CiFailed);
+    let row = row_view(Category::Failed, Some(current.clone()));
+    assert!(row.available);
+    assert_eq!(row.title, current.pr.title);
+    assert_eq!(row.revision, current.revision);
+    assert!(row.tooltip(&current.pr.url).contains(&current.pr.title));
+    let missing = row_view(Category::Failed, None);
+    assert!(!missing.available);
+    assert!(
+        missing
+            .tooltip(&current.pr.url)
+            .contains("no longer available")
+    );
+}
+
+#[test]
 fn unseen_category_marker_remains_until_each_changed_pr_is_opened() {
     let mut prs = vec![pr(3, PrStatus::CiFailed), pr(4, PrStatus::MergeFailed)];
     let before = view(Category::Failed, Some(prs.clone()));
     assert_eq!(before.unseen_count(), 2);
-    assert!(before.rows.iter().all(|row| row.unseen));
+    assert!(rows(Category::Failed, &prs).iter().all(|row| row.unseen));
     assert_eq!(
         view(Category::Failed, Some(prs.clone())),
         before,
@@ -218,8 +310,9 @@ fn unseen_category_marker_remains_until_each_changed_pr_is_opened() {
     let one_opened = view(Category::Failed, Some(prs.clone()));
     assert_eq!(one_opened.unseen_count(), 1);
     assert_eq!(one_opened.count(), "2");
-    assert!(!one_opened.rows[0].unseen);
-    assert!(one_opened.rows[1].unseen);
+    let shown = rows(Category::Failed, &prs);
+    assert!(!shown[0].unseen);
+    assert!(shown[1].unseen);
     prs[1].unseen = false;
     assert_eq!(view(Category::Failed, Some(prs)).unseen_count(), 0);
 }

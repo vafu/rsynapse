@@ -34,6 +34,7 @@ pub(super) struct ProjectLabel {
     icon_picker: NerdIconPicker,
     icon_target: Rc<RefCell<Option<IconTarget>>>,
     editing_icon: Rc<RefCell<Option<IconTarget>>>,
+    picker_key: Option<PickerKey>,
 
     #[source(project_label_vm(workspace.workspace.clone()))]
     pub vm: ProjectLabelVm,
@@ -163,6 +164,7 @@ impl SimpleComponent for ProjectLabel {
             icon_picker,
             Rc::new(RefCell::new(None)),
             Rc::new(RefCell::new(None)),
+            None,
         );
         let widgets = view_output!();
 
@@ -198,6 +200,8 @@ impl SimpleComponent for ProjectLabel {
                 gtk::glib::idle_add_local_once(move || icon_picker.focus_search());
             }
         });
+        let mut model = model;
+        model.picker_key = Some(picker_key(&model.vm));
         sync_icon_picker(&model);
 
         ComponentParts { model, widgets }
@@ -207,8 +211,17 @@ impl SimpleComponent for ProjectLabel {
         match msg {
             ProjectLabelInput::Source(msg) => {
                 ProjectLabel::update(self, msg);
-                *self.icon_target.borrow_mut() = IconTarget::from_vm(&self.vm);
-                sync_icon_picker(self);
+                let next_target = IconTarget::from_vm(&self.vm);
+                let target_changed = icon_target_key(self.icon_target.borrow().as_ref())
+                    != icon_target_key(next_target.as_ref());
+                if target_changed {
+                    *self.icon_target.borrow_mut() = next_target;
+                }
+                let next_key = picker_key(&self.vm);
+                if target_changed || self.picker_key.as_ref() != Some(&next_key) {
+                    self.picker_key = Some(next_key);
+                    sync_icon_picker(self);
+                }
             }
             ProjectLabelInput::SetIconOverride(glyph) => {
                 let Some(icon) = WorkspaceIconChoice::new(glyph) else {
@@ -247,4 +260,33 @@ fn sync_icon_picker(model: &ProjectLabel) {
     model
         .icon_picker
         .set_reset_visible(model.vm.project_icon_overridden);
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct PickerKey {
+    target: Option<String>,
+    glyph: String,
+    overridden: bool,
+    candidates: Vec<String>,
+}
+
+fn picker_key(vm: &ProjectLabelVm) -> PickerKey {
+    PickerKey {
+        target: icon_target_key(IconTarget::from_vm(vm).as_ref()),
+        glyph: vm.project_icon_glyph.clone(),
+        overridden: vm.project_icon_overridden,
+        candidates: vm
+            .project_icon_candidates
+            .iter()
+            .map(|candidate| candidate.glyph.clone())
+            .collect(),
+    }
+}
+
+fn icon_target_key(target: Option<&IconTarget>) -> Option<String> {
+    match target {
+        Some(IconTarget::Project(id)) => Some(format!("project:{id}")),
+        Some(IconTarget::Workspace { id, name }) => Some(format!("workspace:{id}:{name}")),
+        None => None,
+    }
 }

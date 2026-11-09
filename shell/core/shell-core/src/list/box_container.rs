@@ -1,17 +1,13 @@
-use std::{ptr::NonNull, sync::OnceLock};
+use std::{ptr::NonNull, rc::Rc, sync::OnceLock};
 
 use gtk::glib::Quark;
-use gtk::prelude::{BoxExt, Cast, IsA, ObjectExt, WidgetExt};
-use relm4::component::ComponentController;
-use relm4::{Component, Controller};
+use gtk::prelude::{BoxExt, ObjectExt, WidgetExt};
+use relm4::{Component, ComponentController, Controller, Sender};
 use shell_source::{ListChange, ListDiff, diff_slices, diff_slices_by_key};
 
 use super::{ComponentListBoxExt, ComponentListUpdate};
 
-impl<T> ComponentListBoxExt for T
-where
-    T: IsA<gtk::Box>,
-{
+impl ComponentListBoxExt for gtk::Box {
     fn set_component_list<C>(&self, update: ComponentListUpdate<'_, C>)
     where
         C: Component,
@@ -22,16 +18,17 @@ where
             gtk::glib::MainContext::default().is_owner(),
             "component list updates must run on the GTK main context"
         );
-        let container = self.upcast_ref::<gtk::Box>();
+        let container = self;
         let key = component_list_key::<C>();
         let host = component_list_host::<C>(container, key);
+        host.set_launcher(None);
         host.reconcile(container, update.items);
     }
 
     fn set_component_list_by_key<C, K, F>(&self, update: ComponentListUpdate<'_, C>, key: F)
     where
         C: Component,
-        C::Init: Clone + 'static,
+        C::Init: Clone + PartialEq + 'static,
         K: Eq + std::hash::Hash + 'static,
         F: Fn(&C::Init) -> K + 'static,
         C::Root: AsRef<gtk::Widget> + Clone + std::fmt::Debug,
@@ -40,9 +37,67 @@ where
             gtk::glib::MainContext::default().is_owner(),
             "component list updates must run on the GTK main context"
         );
-        let container = self.upcast_ref::<gtk::Box>();
+        let container = self;
         let quark = component_list_key::<C>();
         let host = component_list_host::<C>(container, quark);
+        host.set_launcher(None);
+        host.reconcile_by_key(container, update.items, &key);
+    }
+
+    fn set_component_list_forward<C, O, F>(
+        &self,
+        update: ComponentListUpdate<'_, C>,
+        output: &Sender<O>,
+        forward: F,
+    ) where
+        C: Component,
+        C::Init: Clone + PartialEq + 'static,
+        C::Output: 'static,
+        C::Root: AsRef<gtk::Widget> + Clone + std::fmt::Debug,
+        O: 'static,
+        F: Fn(C::Output) -> O + Clone + 'static,
+    {
+        debug_assert!(
+            gtk::glib::MainContext::default().is_owner(),
+            "component list updates must run on the GTK main context"
+        );
+        let container = self;
+        let key = component_list_key::<C>();
+        let host = component_list_host::<C>(container, key);
+        let output = output.clone();
+        host.set_launcher(Some(Rc::new(move |item, id| {
+            ComponentListRow::new_forward(item, id, output.clone(), forward.clone())
+        })));
+        host.reconcile(container, update.items);
+    }
+
+    fn set_component_list_by_key_forward<C, K, F, O, M>(
+        &self,
+        update: ComponentListUpdate<'_, C>,
+        key: F,
+        output: &Sender<O>,
+        forward: M,
+    ) where
+        C: Component,
+        C::Init: Clone + PartialEq + 'static,
+        C::Output: 'static,
+        C::Root: AsRef<gtk::Widget> + Clone + std::fmt::Debug,
+        K: Eq + std::hash::Hash + 'static,
+        F: Fn(&C::Init) -> K + 'static,
+        O: 'static,
+        M: Fn(C::Output) -> O + Clone + 'static,
+    {
+        debug_assert!(
+            gtk::glib::MainContext::default().is_owner(),
+            "component list updates must run on the GTK main context"
+        );
+        let container = self;
+        let quark = component_list_key::<C>();
+        let host = component_list_host::<C>(container, quark);
+        let output = output.clone();
+        host.set_launcher(Some(Rc::new(move |item, id| {
+            ComponentListRow::new_forward(item, id, output.clone(), forward.clone())
+        })));
         host.reconcile_by_key(container, update.items, &key);
     }
 }
@@ -53,6 +108,7 @@ where
 {
     rows: Vec<ComponentListRow<C>>,
     next_row_id: u64,
+    launcher: Option<Rc<RowLauncher<C>>>,
 }
 
 impl<C> Default for ComponentListHost<C>
@@ -63,16 +119,23 @@ where
         Self {
             rows: Vec::new(),
             next_row_id: 1,
+            launcher: None,
         }
     }
 }
 
+type RowLauncher<C> = dyn Fn(<C as Component>::Init, u64) -> ComponentListRow<C>;
+
 impl<C> ComponentListHost<C>
 where
     C: Component,
-    C::Init: Clone + 'static,
+    C::Init: Clone + PartialEq + 'static,
     C::Root: AsRef<gtk::Widget> + Clone + std::fmt::Debug,
 {
+    fn set_launcher(&mut self, launcher: Option<Rc<RowLauncher<C>>>) {
+        self.launcher = launcher;
+    }
+
     fn reconcile(&mut self, container: &gtk::Box, items: &[C::Init])
     where
         C::Init: PartialEq,
@@ -141,7 +204,11 @@ where
                         container,
                         format_args!("create id={} index={}", id, index),
                     );
-                    rows.insert(index, ComponentListRow::new(item, id));
+                    let row = match &self.launcher {
+                        Some(launcher) => launcher(item, id),
+                        None => ComponentListRow::new(item, id),
+                    };
+                    rows.insert(index, row);
                 }
                 ListChange::Remove { index } => {
                     if index < rows.len() {
@@ -244,6 +311,20 @@ where
 {
     fn new(item: C::Init, id: u64) -> Self {
         let controller = C::builder().launch(item.clone()).detach();
+        Self {
+            id,
+            item,
+            controller,
+        }
+    }
+
+    fn new_forward<O, F>(item: C::Init, id: u64, output: Sender<O>, forward: F) -> Self
+    where
+        C::Output: 'static,
+        O: 'static,
+        F: Fn(C::Output) -> O + Clone + 'static,
+    {
+        let controller = C::builder().launch(item.clone()).forward(&output, forward);
         Self {
             id,
             item,

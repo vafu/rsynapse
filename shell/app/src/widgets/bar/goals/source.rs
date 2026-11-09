@@ -12,6 +12,13 @@ pub(in crate::widgets::bar) struct GoalBarVm {
 }
 
 pub(in crate::widgets::bar) fn goal_bar(output: Option<String>) -> Observable<GoalBarVm> {
+    let key = format!("{output:?}");
+    source::shared_by_key("rsynapse.goal-bar", key, move || {
+        goal_bar_inner(output.clone())
+    })
+}
+
+fn goal_bar_inner(output: Option<String>) -> Observable<GoalBarVm> {
     let project = selected_project_status(output)
         .map(|v| v.project.and_then(|p| p.project_id))
         .distinct_until_changed()

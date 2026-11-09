@@ -7,8 +7,6 @@ mod test;
 
 use std::time::Duration;
 
-use futures_util::StreamExt;
-
 use relm4::prelude::*;
 use shell_core::{
     gtk::{self, prelude::*},
@@ -16,16 +14,15 @@ use shell_core::{
     source::{
         Observable,
         dbus::{self, Bus, ObjectDescriptor, PropertyDescriptor},
-        rx::Observable as _,
     },
     window::{self, Anchors, Edge, Layer, SurfaceMargins, WindowConfig},
 };
 
-use crate::{request, session};
+use crate::request;
 
-use card::NotificationCard;
-use model::NotificationView;
+use card::{NotificationCard, NotificationCardOutput, NotificationRowInit};
 pub use model::{NotificationClosedReason, NotificationRequest};
+use model::{NotificationEntry, NotificationView};
 use policy::{NotificationCenterContext, NotificationCenterPolicy};
 
 const NOTIFICATION_PANEL_WIDTH: i32 = 432;
@@ -55,20 +52,25 @@ pub struct NotificationsInit {
     pub title: &'static str,
 }
 
+#[shell_macros::model(module = notifications_sources)]
 pub struct NotificationsWindow {
     center_visible: bool,
     _request_server: Option<request::RequestServer>,
     center_policy: NotificationCenterPolicy,
     dbus_service: Option<service::NotificationsService>,
-    session_locked: bool,
-    _session_lock_task: Option<tokio::task::JoinHandle<()>>,
     generation: u64,
-    notifications: Vec<NotificationView>,
-    popup_notifications: Vec<NotificationView>,
+    notifications: Vec<NotificationEntry>,
+    popup_notifications: Vec<NotificationEntry>,
+    popup_list: Option<gtk::Box>,
+    center_list: Option<gtk::Box>,
+
+    #[source(crate::session::locked())]
+    session_locked: bool,
 }
 
 #[derive(Debug)]
 pub enum NotificationsInput {
+    Source(notifications_sources::Msg),
     Request(request::PendingRequest),
     Show(NotificationRequest),
     Close {
@@ -79,8 +81,14 @@ pub enum NotificationsInput {
         id: u32,
         generation: u64,
     },
-    SessionLocked(bool),
     Clear,
+    NotificationRow(NotificationCardOutput),
+}
+
+impl From<notifications_sources::Msg> for NotificationsInput {
+    fn from(message: notifications_sources::Msg) -> Self {
+        Self::Source(message)
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -90,6 +98,7 @@ struct PopupExpiry {
     timeout_ms: u64,
 }
 
+#[shell_macros::component(model = NotificationsWindow)]
 #[relm4::component(pub, async)]
 impl SimpleAsyncComponent for NotificationsWindow {
     type Init = NotificationsInit;
@@ -123,10 +132,6 @@ impl SimpleAsyncComponent for NotificationsWindow {
                         add_css_class: "notifications-stack",
                         set_orientation: gtk::Orientation::Vertical,
                         set_width_request: NOTIFICATION_PANEL_WIDTH,
-                        #[watch]
-                        set_component_list: ComponentListUpdate::<NotificationCard>::new(
-                            &model.popup_notifications
-                        ),
                     },
                 },
 
@@ -189,10 +194,6 @@ impl SimpleAsyncComponent for NotificationsWindow {
                             gtk::Box {
                                 add_css_class: "notification-center-list",
                                 set_orientation: gtk::Orientation::Vertical,
-                                #[watch]
-                                set_component_list: ComponentListUpdate::<NotificationCard>::new(
-                                    &model.notifications
-                                ),
                             }
                         }
                     }
@@ -222,40 +223,61 @@ impl SimpleAsyncComponent for NotificationsWindow {
             };
 
         let dbus_service = Some(service::start(sender.input_sender().clone()));
-        let session_lock_task = Some(spawn_session_lock_subscription(
-            sender.input_sender().clone(),
-        ));
-        let model = NotificationsWindow {
-            center_visible: false,
-            _request_server: request_server,
-            center_policy: NotificationCenterPolicy::load(),
+        let mut model = NotificationsWindow::new(
+            false,
+            request_server,
+            NotificationCenterPolicy::load(),
             dbus_service,
-            session_locked: true,
-            _session_lock_task: session_lock_task,
-            generation: 0,
-            notifications: Vec::new(),
-            popup_notifications: Vec::new(),
-        };
+            0,
+            Vec::new(),
+            Vec::new(),
+            None,
+            None,
+        );
+        model.session_locked = true;
         let widgets = view_output!();
+        model.popup_list = Some(widgets.popup_notifications.clone());
+        model.center_list = Some(widgets.notifications.clone());
 
         let input_sender = sender.input_sender().clone();
         widgets.clear_button.connect_clicked(move |_| {
             input_sender.emit(NotificationsInput::Clear);
         });
 
+        reconcile_lists(&model, &sender);
+
         AsyncComponentParts { model, widgets }
     }
 
     async fn update(&mut self, msg: Self::Input, sender: AsyncComponentSender<Self>) {
+        let previous = membership(self);
         match msg {
-            NotificationsInput::Request(request) => self.handle_request(request),
-            NotificationsInput::Show(request) => self.show_notification(request, &sender),
-            NotificationsInput::Close { id, reason } => self.close_notification(id, reason),
+            NotificationsInput::Request(request) => {
+                self.handle_request(request);
+            }
+            NotificationsInput::Show(request) => {
+                self.show_notification(request, &sender);
+            }
+            NotificationsInput::Close { id, reason } => {
+                self.close_notification(id, reason);
+            }
             NotificationsInput::ExpirePopup { id, generation } => {
                 self.expire_popup(id, generation);
             }
-            NotificationsInput::SessionLocked(locked) => self.set_session_locked(locked),
-            NotificationsInput::Clear => self.clear_notifications(),
+            NotificationsInput::Clear => {
+                self.clear_notifications();
+            }
+            NotificationsInput::NotificationRow(output) => {
+                self.handle_card_output(output);
+            }
+            NotificationsInput::Source(message) => {
+                NotificationsWindow::update(self, message);
+                self.set_session_locked(self.session_locked);
+            }
+        }
+
+        if membership(self) != previous {
+            reconcile_lists(self, &sender);
         }
     }
 }
@@ -326,6 +348,17 @@ impl NotificationsWindow {
         expiry
     }
 
+    fn handle_card_output(&mut self, output: NotificationCardOutput) {
+        match output {
+            NotificationCardOutput::Dismiss { id } => {
+                service::request_close_notification(id);
+            }
+            NotificationCardOutput::ActionInvoked { id, key } => {
+                service::request_action_invoked(id, key);
+            }
+        }
+    }
+
     fn close_notification(&mut self, id: u32, _reason: NotificationClosedReason) {
         remove_notification(&mut self.notifications, id);
         remove_notification(&mut self.popup_notifications, id);
@@ -333,17 +366,13 @@ impl NotificationsWindow {
     }
 
     fn expire_popup(&mut self, id: u32, generation: u64) {
-        let notification = remove_generation(&mut self.popup_notifications, id, generation);
-        if let Some(notification) = notification {
-            self.store_notification(notification);
+        let entry = remove_generation(&mut self.popup_notifications, id, generation);
+        if let Some(entry) = entry {
+            self.store_entry(entry);
         }
     }
 
     fn set_session_locked(&mut self, locked: bool) {
-        if self.session_locked == locked {
-            return;
-        }
-
         self.session_locked = locked;
         if locked {
             self.store_popup_notifications();
@@ -352,8 +381,8 @@ impl NotificationsWindow {
 
     fn store_popup_notifications(&mut self) {
         let notifications = std::mem::take(&mut self.popup_notifications);
-        for notification in notifications.into_iter().rev() {
-            self.store_notification(notification);
+        for entry in notifications.into_iter().rev() {
+            self.store_entry(entry);
         }
     }
 
@@ -366,6 +395,19 @@ impl NotificationsWindow {
         }
 
         upsert_latest(&mut self.notifications, notification);
+        self.publish_has_items();
+    }
+
+    fn store_entry(&mut self, entry: NotificationEntry) {
+        let view = entry.current_view();
+        if !self
+            .center_policy
+            .should_store(&view, self.center_context())
+        {
+            return;
+        }
+
+        upsert_entry(&mut self.notifications, entry);
         self.publish_has_items();
     }
 
@@ -388,50 +430,85 @@ impl NotificationsWindow {
     }
 }
 
-fn spawn_session_lock_subscription(
-    input_sender: relm4::Sender<NotificationsInput>,
-) -> tokio::task::JoinHandle<()> {
-    tokio::spawn(async move {
-        let mut stream = session::locked().into_stream();
-        while let Some(item) = stream.next().await {
-            let locked = match item {
-                Ok(locked) => locked,
-                Err(error) => {
-                    eprintln!("[notifications/session] lock source failed: {error}");
-                    return;
-                }
-            };
-            if input_sender
-                .send(NotificationsInput::SessionLocked(locked))
-                .is_err()
-            {
-                return;
-            }
-        }
-    })
+fn reconcile_lists(
+    model: &NotificationsWindow,
+    sender: &AsyncComponentSender<NotificationsWindow>,
+) {
+    let center_rows = row_inits(&model.notifications);
+    let popup_rows = row_inits(&model.popup_notifications);
+
+    if let Some(center_list) = &model.center_list {
+        center_list.set_component_list_by_key_forward(
+            ComponentListUpdate::<NotificationCard>::new(&center_rows),
+            NotificationRowInit::row_key,
+            sender.input_sender(),
+            NotificationsInput::NotificationRow,
+        );
+    }
+    if let Some(popup_list) = &model.popup_list {
+        popup_list.set_component_list_by_key_forward(
+            ComponentListUpdate::<NotificationCard>::new(&popup_rows),
+            NotificationRowInit::row_key,
+            sender.input_sender(),
+            NotificationsInput::NotificationRow,
+        );
+    }
 }
 
-fn upsert_latest(notifications: &mut Vec<NotificationView>, notification: NotificationView) {
-    remove_notification(notifications, notification.id);
-    notifications.insert(0, notification);
+fn row_inits(entries: &[NotificationEntry]) -> Vec<NotificationRowInit> {
+    entries
+        .iter()
+        .map(|entry| NotificationRowInit {
+            id: entry.id,
+            notification: entry.view.clone(),
+        })
+        .collect()
 }
 
-fn remove_notification(notifications: &mut Vec<NotificationView>, id: u32) {
+fn membership(model: &NotificationsWindow) -> (Vec<u32>, Vec<u32>) {
+    (
+        model.notifications.iter().map(|entry| entry.id).collect(),
+        model
+            .popup_notifications
+            .iter()
+            .map(|entry| entry.id)
+            .collect(),
+    )
+}
+
+fn upsert_latest(notifications: &mut Vec<NotificationEntry>, notification: NotificationView) {
+    upsert_entry(notifications, NotificationEntry::new(notification));
+}
+
+fn upsert_entry(notifications: &mut Vec<NotificationEntry>, entry: NotificationEntry) {
+    let view = entry.current_view();
+    if let Some(index) = notifications
+        .iter()
+        .position(|existing| existing.id == entry.id)
+    {
+        let mut existing = notifications.remove(index);
+        existing.generation = entry.generation;
+        existing.view.set(view);
+        notifications.insert(0, existing);
+        return;
+    }
+
+    notifications.insert(0, entry);
+}
+
+fn remove_notification(notifications: &mut Vec<NotificationEntry>, id: u32) {
     notifications.retain(|notification| notification.id != id);
 }
 
 fn remove_generation(
-    notifications: &mut Vec<NotificationView>,
+    notifications: &mut Vec<NotificationEntry>,
     id: u32,
     generation: u64,
-) -> Option<NotificationView> {
-    let removed = notifications
+) -> Option<NotificationEntry> {
+    let index = notifications
         .iter()
-        .find(|notification| notification.id == id && notification.generation == generation)
-        .cloned();
-    notifications
-        .retain(|notification| notification.id != id || notification.generation != generation);
-    removed
+        .position(|notification| notification.id == id && notification.generation == generation)?;
+    Some(notifications.remove(index))
 }
 
 fn center_expire_timeout_ms(expire_timeout_ms: i32) -> u64 {

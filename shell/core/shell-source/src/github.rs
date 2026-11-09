@@ -91,6 +91,26 @@ pub fn activity() -> Observable<Option<Vec<PullRequestActivity>>> {
     })
 }
 
+/// Live activity snapshot for one pull request, selected by URL.
+///
+/// Rows subscribe to this instead of receiving mutable PR data in their list
+/// init. The source is projected from the shared [`activity`] snapshot, so one
+/// D-Bus watcher feeds every row.
+pub fn activity_entry(url: String) -> Observable<Option<PullRequestActivity>> {
+    let key = url.clone();
+    crate::shared_by_key("github-pr-activity-entry", key, move || {
+        let url = url.clone();
+        activity()
+            .map(move |rows| rows.and_then(|rows| find_entry(&rows, &url)))
+            .distinct_until_changed()
+            .box_it()
+    })
+}
+
+fn find_entry(rows: &[PullRequestActivity], url: &str) -> Option<PullRequestActivity> {
+    rows.iter().find(|item| item.pr.url == url).cloned()
+}
+
 /// Per-status PR counts.
 pub fn summary() -> Observable<Option<PrSummary>> {
     json_property(PropertyDescriptor::new(pr_object(), "Summary"))
@@ -124,3 +144,6 @@ pub async fn refresh() -> Result<(), String> {
         .await
         .map_err(|e| e.to_string())
 }
+
+#[cfg(test)]
+mod entry_tests;

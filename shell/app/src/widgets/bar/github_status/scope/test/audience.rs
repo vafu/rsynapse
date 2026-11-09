@@ -88,7 +88,7 @@ fn mismatched_tags_project_loss_and_tag_updates_do_not_hide_review_work() {
         for row in &mut updated[2..] {
             row.unseen = false;
         }
-        activity.set(Some(updated));
+        activity.set(Some(updated.clone()));
         for (stream, original) in [
             (&mut first, &initial),
             (&mut again, &rereview),
@@ -98,7 +98,14 @@ fn mismatched_tags_project_loss_and_tag_updates_do_not_hide_review_work() {
             assert_eq!(shown.count(), "1");
             assert_eq!(shown.unseen_count(), 0);
             assert_eq!(shown.rows[0].url, original.pr.url);
-            assert_eq!(shown.rows[0].revision, original.revision);
+            let live = updated
+                .iter()
+                .find(|item| item.pr.url == original.pr.url)
+                .cloned();
+            assert_eq!(
+                row_view(Category::for_pr(&original.pr), live).revision,
+                original.revision
+            );
         }
 
         // Only the tagless Listener membership governs review removal.

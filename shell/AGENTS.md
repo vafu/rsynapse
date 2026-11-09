@@ -16,6 +16,10 @@ Before planning or editing, read:
 - `PLAN.md` for the current roadmap and crate boundaries.
 - `SOURCE_API.md` when work touches source bindings, observable APIs, D-Bus
   source helpers, or macro ergonomics.
+- `CORE_WIDGETS_GUIDE.md` for the required Relm4/shell-core widget and list
+  patterns. New widgets and widget migrations must follow it.
+- `WIDGET_MIGRATION_PLANS.md` for the current per-widget audit and migration
+  roadmap.
 - `app/src/widgets/AGENTS.md` before changing concrete widgets or
   widget-local source providers.
 

@@ -37,7 +37,6 @@ use relm4::prelude::*;
 use shell_core::{
     gtk::{self, prelude::*},
     gtk4_layer_shell::LayerShell,
-    list::ComponentListBoxExt,
     source::SourceError,
     window::{self, Anchors, Edge, Layer, WindowConfig},
 };
@@ -48,7 +47,7 @@ use crate::widgets::nerd_icon::{NerdIcon, NerdIconLabelExt};
 use self::audio::{AudioView, audio_status};
 use self::battery::BatteryView;
 use self::battery::battery_status;
-use self::bluetooth::{BluetoothView, bluetooth_status};
+use self::bluetooth::BluetoothIndicator;
 use self::brightness::{BrightnessView, brightness_status};
 use self::format::{
     battery_icon_name, battery_tooltip, source_error_count_label, source_error_tooltip,
@@ -56,14 +55,18 @@ use self::format::{
 use self::media::{MediaView, media_status};
 use self::monitors::{primary_output, secondary_bar_changes};
 
-use self::network::{NetworkView, network_status};
+use self::goals::{GoalIndicator, GoalIndicatorOutput};
+use self::network::NetworkIndicators;
 use self::power_profile::{PowerProfileView, power_profile_status};
 use self::secondary::{
     SecondaryBar, available_monitors, bar_window_config, launch_secondary_bar,
     launch_secondary_bars, launch_workspace_bar, log_bar_monitor, monitor_output_name,
     watch_monitors,
 };
-use self::selected_project::{SelectedWorkspaceView, selected_project_status};
+use self::selected_project::{
+    SelectedProjectItem, SelectedProjectItemInput, SelectedProjectItemOutput,
+    SelectedWorkspaceView, selected_project_status,
+};
 use self::source_errors::{SourceErrorRow, source_error_count, source_error_items};
 use self::system_stats::{ArcSide, SysStatsView, sys_stats};
 use self::systray::{TrayItem, systray_items};
@@ -76,6 +79,7 @@ use super::{
     WorkspaceSelectorInput, has_notification_items,
 };
 use crate::request;
+use shell_core::list::{ComponentListBoxExt, ComponentListUpdate};
 
 type WindowNode = workspace::WindowObject;
 pub(super) const WORKSPACE_RAIL_WIDTH: i32 = bar_indicator::SIZE;
@@ -126,13 +130,13 @@ impl std::fmt::Debug for MainBarInit {
 #[derive(Debug)]
 pub enum MainBarInput {
     Source(sources::Msg),
-    ToggleBluetooth,
     ToggleMedia,
     CyclePowerProfile,
     ToggleNotificationCenter,
-    CopyBranch,
+    CopyBranch(String),
     MonitorsChanged,
-    OpenWorkspace,
+    OpenProjectPicker,
+    OpenRemarked,
     OpenWorkspaceSelector,
     WorkspaceProject(String),
     Request(request::PendingRequest),
@@ -152,6 +156,10 @@ pub struct MainBar {
     _osd: Option<AsyncController<OsdWindow>>,
     _request_server: Option<request::RequestServer>,
     _workspace_bar: Option<Controller<WorkspaceBar>>,
+    _selected_project_item: Option<Controller<SelectedProjectItem>>,
+    _goal_indicator: Option<Controller<GoalIndicator>>,
+    _bluetooth_indicator: Option<Controller<BluetoothIndicator>>,
+    _network_indicators: Option<Controller<NetworkIndicators>>,
     _child_bars: Vec<SecondaryBar>,
     _monitor_list: Option<gtk::gio::ListModel>,
     _audio_osd_ready: bool,
@@ -167,17 +175,11 @@ pub struct MainBar {
     #[source(shell_core::source::switch_map(output_scope.observable(), selected_project_status))]
     selected_project: SelectedWorkspaceView,
 
-    #[source(selected_project_status(None))]
-    focused_project: SelectedWorkspaceView,
-
     #[source(shell_core::source::switch_map(output_scope.observable(), layout_indicator::status))]
     layout: layout_indicator::LayoutIndicatorView,
 
     #[source(battery_status())]
     battery: BatteryView,
-
-    #[source(network_status())]
-    network: NetworkView,
 
     #[source(power_profile_status())]
     power_profile: PowerProfileView,
@@ -190,9 +192,6 @@ pub struct MainBar {
 
     #[source(brightness_status())]
     brightness: BrightnessView,
-
-    #[source(bluetooth_status())]
-    bluetooth: BluetoothView,
 
     #[source(systray_items())]
     tray_items: Vec<systray::TrayItemNode>,
@@ -211,11 +210,6 @@ pub struct MainBar {
 
     #[source(source_error_items())]
     source_error_items: Vec<SourceError>,
-
-    _project_initializer: Option<selected_project::ProjectInitializer>,
-
-    #[source(shell_core::source::switch_map(output_scope.observable(), goals::goal_bar))]
-    goals: goals::GoalBarVm,
 }
 
 #[shell_macros::component(model = MainBar)]
@@ -291,189 +285,13 @@ impl SimpleAsyncComponent for MainBar {
                     set_vexpand: false,
                     set_shrink_center_last: true,
 
-                    #[name = "goal_slot"]
                     #[wrap(Some)]
-                    set_start_widget = &gtk::Overlay {
-                        set_widget_name: "goal-left-section",
-                        set_hexpand: true,
-                        set_halign: gtk::Align::Fill,
-                        #[wrap(Some)]
-                        set_child = &gtk::Box {
-                            set_hexpand: true,
-                        },
-
-                    #[name = "goal_button"]
-                    add_overlay = &gtk::Button {
-                        add_css_class: "flat",
-                        add_css_class: "goal-tracking-button",
-                        set_halign: gtk::Align::End,
-                        set_valign: gtk::Align::Center,
-                        set_has_frame: false,
-                        #[watch]
-                        set_visible: model.goals.project_id.is_some(),
-                        #[watch]
-                        set_tooltip_text: Some(model.goals.tooltip.as_str()),
-                        #[wrap(Some)]
-                        set_child = &adw::ButtonContent {
-                            set_halign: gtk::Align::End,
-                            set_valign: gtk::Align::Center,
-                            set_icon_name: "view-list-symbolic",
-                            set_can_shrink: true,
-                            #[watch]
-                            set_label: model.goals.title.as_str(),
-                        }
-                    }
-                    },
+                    #[local_ref]
+                    set_start_widget = &goal_indicator_root -> gtk::Overlay {},
 
                     #[wrap(Some)]
-                    set_center_widget = &gtk::Box {
-                        set_widget_name: "project-git-group",
-                        update_property: &[gtk::accessible::Property::Label("Project and Git")],
-                        #[watch]
-                        set_css_classes: &selected_project::classes(&model.selected_project),
-                        #[watch]
-                        set_visible: selected_project::visible(&model.selected_project),
-                        #[watch]
-                        set_tooltip_text: Some(selected_project::tooltip(&model.selected_project).as_str()),
-                        set_halign: gtk::Align::Center,
-                        set_valign: gtk::Align::Center,
-                        set_orientation: gtk::Orientation::Horizontal,
-
-                        #[name = "workspace_title_button"]
-                        gtk::Button {
-                            add_css_class: "flat",
-                            add_css_class: "selected-project-branch-button",
-                            set_has_frame: false,
-                            set_tooltip_text: Some("Workspace selector"),
-                            #[wrap(Some)]
-                            set_child = &adw::ButtonContent {
-                            add_css_class: "selected-project-segment",
-                            add_css_class: "selected-project-main",
-                            set_halign: gtk::Align::Center,
-                            set_valign: gtk::Align::Center,
-                            set_can_shrink: true,
-                            #[watch]
-                            set_icon_name: selected_project::icon_name(&model.selected_project),
-                            #[watch]
-                            set_label: selected_project::title_label(&model.selected_project),
-                            }
-                        },
-
-                        gtk::Label {
-                            add_css_class: "selected-project-separator",
-                            set_label: "·",
-                            #[watch]
-                            set_visible: selected_project::first_separator_visible(&model.selected_project),
-                        },
-
-
-                        #[name = "branch_copy_button"]
-                        gtk::Button {
-                            add_css_class: "flat",
-                            add_css_class: "selected-project-branch-button",
-                            set_has_frame: false,
-                            #[watch]
-                            set_visible: selected_project::branch_visible(&model.selected_project),
-
-                            #[wrap(Some)]
-                            set_child = &gtk::Box {
-                                add_css_class: "selected-project-segment",
-                                set_halign: gtk::Align::Center,
-                                set_valign: gtk::Align::Center,
-                                set_orientation: gtk::Orientation::Horizontal,
-
-                                gtk::Label {
-                                    set_css_classes: &[
-                                        "selected-project-meta-icon",
-                                        "selected-project-branch-icon",
-                                        "nerdicon",
-                                    ],
-                                    set_halign: gtk::Align::Center,
-                                    set_valign: gtk::Align::Center,
-                                    set_nerd_icon: selected_project::branch_icon(),
-                                },
-
-                                #[name = "branch_copy_label"]
-                                gtk::Label {
-                                    add_css_class: "selected-project-branch-label",
-                                    set_ellipsize: gtk::pango::EllipsizeMode::End,
-                                    set_valign: gtk::Align::Center,
-                                    set_xalign: 0.0,
-                                    #[watch]
-                                    set_label: selected_project::branch_label(&model.selected_project),
-                                },
-
-                                gtk::Label {
-                                    add_css_class: "selected-project-git-icon",
-                                    add_css_class: "nerdicon",
-                                    set_halign: gtk::Align::Center,
-                                    set_valign: gtk::Align::Center,
-                                    #[watch]
-                                    set_visible: selected_project::git_part_visible(&model.selected_project, selected_project::GitPart::Dirty),
-                                    set_label: selected_project::git_part_icon(selected_project::GitPart::Dirty),
-                                },
-
-                                gtk::Label {
-                                    add_css_class: "selected-project-git-icon",
-                                    add_css_class: "nerdicon",
-                                    set_halign: gtk::Align::Center,
-                                    set_valign: gtk::Align::Center,
-                                    #[watch]
-                                    set_visible: selected_project::git_part_visible(&model.selected_project, selected_project::GitPart::Untracked),
-                                    set_label: selected_project::git_part_icon(selected_project::GitPart::Untracked),
-                                },
-
-                                gtk::Label {
-                                    add_css_class: "selected-project-git-icon",
-                                    set_halign: gtk::Align::Center,
-                                    set_valign: gtk::Align::Center,
-                                    #[watch]
-                                    set_visible: selected_project::git_part_visible(&model.selected_project, selected_project::GitPart::Ahead),
-                                    set_label: selected_project::git_part_icon(selected_project::GitPart::Ahead),
-                                },
-
-                                gtk::Label {
-                                    add_css_class: "selected-project-git-icon",
-                                    set_halign: gtk::Align::Center,
-                                    set_valign: gtk::Align::Center,
-                                    #[watch]
-                                    set_visible: selected_project::git_part_visible(&model.selected_project, selected_project::GitPart::Behind),
-                                    set_label: selected_project::git_part_icon(selected_project::GitPart::Behind),
-                                },
-
-                                gtk::Label {
-                                    add_css_class: "selected-project-git-icon",
-                                    add_css_class: "nerdicon",
-                                    set_halign: gtk::Align::Center,
-                                    set_valign: gtk::Align::Center,
-                                    #[watch]
-                                    set_visible: selected_project::git_part_visible(&model.selected_project, selected_project::GitPart::Merging),
-                                    set_label: selected_project::git_part_icon(selected_project::GitPart::Merging),
-                                },
-
-                                gtk::Label {
-                                    add_css_class: "selected-project-git-icon",
-                                    add_css_class: "nerdicon",
-                                    set_halign: gtk::Align::Center,
-                                    set_valign: gtk::Align::Center,
-                                    #[watch]
-                                    set_visible: selected_project::git_part_visible(&model.selected_project, selected_project::GitPart::Rebasing),
-                                    set_label: selected_project::git_part_icon(selected_project::GitPart::Rebasing),
-                                },
-
-                                gtk::Spinner {
-                                    add_css_class: "selected-project-git-spinner",
-                                    set_halign: gtk::Align::Center,
-                                    set_valign: gtk::Align::Center,
-                                    #[watch]
-                                    set_visible: selected_project::git_loading(&model.selected_project),
-                                    #[watch]
-                                    set_spinning: selected_project::git_loading(&model.selected_project),
-                                },
-                            }
-                        },
-
-                    }
+                    #[local_ref]
+                    set_center_widget = &selected_project_item_root -> gtk::Box {},
                 },
 
                 #[wrap(Some)]
@@ -662,40 +480,8 @@ impl SimpleAsyncComponent for MainBar {
                             set_orientation: gtk::Orientation::Horizontal,
                         },
 
-                        // TODO(rsynapse-shell): split this into a right-cluster
-                        // component once single child component ownership is
-                        // cleaned up; the inline view preserves source macro
-                        // binding for now but makes this file too large.
-                        gtk::Box {
-                            set_css_classes: &bar_item::classes(&[
-                                bar_item::SQUARE_CLASS,
-                                "bt-power-item",
-                            ]),
-
-                            #[name = "bluetooth_power_button"]
-                            gtk::Button {
-                                set_css_classes: &bar_item::action_classes(&["bt-power-button"]),
-                                #[watch]
-                                set_tooltip_text: Some(bluetooth::status_tooltip(&model.bluetooth.status).as_str()),
-
-                                gtk::Overlay {
-                                    gtk::Label {
-                                        set_css_classes: &["nerdicon", bar_item::ICON_CLASS],
-                                        set_halign: gtk::Align::Center,
-                                        #[watch]
-                                        set_nerd_icon: model.bluetooth.status.icon.clone(),
-                                    },
-
-                                    add_overlay = &gtk::Label {
-                                        add_css_class: "bt-count",
-                                        #[watch]
-                                        set_visible: model.bluetooth.status.connected_count > 0,
-                                        #[watch]
-                                        set_label: bluetooth::status_count(&model.bluetooth.status).as_str(),
-                                    }
-                                }
-                            }
-                        },
+                        #[local_ref]
+                        bluetooth_indicator -> gtk::Box {},
 
                         gtk::Box {
                             set_css_classes: &bar_item::classes(&[
@@ -741,44 +527,7 @@ impl SimpleAsyncComponent for MainBar {
                         },
 
                         #[local_ref]
-                        ethernet_item -> gtk::Box {
-                            #[watch]
-                            set_visible: model.network.ethernet.visible,
-                            #[watch]
-                            set_tooltip_text: Some(model.network.ethernet.tooltip.as_str()),
-
-                            gtk::Image {
-                                set_css_classes: &[
-                                    bar_item::ICON_CLASS,
-                                    "network-icon",
-                                    "ethernet-icon",
-                                ],
-                                set_halign: gtk::Align::Center,
-                                set_hexpand: true,
-                                #[watch]
-                                set_icon_name: Some(model.network.ethernet.icon.as_str()),
-                            }
-                        },
-
-                        #[local_ref]
-                        wifi_item -> gtk::Box {
-                            #[watch]
-                            set_visible: model.network.wifi.visible,
-                            #[watch]
-                            set_tooltip_text: Some(model.network.wifi.tooltip.as_str()),
-
-                            gtk::Image {
-                                set_css_classes: &[
-                                    bar_item::ICON_CLASS,
-                                    "network-icon",
-                                    "wifi-icon",
-                                ],
-                                set_halign: gtk::Align::Center,
-                                set_hexpand: true,
-                                #[watch]
-                                set_icon_name: Some(model.network.wifi.icon.as_str()),
-                            }
-                        },
+                        network_indicators -> gtk::Box {},
 
                         #[local_ref]
                         battery_item -> gtk::Box {
@@ -837,10 +586,12 @@ impl SimpleAsyncComponent for MainBar {
                                     set_orientation: gtk::Orientation::Vertical,
                                     set_spacing: 8,
 
-                                    #[bind_list(source_error_items, row = SourceErrorRow)]
-                                    source_error_items -> gtk::Box {
+                                    #[name = "source_error_list"]
+                                    gtk::Box {
                                         set_orientation: gtk::Orientation::Vertical,
                                         set_spacing: 8,
+                                        #[track(model.changed(sources::Field::SourceErrorItems))]
+                                        set_component_list: ComponentListUpdate::<SourceErrorRow>::new(&model.source_error_items),
                                     }
                                 }
                             }
@@ -963,6 +714,10 @@ impl SimpleAsyncComponent for MainBar {
             osd,
             request_server,
             workspace_bar,
+            None,
+            None,
+            None,
+            None,
             child_bars,
             monitor_list,
             false,
@@ -970,42 +725,44 @@ impl SimpleAsyncComponent for MainBar {
             output_name.clone(),
             shell_core::source::StateSignal::new(output_name),
             root.downgrade(),
-            None,
         );
         let system_stats_item = bar_item::container(&["system-stats-widget"]);
         let disk_stats_item = bar_item::container(&["disk-stats-widget"]);
-        let ethernet_item =
-            bar_item::container(&[bar_item::SQUARE_CLASS, "network-item", "ethernet-item"]);
-        let wifi_item = bar_item::container(&[bar_item::SQUARE_CLASS, "network-item", "wifi-item"]);
         let battery_item = bar_item::container(&[bar_item::SQUARE_CLASS, "battery-item"]);
 
-        let widgets = view_output!();
-        widgets
-            .goal_slot
-            .set_measure_overlay(&widgets.goal_button, false);
+        let selected_project_item_builder = SelectedProjectItem::builder();
+        let selected_project_item_root = selected_project_item_builder.root.clone();
+        let selected_project_item = selected_project_item_builder
+            .launch(model.output_scope.clone())
+            .forward(sender.input_sender(), |message| match message {
+                SelectedProjectItemOutput::OpenWorkspaceSelector => {
+                    MainBarInput::OpenWorkspaceSelector
+                }
+                SelectedProjectItemOutput::CopyBranch(branch) => MainBarInput::CopyBranch(branch),
+            });
+        model._selected_project_item = Some(selected_project_item);
 
-        let initializer =
-            selected_project::ProjectInitializer::new(&widgets.workspace_title_button);
-        model._project_initializer = Some(initializer);
-        let input_sender = sender.input_sender().clone();
-        widgets.workspace_title_button.connect_clicked(move |_| {
-            input_sender.emit(MainBarInput::OpenWorkspaceSelector);
-        });
-        let input_sender = sender.input_sender().clone();
-        widgets.goal_button.connect_clicked(move |_| {
-            input_sender.emit(MainBarInput::OpenWorkspace);
-        });
-        let input_sender = sender.input_sender().clone();
-        widgets.branch_copy_button.connect_clicked(move |_| {
-            input_sender.emit(MainBarInput::CopyBranch);
-        });
+        let goal_indicator_builder = GoalIndicator::builder();
+        let goal_indicator_root = goal_indicator_builder.root.clone();
+        let goal_indicator = goal_indicator_builder
+            .launch(model.output_scope.clone())
+            .forward(sender.input_sender(), |message| match message {
+                GoalIndicatorOutput::OpenRemarked => MainBarInput::OpenRemarked,
+            });
+        model._goal_indicator = Some(goal_indicator);
+
+        let bluetooth_indicator_builder = BluetoothIndicator::builder();
+        let bluetooth_indicator = bluetooth_indicator_builder.root.clone();
+        model._bluetooth_indicator = Some(bluetooth_indicator_builder.launch(()).detach());
+
+        let network_indicators_builder = NetworkIndicators::builder();
+        let network_indicators = network_indicators_builder.root.clone();
+        model._network_indicators = Some(network_indicators_builder.launch(()).detach());
+
+        let widgets = view_output!();
         let input_sender = sender.input_sender().clone();
         widgets.clock_button.connect_clicked(move |_| {
             input_sender.emit(MainBarInput::ToggleNotificationCenter);
-        });
-        let input_sender = sender.input_sender().clone();
-        widgets.bluetooth_power_button.connect_clicked(move |_| {
-            input_sender.emit(MainBarInput::ToggleBluetooth);
         });
         let input_sender = sender.input_sender().clone();
         widgets.power_profile_button.connect_clicked(move |_| {
@@ -1025,13 +782,17 @@ impl SimpleAsyncComponent for MainBar {
                 self.maybe_show_audio_osd(previous_audio);
                 self.maybe_show_brightness_osd(previous_brightness);
             }
-            MainBarInput::ToggleBluetooth => bluetooth::toggle_power(&self.bluetooth.status),
             MainBarInput::ToggleMedia => self.mpris_action(request::ToggleAction::Toggle, false),
             MainBarInput::CyclePowerProfile => {
                 power_profile::cycle_power_profile(&self.power_profile.profile)
             }
             MainBarInput::MonitorsChanged => self.reconcile_secondary_bars(),
-            MainBarInput::OpenWorkspace => {
+            MainBarInput::OpenProjectPicker => {
+                if let Some(indicator) = &self._selected_project_item {
+                    indicator.emit(SelectedProjectItemInput::OpenProjectPicker);
+                }
+            }
+            MainBarInput::OpenRemarked => {
                 let project = self
                     .selected_project
                     .project
@@ -1050,16 +811,7 @@ impl SimpleAsyncComponent for MainBar {
                 self.remarked_action(request::ToggleAction::Set(true))
             }
             MainBarInput::ToggleNotificationCenter => request_notification_center_toggle(),
-            MainBarInput::CopyBranch => {
-                if let Some(branch) = selected_project::branch_for_clipboard(
-                    self.selected_project
-                        .project
-                        .as_ref()
-                        .and_then(|project| project.branch_full.as_deref()),
-                ) {
-                    copy_branch_to_clipboard(branch.to_owned());
-                }
-            }
+            MainBarInput::CopyBranch(branch) => copy_branch_to_clipboard(branch),
             MainBarInput::Request(request) => self.handle_request(request),
         }
     }
@@ -1180,13 +932,13 @@ impl MainBar {
 fn main_bar_input_name(msg: &MainBarInput) -> &'static str {
     match msg {
         MainBarInput::Source(_) => "source",
-        MainBarInput::ToggleBluetooth => "toggle-bluetooth",
         MainBarInput::ToggleMedia => "toggle-media",
         MainBarInput::CyclePowerProfile => "cycle-power-profile",
         MainBarInput::ToggleNotificationCenter => "toggle-notification-center",
-        MainBarInput::CopyBranch => "copy-branch",
+        MainBarInput::CopyBranch(_) => "copy-branch",
         MainBarInput::MonitorsChanged => "monitors_changed",
-        MainBarInput::OpenWorkspace => "open-workspace",
+        MainBarInput::OpenProjectPicker => "open-project-picker",
+        MainBarInput::OpenRemarked => "open-remarked",
         MainBarInput::OpenWorkspaceSelector => "open-workspace-selector",
         MainBarInput::WorkspaceProject(_) => "workspace-project",
         MainBarInput::Request(_) => "request",
@@ -1197,8 +949,8 @@ impl MainBar {
     fn handle_request(&mut self, request: request::PendingRequest) {
         let response = match request.request {
             request::ShellRequest::ProjectInit => {
-                if let Some(initializer) = &self._project_initializer {
-                    initializer.open_focused();
+                if let Some(indicator) = &self._selected_project_item {
+                    indicator.emit(SelectedProjectItemInput::OpenProjectPicker);
                     request::RequestResponse::Ok
                 } else {
                     request::RequestResponse::Error("Project picker is unavailable".to_owned())

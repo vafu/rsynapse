@@ -1,9 +1,8 @@
 use super::*;
 
 // One GTK-thread test, without presenting a window or touching live surfaces.
-#[test]
+#[gtk::test]
 fn layout_reveal_and_lifetime() {
-    gtk::init().expect("GTK display required for button-group integration test");
     let group = ButtonGroup::default();
     let owner = gtk::Box::default();
     let content = gtk::Box::default();

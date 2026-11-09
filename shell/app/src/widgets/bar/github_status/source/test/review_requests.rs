@@ -23,18 +23,15 @@ fn incoming_reviews_are_distinct_and_exclusive_even_when_author_side_is_blocked(
             if category == Category::InitialReview {
                 assert_eq!(bucket.count(), "1");
                 assert_eq!(bucket.unseen_count(), 1);
-                assert_eq!(bucket.rows[0].revision, item.revision);
                 assert_eq!(bucket.rows[0].url, item.pr.url);
-                assert!(bucket.rows[0].detail.contains("Needs your initial review"));
-                assert!(
-                    bucket.rows[0]
-                        .detail
-                        .contains(if status == PrStatus::MergeFailed {
-                            "Merge pipeline failed"
-                        } else {
-                            "CI failed"
-                        })
-                );
+                let row = row_view(category, Some(item.clone()));
+                assert_eq!(row.revision, item.revision);
+                assert!(row.detail.contains("Needs your initial review"));
+                assert!(row.detail.contains(if status == PrStatus::MergeFailed {
+                    "Merge pipeline failed"
+                } else {
+                    "CI failed"
+                }));
             } else {
                 assert_eq!(bucket.count(), "0", "{status:?} duplicated in {category:?}");
             }
@@ -101,7 +98,10 @@ fn viewer_workflow_moves_between_initial_waiting_and_rereview_not_seen_state() {
         assert_eq!(visible, expected.into_iter().collect::<Vec<_>>());
         if let Some(category) = expected {
             let bucket = view(category, Some(vec![item.clone()]));
-            assert_eq!(bucket.rows[0].revision, item.revision);
+            assert_eq!(
+                row_view(category, Some(item.clone())).revision,
+                item.revision
+            );
             assert_eq!(bucket.unseen_count(), 0);
         }
     }

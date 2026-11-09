@@ -1,19 +1,43 @@
 use relm4::prelude::*;
-use shell_core::gtk::{self, prelude::*};
+use shell_core::{
+    gtk::{self, prelude::*},
+    source::{github, rx::Observable as _},
+};
 
 use super::super::bar_item;
-use super::{actions, source::PrEntry};
+use super::{
+    actions,
+    category::Category,
+    source::{self, PrEntry, PrRowView},
+};
 
 #[derive(Debug)]
 pub(super) enum Input {
+    Source(Box<pull_request_row_sources::Msg>),
     Open,
     MarkSeen,
 }
 
-pub(super) struct PullRequestRow {
-    entry: PrEntry,
+impl From<pull_request_row_sources::Msg> for Input {
+    fn from(message: pull_request_row_sources::Msg) -> Self {
+        Self::Source(Box::new(message))
+    }
 }
 
+#[shell_macros::model(module = pull_request_row_sources)]
+pub(super) struct PullRequestRow {
+    entry: PrEntry,
+
+    #[source({
+        let category = entry.category;
+        github::activity_entry(entry.url.clone())
+            .map(move |activity| source::row_view(category, activity))
+            .box_it()
+    })]
+    view: PrRowView,
+}
+
+#[shell_macros::component(module = pull_request_row_sources, model = PullRequestRow)]
 #[relm4::component(pub(crate))]
 impl SimpleComponent for PullRequestRow {
     type Init = PrEntry;
@@ -25,7 +49,8 @@ impl SimpleComponent for PullRequestRow {
         gtk::Button {
             set_css_classes: &["flat", "github-pr-row"],
             set_hexpand: true,
-            set_tooltip_text: Some(format!("{}\n{}\nLeft-click to open · Right-click to mark seen", model.entry.title, model.entry.url).as_str()),
+            #[watch]
+            set_tooltip_text: Some(model.view.tooltip(&model.entry.url).as_str()),
             connect_clicked => Input::Open,
 
             #[wrap(Some)]
@@ -36,7 +61,8 @@ impl SimpleComponent for PullRequestRow {
                     set_orientation: gtk::Orientation::Horizontal,
                     set_spacing: 8,
                     gtk::Label {
-                        set_label: &model.entry.title,
+                        #[watch]
+                        set_label: &model.view.title,
                         set_xalign: 0.0,
                         set_wrap: true,
                         set_wrap_mode: gtk::pango::WrapMode::WordChar,
@@ -45,12 +71,14 @@ impl SimpleComponent for PullRequestRow {
                     },
                     #[local_ref]
                     unseen_badge -> gtk::Box {
-                        set_visible: model.entry.unseen,
+                        #[watch]
+                        set_visible: model.view.unseen,
                         set_valign: gtk::Align::Center,
                     },
                 },
                 gtk::Label {
-                    set_label: &model.entry.detail,
+                    #[watch]
+                    set_label: &model.view.detail,
                     set_xalign: 0.0,
                     set_wrap: true,
                     set_natural_wrap_mode: gtk::NaturalWrapMode::None,
@@ -65,7 +93,7 @@ impl SimpleComponent for PullRequestRow {
         root: Self::Root,
         sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let model = PullRequestRow { entry };
+        let model = PullRequestRow::new(entry);
         let unseen_badge = bar_item::unseen_badge();
         let widgets = view_output!();
         let secondary_click = gtk::GestureClick::new();
@@ -74,23 +102,35 @@ impl SimpleComponent for PullRequestRow {
         secondary_click.connect_pressed(|gesture, _, _, _| {
             let _ = gesture.set_state(gtk::EventSequenceState::Claimed);
         });
+        let sender_for_seen = sender.clone();
         secondary_click.connect_released(move |_, _, _, _| {
-            sender.input(Input::MarkSeen);
+            sender_for_seen.input(Input::MarkSeen);
         });
         root.add_controller(secondary_click);
         ComponentParts { model, widgets }
     }
 
     fn update(&mut self, input: Self::Input, _sender: ComponentSender<Self>) {
-        let entry = self.entry.clone();
-        relm4::spawn(async move {
-            let result = match input {
-                Input::Open => actions::open_pr(entry).await,
-                Input::MarkSeen => actions::mark_seen(entry).await,
-            };
-            if let Err(error) = result {
-                eprintln!("[github-status] {error}");
+        match input {
+            Input::Source(message) => PullRequestRow::update(self, *message),
+            Input::Open => {
+                let url = self.entry.url.clone();
+                let revision = self.view.revision.clone();
+                relm4::spawn(async move {
+                    if let Err(error) = actions::open_pr(url, revision).await {
+                        eprintln!("[github-status] {error}");
+                    }
+                });
             }
-        });
+            Input::MarkSeen => {
+                let url = self.entry.url.clone();
+                let revision = self.view.revision.clone();
+                relm4::spawn(async move {
+                    if let Err(error) = actions::mark_seen(url, revision).await {
+                        eprintln!("[github-status] {error}");
+                    }
+                });
+            }
+        }
     }
 }

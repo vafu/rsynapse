@@ -5,18 +5,13 @@ use shell_core::{
     source::{Observable, rx::Observable as _},
 };
 
-use super::bzbus;
+use super::bzbus::{self, BzBusView};
 use crate::widgets::nerd_icon::{NerdIcon, NerdIconLabelExt};
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) enum ContextItem {
-    Build(bzbus::BzBusView),
-}
 
 #[shell_macros::model(module = context_zone_sources)]
 pub(super) struct ContextZone {
     #[source(context_items())]
-    items: Vec<ContextItem>,
+    items: Vec<ContextItemInit>,
 }
 
 #[shell_macros::component(
@@ -69,41 +64,65 @@ impl SimpleComponent for ContextZone {
     }
 }
 
-#[derive(Debug)]
-pub(super) struct ContextZoneItem {
-    item: ContextItem,
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct ContextItemInit {
+    id: String,
 }
 
+impl From<String> for ContextItemInit {
+    fn from(id: String) -> Self {
+        Self { id }
+    }
+}
+
+#[derive(Debug)]
+#[shell_macros::model(module = context_zone_item_sources)]
+pub(super) struct ContextZoneItem {
+    id: String,
+
+    #[source(build_view(id.clone()))]
+    build: Option<BzBusView>,
+}
+
+#[shell_macros::component(
+    module = context_zone_item_sources,
+    model = ContextZoneItem
+)]
 #[relm4::component(pub(crate))]
 impl SimpleComponent for ContextZoneItem {
-    type Init = ContextItem;
-    type Input = ();
+    type Init = ContextItemInit;
+    type Input = context_zone_item_sources::Msg;
     type Output = ();
 
     view! {
         #[root]
         gtk::Revealer {
-            set_reveal_child: true,
+            #[watch]
+            set_reveal_child: model.build.is_some(),
             set_transition_type: gtk::RevealerTransitionType::FadeSlideDown,
             set_transition_duration: 140,
             set_halign: gtk::Align::Center,
             set_valign: gtk::Align::Center,
 
             gtk::Overlay {
-                set_css_classes: &item_classes(&model.item),
+                #[watch]
+                set_css_classes: &item_classes(&model.build),
                 set_halign: gtk::Align::Center,
                 set_valign: gtk::Align::Center,
-                set_tooltip_text: Some(item_tooltip(&model.item).as_str()),
+                #[watch]
+                set_tooltip_text: item_tooltip(&model.build).as_deref(),
 
                 gtk::Label {
                     set_css_classes: &["bar-indicator-icon", "nerdicon"],
                     set_halign: gtk::Align::Center,
                     set_valign: gtk::Align::Center,
-                    set_nerd_icon: item_icon(&model.item),
+                    #[watch]
+                    set_nerd_icon: item_icon(&model.build),
                 },
 
                 add_overlay = &gtk::DrawingArea {
-                    set_visible: item_progress_visible(&model.item),
+                    #[watch]
+                    set_visible: item_progress_visible(&model.build),
                     set_css_classes: bzbus::progress_track_classes(),
                     set_halign: gtk::Align::Fill,
                     set_valign: gtk::Align::Fill,
@@ -114,14 +133,17 @@ impl SimpleComponent for ContextZoneItem {
                 },
 
                 add_overlay = &gtk::DrawingArea {
-                    set_visible: item_progress_visible(&model.item),
-                    set_css_classes: &item_progress_level_classes(&model.item),
+                    #[watch]
+                    set_visible: item_progress_visible(&model.build),
+                    #[watch]
+                    set_css_classes: &item_progress_level_classes(&model.build),
                     set_halign: gtk::Align::Fill,
                     set_valign: gtk::Align::Fill,
                     set_hexpand: true,
                     set_vexpand: true,
                     set_can_target: false,
-                    set_draw_func: bzbus::progress_level_draw_func(item_progress_percent(&model.item)),
+                    #[watch]
+                    set_draw_func: bzbus::progress_level_draw_func(item_progress_percent(&model.build)),
                 }
             }
         }
@@ -132,34 +154,41 @@ impl SimpleComponent for ContextZoneItem {
         root: Self::Root,
         _sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
-        let model = ContextZoneItem { item: init };
+        let model = ContextZoneItem::new(init.id);
         let widgets = view_output!();
         ComponentParts { model, widgets }
     }
 }
 
-fn context_items() -> Observable<Vec<ContextItem>> {
-    bzbus::ongoing_builds()
-        .map(|builds| builds.into_iter().map(ContextItem::Build).collect())
+fn context_items() -> Observable<Vec<ContextItemInit>> {
+    bzbus::ongoing_build_ids()
+        .map(context_items_from_ids)
         .distinct_until_changed()
         .box_it()
 }
 
-fn item_classes(item: &ContextItem) -> Vec<&'static str> {
-    let mut classes = vec!["bar-indicator", "context-zone-item"];
-    match item {
-        ContextItem::Build(build) => {
-            classes.push("context-zone-build");
-            if build.progress_visible {
-                classes.push("build-progress");
-            }
-            classes.extend(build_state_classes(build));
-        }
+fn context_items_from_ids(ids: Vec<String>) -> Vec<ContextItemInit> {
+    ids.into_iter().map(ContextItemInit::from).collect()
+}
+
+fn build_view(id: String) -> Observable<Option<BzBusView>> {
+    bzbus::build_view(id)
+}
+
+fn item_classes(build: &Option<BzBusView>) -> Vec<&'static str> {
+    let mut classes = vec!["bar-indicator", "context-zone-item", "context-zone-build"];
+    let Some(build) = build else {
+        classes.push("offline");
+        return classes;
+    };
+    if build.progress_visible {
+        classes.push("build-progress");
     }
+    classes.extend(build_state_classes(build));
     classes
 }
 
-fn build_state_classes(build: &bzbus::BzBusView) -> impl Iterator<Item = &'static str> + '_ {
+fn build_state_classes(build: &BzBusView) -> impl Iterator<Item = &'static str> + '_ {
     build.classes.iter().copied().filter(|class| {
         matches!(
             *class,
@@ -168,32 +197,43 @@ fn build_state_classes(build: &bzbus::BzBusView) -> impl Iterator<Item = &'stati
     })
 }
 
-fn item_tooltip(item: &ContextItem) -> String {
-    match item {
-        ContextItem::Build(build) => format!("Build\n{}", build.tooltip),
-    }
+fn item_tooltip(build: &Option<BzBusView>) -> Option<String> {
+    build
+        .as_ref()
+        .map(|build| format!("Build\n{}", build.tooltip))
 }
 
-fn item_icon(item: &ContextItem) -> NerdIcon {
-    match item {
-        ContextItem::Build(build) => build.icon.clone(),
-    }
+fn item_icon(build: &Option<BzBusView>) -> NerdIcon {
+    build
+        .as_ref()
+        .map(|build| build.icon.clone())
+        .unwrap_or_else(|| NerdIcon::new(crate::widgets::nerd_icon::md::MD_CLOUD_OFF_OUTLINE))
 }
 
-fn item_progress_visible(item: &ContextItem) -> bool {
-    match item {
-        ContextItem::Build(build) => build.progress_visible,
-    }
+fn item_progress_visible(build: &Option<BzBusView>) -> bool {
+    build.as_ref().is_some_and(|build| build.progress_visible)
 }
 
-fn item_progress_percent(item: &ContextItem) -> u8 {
-    match item {
-        ContextItem::Build(build) => build.progress_percent,
-    }
+fn item_progress_percent(build: &Option<BzBusView>) -> u8 {
+    build.as_ref().map_or(0, |build| build.progress_percent)
 }
 
-fn item_progress_level_classes(item: &ContextItem) -> Vec<&'static str> {
-    match item {
-        ContextItem::Build(build) => build.progress_level_classes.clone(),
+fn item_progress_level_classes(build: &Option<BzBusView>) -> Vec<&'static str> {
+    build
+        .as_ref()
+        .map(|build| build.progress_level_classes.clone())
+        .unwrap_or_else(|| vec!["level", "offline"])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn context_item_init_equality_ignores_build_view_changes() {
+        let running = context_items_from_ids(vec!["invocation-1".to_owned()]);
+        let later = context_items_from_ids(vec!["invocation-1".to_owned()]);
+
+        assert_eq!(running, later);
     }
 }

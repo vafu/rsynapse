@@ -7,6 +7,7 @@ use rxrust::prelude::{
 };
 
 pub mod backlight;
+pub mod bzbus;
 pub mod dbus;
 pub mod github;
 mod keyed_list;
