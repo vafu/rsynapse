@@ -573,11 +573,20 @@ where
             loop {
                 match state.phase {
                     PropertyPhase::Connect => {
+                        tracing::debug!(
+                            source = %state.descriptor.key(),
+                            "connecting property source"
+                        );
                         match properties_proxy(&state.descriptor.object).await {
                             Ok(proxy) => {
                                 match receive_properties_changed(&proxy).await {
                                     Ok(stream) => state.stream = Some(stream),
                                     Err(error) => {
+                                        tracing::warn!(
+                                            source = %state.descriptor.key(),
+                                            %error,
+                                            "failed to subscribe to PropertiesChanged"
+                                        );
                                         if retry_after_service_return(
                                             state.descriptor.object.bus,
                                             &state.descriptor.object.destination.clone(),
@@ -597,6 +606,11 @@ where
                                 state.phase = PropertyPhase::InitialRead;
                             }
                             Err(error) => {
+                                tracing::warn!(
+                                    source = %state.descriptor.key(),
+                                    %error,
+                                    "failed to connect property source"
+                                );
                                 if retry_after_service_return(
                                     state.descriptor.object.bus,
                                     &state.descriptor.object.destination.clone(),
@@ -643,6 +657,10 @@ where
                             .next()
                             .await
                         else {
+                            tracing::debug!(
+                                source = %state.descriptor.key(),
+                                "property signal stream ended"
+                            );
                             if retry_after_service_return(
                                 state.descriptor.object.bus,
                                 &state.descriptor.object.destination.clone(),
@@ -663,6 +681,11 @@ where
                             ));
                         };
 
+                        tracing::trace!(
+                            source = %state.descriptor.key(),
+                            "received PropertiesChanged"
+                        );
+
                         let result =
                             property_changed_value::<T>(&state.descriptor, state.proxy(), update)
                                 .await;
@@ -670,6 +693,11 @@ where
                             PropertyChange::Emit(value) => return Some((value, state)),
                             PropertyChange::Ignore => continue,
                             PropertyChange::Error(error) => {
+                                tracing::warn!(
+                                    source = %state.descriptor.key(),
+                                    %error,
+                                    "failed to decode property change"
+                                );
                                 // Message-level failure: record it for the
                                 // error outlet and wait for the next signal.
                                 // Later signals still arrive on their own
@@ -996,6 +1024,10 @@ where
                             .next()
                             .await
                         else {
+                            tracing::debug!(
+                                source = %state.descriptor.key(),
+                                "ObjectManager signal stream ended"
+                            );
                             if retry_after_service_return(
                                 state.descriptor.object.bus,
                                 &state.descriptor.object.destination.clone(),
@@ -1451,6 +1483,48 @@ fn apply_object_manager_signal(
                 }
             }
         }
+        "PropertiesChanged" => {
+            let Some(path) = message.header().path().map(ToString::to_string) else {
+                return ObjectManagerChange::Ignore;
+            };
+            let raw_path = path.clone();
+            let Ok(path) = OwnedObjectPath::try_from(path) else {
+                return ObjectManagerChange::Error(format!(
+                    "decode PropertiesChanged object path failed: {raw_path}"
+                ));
+            };
+            let body = message
+                .body()
+                .deserialize::<(OwnedInterfaceName, HashMap<String, OwnedValue>, Vec<String>)>();
+            match body {
+                Ok((interface, changed, invalidated)) => {
+                    let Some(interfaces) = objects.get_mut(&path) else {
+                        return ObjectManagerChange::Ignore;
+                    };
+                    let Some(properties) = interfaces.get_mut(&interface) else {
+                        return ObjectManagerChange::Ignore;
+                    };
+                    if changed.is_empty() && invalidated.is_empty() {
+                        return ObjectManagerChange::Ignore;
+                    }
+                    let before = properties.clone();
+                    for (name, value) in changed {
+                        properties.insert(name, Arc::new(value));
+                    }
+                    for name in invalidated {
+                        properties.remove(&name);
+                    }
+                    if *properties == before {
+                        ObjectManagerChange::Ignore
+                    } else {
+                        ObjectManagerChange::Changed
+                    }
+                }
+                Err(error) => {
+                    ObjectManagerChange::Error(format_dbus_error("decode PropertiesChanged", error))
+                }
+            }
+        }
         _ => ObjectManagerChange::Ignore,
     }
 }
@@ -1762,6 +1836,79 @@ fn descriptor_error_path(key: &str) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn managed_objects_with_state(state: &str) -> ManagedObjects {
+        let path = parse_object_path("/org/example/session").unwrap();
+        let interface = parse_interface_name("org.example.Session").unwrap();
+        let properties = HashMap::from([
+            (
+                "WindowId".to_owned(),
+                Arc::new(OwnedValue::try_from(zbus::zvariant::Value::from("window-1")).unwrap()),
+            ),
+            (
+                "State".to_owned(),
+                Arc::new(OwnedValue::try_from(zbus::zvariant::Value::from(state)).unwrap()),
+            ),
+        ]);
+        HashMap::from([(path, HashMap::from([(interface, properties)]))])
+    }
+
+    fn properties_changed(path: &str, changed: HashMap<String, OwnedValue>) -> Message {
+        zbus::MessageBuilder::signal(
+            "/org/example",
+            "org.freedesktop.DBus.ObjectManager",
+            "PropertiesChanged",
+        )
+        .unwrap()
+        .path(path)
+        .unwrap()
+        .build(&(
+            OwnedInterfaceName::try_from("org.example.Session").unwrap(),
+            changed,
+            Vec::<String>::new(),
+        ))
+        .unwrap()
+    }
+
+    #[test]
+    fn object_manager_snapshot_applies_property_changes() {
+        let mut objects = managed_objects_with_state("thinking");
+        let message = properties_changed(
+            "/org/example/session",
+            HashMap::from([(
+                "State".to_owned(),
+                OwnedValue::try_from(zbus::zvariant::Value::from("idle")).unwrap(),
+            )]),
+        );
+
+        assert!(matches!(
+            apply_object_manager_signal(&mut objects, message),
+            ObjectManagerChange::Changed
+        ));
+        let path = parse_object_path("/org/example/session").unwrap();
+        let interface = parse_interface_name("org.example.Session").unwrap();
+        assert_eq!(
+            String::try_from((*objects[&path][&interface]["State"]).try_clone().unwrap()).unwrap(),
+            "idle"
+        );
+    }
+
+    #[test]
+    fn object_manager_snapshot_ignores_unknown_properties_changed() {
+        let mut objects = managed_objects_with_state("thinking");
+        let message = properties_changed(
+            "/org/example/missing",
+            HashMap::from([(
+                "State".to_owned(),
+                OwnedValue::try_from(zbus::zvariant::Value::from("idle")).unwrap(),
+            )]),
+        );
+
+        assert!(matches!(
+            apply_object_manager_signal(&mut objects, message),
+            ObjectManagerChange::Ignore
+        ));
+    }
 
     #[test]
     fn object_descriptor_rejects_invalid_parts() {
