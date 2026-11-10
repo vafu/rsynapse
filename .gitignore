@@ -15,4 +15,4 @@ result
 /output/
 __pycache__/
 *.py[cod]
-/observability/grafana/generated/
+/misc/observability/grafana/generated/

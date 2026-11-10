@@ -1,0 +1,32 @@
+[package]
+name = "data-sources"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+async-channel = "2.5.0"
+futures-util = "0.3.32"
+libc = "0.2"
+locus.workspace = true
+notify = "6.1.1"
+proj-model.workspace = true
+rxrust.workspace = true
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+shell-reactive.workspace = true
+shell-rx-macros.workspace = true
+steward-api.workspace = true
+tokio = { version = "1.52.3", features = ["io-util", "macros", "process", "rt", "rt-multi-thread", "sync", "net", "time"] }
+tracing.workspace = true
+wayland-client = "0.31"
+wayland-protocols = { version = "0.32", features = ["client", "staging"] }
+workspace-dbus-api.workspace = true
+workspace-policy.workspace = true
+zbus = { version = "4.4.0", default-features = false, features = ["tokio"] }
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1.52.3", features = ["time"] }

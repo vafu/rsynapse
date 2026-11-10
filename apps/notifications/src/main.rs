@@ -1,0 +1,32 @@
+use std::ffi::OsStr;
+
+use app_kit::{init_tracing, launch::LaunchMode, request, rsynapse_app};
+use rsynapse_notifications::notifications::{NotificationsInit, NotificationsWindow};
+
+fn main() {
+    let mut args = std::env::args_os();
+    let binary = args.next().unwrap_or_default();
+    let command = args.next();
+    if command.as_deref() == Some(OsStr::new("request")) {
+        std::process::exit(request::run_cli(args));
+    }
+
+    let launch_mode = LaunchMode::from_arg(command.as_deref());
+
+    init_tracing();
+
+    launch_mode
+        .apply(
+            rsynapse_app(
+                "org.rsynapse.Notifications",
+                concat!(
+                    env!("CARGO_MANIFEST_DIR"),
+                    "/stylesheets/notifications-entry.scss"
+                ),
+            ),
+            binary.to_string_lossy().into_owned(),
+        )
+        .run_async::<NotificationsWindow>(NotificationsInit {
+            title: "Rsynapse Notifications",
+        });
+}

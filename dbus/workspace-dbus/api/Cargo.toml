@@ -1,0 +1,15 @@
+[package]
+name = "workspace-dbus-api"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Compositor-independent workspace and window D-Bus contract"
+publish = false
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+zbus = { version = "4.4.0", default-features = false, features = ["tokio"] }
+
+[dev-dependencies]
+futures-util = "0.3.32"
+tokio = { version = "1.52.3", features = ["rt-multi-thread", "sync", "time"] }

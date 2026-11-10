@@ -1,0 +1,17 @@
+[package]
+name = "rsynapse-window-tiles-example"
+version = "0.1.0"
+publish = false
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+gtk.workspace = true
+relm4.workspace = true
+shell-core.workspace = true
+shell-reactive.workspace = true
+data-sources.workspace = true
+shell-macros.workspace = true
+workspace-dbus-api = { path = "../../../dbus/workspace-dbus/api" }
+zbus = { version = "4.4.0", default-features = false, features = ["tokio"] }

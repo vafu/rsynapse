@@ -108,7 +108,7 @@ class NamingMigration(unittest.TestCase):
                 env.pop("CARGO_TARGET_DIR", None)
                 if shared:
                     env["CARGO_TARGET_DIR"] = str(root / "shared target")
-                for project, name in (("projd", "rsynapse-projd"), ("projd", "proj"), ("steward", "rsynapse-steward")):
+                for project, name in (("dbus/projd", "rsynapse-projd"), ("dbus/projd", "proj"), ("misc/steward", "rsynapse-steward")):
                     target = Path(env.get("CARGO_TARGET_DIR", repo / project / "target")) / "release"
                     target.mkdir(parents=True, exist_ok=True)
                     (target / name).write_text(f"built {name}\n")

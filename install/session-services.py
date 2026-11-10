@@ -68,7 +68,7 @@ def install(prefix, config, built=False, reload=True):
     if built:
         # Locus/workspace artifacts are installed by cargo install in local.sh.
         # Each project uses its normal Cargo target unless the caller shares one.
-        for project, name in (("projd", "rsynapse-projd"), ("projd", "proj"), ("steward", "rsynapse-steward")):
+        for project, name in (("dbus/projd", "rsynapse-projd"), ("dbus/projd", "proj"), ("misc/steward", "rsynapse-steward")):
             target = Path(os.environ.get("CARGO_TARGET_DIR", str(REPO / project / "target")))
             source = target / "release" / name
             if not source.is_file():

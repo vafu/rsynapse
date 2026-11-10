@@ -1,0 +1,11 @@
+[package]
+name = "steward-api"
+version = "0.1.0"
+edition = "2024"
+publish = false
+rust-version = "1.93"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+proj-model.workspace = true
+zbus = { version = "4.4", default-features = false, features = ["tokio"] }

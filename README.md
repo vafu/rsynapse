@@ -1,147 +1,71 @@
 # Rsynapse
 
-Rsynapse is a Rust-first desktop session workspace. It combines small D-Bus
-services with GTK4/Relm4 shell surfaces and launcher tooling.
-
-The active direction is:
+Rsynapse is a Rust-first desktop session stack: D-Bus services, reactive typed
+data adapters, and GTK4/Relm4 apps.
 
 ```text
-D-Bus services -> zbus async streams -> shell-core Observables -> Relm4 widgets
+D-Bus services -> data-sources Observables -> Relm4 widgets
 ```
 
-The repository is intentionally split into several focused projects rather
-than one top-level Cargo workspace.
+The repository is one root Cargo workspace.
 
-## Projects
+## Layout
 
-- `shell/`
-  The shell UI monorepo. It contains reusable GTK/Relm4 framework crates under
-  `shell/core`, the current combined shell app under `shell/app`, and the
-  launcher workspace under `shell/launcher`.
+- `apps/shell/` — main bar, OSD, workspace selector, and media overlay.
+- `apps/notifications/` — notification daemon and notification center.
+- `apps/launcher/` — launcher daemon, CLI, UI, and plugins.
+- `apps/shared/` — app-kit, data-sources, desktop-entry, and icon picker.
+- `apps/examples/` — small reactive GTK examples.
+- `core/reactive/` — Observable runtime, state signals, and list reconciliation.
+- `core/shell-core/` — generic Relm4/GTK integration.
+- `core/macros/`, `core/rx-macros/` — reactive UI and `dbus_model` macros.
+- `dbus/locus/` — session relation store and CLI.
+- `dbus/projd/` — project-management service, model, and `proj` CLI.
+- `dbus/workspace-dbus/` — compositor-neutral workspace projection.
+- `dbus/workspace-policy/` — shared workspace naming/visibility policy.
+- `misc/` — unsettled projects: steward, steward-api, dashboard-api,
+  observability.
+- `install/` — user-local installer, systemd units, and D-Bus activation.
 
-- `workspace-dbus/`
-  Compositor-neutral D-Bus projection of outputs, workspaces, windows and focus.
-  `api/` owns the independent `workspace-dbus-api` contract; `service/` implements
-  Niri and Umbriel backends with automatic session selection. Shell/steward
-  consume the API without compositor protocol dependencies.
+## Data Boundary
 
-- `locus/`
-  `locusd`, a small session D-Bus relation store for typed associations between
-  external objects, such as workspace -> project or window -> agent, and its
-  `locus` CLI. The public Rust crate is named `locus`.
+Apps observe services through `apps/shared/data-sources`. Shell widgets and
+launcher plugins must not use `zbus` directly or spawn service-data processes.
+App-owned D-Bus server implementations remain in their app.
 
-- `install/`
-  User-local install scripts, D-Bus activation templates, systemd user units,
-  and helper scripts.
-
-- `dashboard-api/`
-  A loopback HTTP/SSE and Grafana client adapter over projd and session
-  integration services. It has no domain database.
-
-- `projd/`
-  Pure project-management D-Bus service and persistent SQLite store, with the
-  `proj` CLI. Projects, optional Git checkouts and goals are reactive objects.
-  Each checkout/worktree is its own project, with a stored name, CWD, icon and labels.
-  Goals are persistent nested checklists with per-project active selection and
-  Markdown context notes, managed by the agent-facing `proj goal` CLI.
-
-- `shell/rnotes`
-  Task-and-notes CLI for agents and the user. It joins projd tasks with Remarked
-  notebooks: task/subtask management, task-attached note series in
-  `<project>/.notes/tasks/`, and frontmatter validation. Ships the `rnotes`
-  agent skill.
-
-- `steward/`
-  Single-binary shell-source listener/side-effect host for metrics, naming,
-  association policy and refresh triggers.
-
-- `observability/`
-  Shared Graphite/Grafana deployment using existing Carbon/Graphite APIs.
-
-## Boundaries
-
-- Keep reusable shell framework code in `shell/core`.
-- Keep concrete Rsynapse shell UI in `shell/app`, `shell/launcher`, or future
-  surface crates under `shell/`.
-- Keep compositor protocol projection in `workspace-dbus/service`; the public
-  contract belongs in `workspace-dbus/api`.
-- Keep cross-service relation storage in `locus`.
-- Keep project-management state and APIs in `projd`, not desktop integrations.
-- Keep service boundaries typed and D-Bus-first; do not rebuild filesystem IPC
-  for live shell state.
+`core/reactive` is service-agnostic; do not add service adapters there.
 
 ## Build And Test
 
-Each project can be checked independently:
-
 ```sh
-cargo test --manifest-path locus/Cargo.toml
-cargo test --manifest-path workspace-dbus/Cargo.toml --workspace
-cargo test --manifest-path shell/Cargo.toml --workspace
-cargo test --manifest-path shell/launcher/Cargo.toml --workspace
+cargo check --workspace
+cargo test --workspace
+scripts/check-data-access.sh
+scripts/check.sh all
 ```
 
-For repeated shell builds, use an external target directory to avoid polluting
-the workspace:
+For an external build cache:
 
 ```sh
-env CARGO_TARGET_DIR=/tmp/rsynapse-shell-target \
-  cargo test --manifest-path shell/Cargo.toml --workspace
+CARGO_TARGET_DIR=/tmp/rsynapse-target cargo test --workspace
 ```
 
-Builds use normal Cargo configuration, including any explicit `CARGO_HOME` and
-`CARGO_TARGET_DIR`. Without a target override, each Cargo workspace owns its
-`target/` directory.
+`nix develop` provides native GTK/libadwaita/gtk4-layer-shell dependencies.
 
-For Nix-provided Rust/GTK development dependencies (including GtkSourceView for
-the task-and-notes surface), use the root flake:
+## Runtime Services
 
-```sh
-nix develop
-cargo test --manifest-path locus/Cargo.toml
-```
-
-`nix develop .#native` supplies the same native GTK dependencies while retaining
-the caller's installed Rust toolchain.
-
-`flake.lock` pins the development environment. No build script scans the Nix
-store or overrides Cargo registries. Native builds can use system-provided
-dependencies instead (GTK 4.22+, libadwaita and gtk4-layer-shell for the shell).
-
-`.lspctl.toml` registers rust-analyzer and links all seven Cargo workspaces.
-Install rust-analyzer on `PATH`, validate with `lspctl config validate --workspace .`,
-and authorize the project declaration through lspctl's trust workflow before use.
-
-See [the repository review](docs/repository-review.md) for ownership and
-portability findings, applied cleanups and remaining module boundaries.
+- `org.rsynapse.Engine` from the launcher daemon.
+- `org.rsynapse.Workspace` from `rsynapse-workspace-dbus`.
+- `org.rsynapse.Locus` from `rsynapse-locusd`.
+- `org.rsynapse.Proj` from `rsynapse-projd`.
+- `org.rsynapse.Steward` from `rsynapse-steward`.
+- `rsynapse-shell` for the bar/OSD process.
+- `rsynapse-notifications` for notification popups and center.
 
 ## Local Install
-
-The local installer installs release binaries, launcher plugins, D-Bus
-activation files, systemd user units, and helper scripts into user-local paths:
 
 ```sh
 ./install/local.sh
 ```
 
-See `install/README.md` for the exact paths and override knobs.
-
-## Runtime Services
-
-The current session services and surfaces are:
-
-- `org.rsynapse.Engine` from the launcher daemon.
-- `org.rsynapse.Workspace` from `rsynapse-workspace-dbus` (`rsynapse-workspace-dbus.service`).
-- `org.rsynapse.Locus` from `rsynapse-locusd` (`rsynapse-locusd.service`).
-- `org.rsynapse.Proj` from `rsynapse-projd` (`rsynapse-projd.service`).
-- `org.rsynapse.Steward` from `rsynapse-steward` (`rsynapse-steward.service`).
-- `rsynapse-shell` for the main shell bar/OSD process.
-- `rsynapse-notifications` for notification popups and notification center.
-
-All D-Bus APIs are still internal and unstable.
-
-Daemon executables and systemd units consistently use `rsynapse-*`; public bus
-names use `org.rsynapse.*`. The installer retains `workspace-dbus`, `steward`,
-`locusd` and `projd` command aliases and the three former unit-name aliases for
-existing clients/scripts. `proj` and `locus` remain the short domain CLIs.
-The services retain independent responsibilities and API crates.
+See `install/README.md` for paths and overrides.

@@ -1,0 +1,66 @@
+[workspace]
+members = [
+    "apps/shell",
+    "apps/notifications",
+    "apps/launcher/rsynapse-daemon",
+    "apps/launcher/rsynapse-cli",
+    "apps/launcher/rsynapse-launcher-api",
+    "apps/launcher/rsynapse-plugin",
+    "apps/launcher/rsynapse-plugin-audio",
+    "apps/launcher/rsynapse-plugin-bluetooth",
+    "apps/launcher/rsynapse-plugin-calc",
+    "apps/launcher/rsynapse-plugin-commands",
+    "apps/launcher/rsynapse-plugin-launcher",
+    "apps/launcher/rsynapse-plugin-shell",
+    "apps/launcher/rsynapse-plugin-workspaces",
+    "apps/launcher/rsynapse-ui",
+    "apps/shared/app-kit",
+    "apps/shared/data-sources",
+    "apps/shared/desktop-entry",
+    "apps/shared/nerd-icon-picker",
+    "apps/examples/battery-status",
+    "apps/examples/volume-status",
+    "apps/examples/window-tiles",
+    "core/reactive",
+    "core/shell-core",
+    "core/macros",
+    "core/rx-macros",
+    "dbus/locus",
+    "dbus/projd",
+    "dbus/projd/model",
+    "dbus/workspace-dbus/api",
+    "dbus/workspace-dbus/service",
+    "dbus/workspace-dbus/terminal-id",
+    "dbus/workspace-policy",
+    "misc/steward",
+    "misc/steward-api",
+    "misc/dashboard-api",
+]
+resolver = "3"
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.93"
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+gtk = { package = "gtk4", version = "0.11.3", features = ["v4_22"] }
+gtk4-layer-shell = "0.8.0"
+relm4 = "0.11.0"
+rxrust = "1.0.0-rc.5"
+shell-core = { path = "core/shell-core" }
+shell-reactive = { path = "core/reactive" }
+app-kit = { path = "apps/shared/app-kit" }
+data-sources = { path = "apps/shared/data-sources" }
+shell-macros = { path = "core/macros" }
+shell-rx-macros = { path = "core/rx-macros" }
+nerd-icon-picker = { path = "apps/shared/nerd-icon-picker" }
+desktop-entry = { path = "apps/shared/desktop-entry" }
+workspace-policy = { path = "dbus/workspace-policy" }
+workspace-dbus-api = { path = "dbus/workspace-dbus/api" }
+proj-model = { package = "rsynapse-projd-model", path = "dbus/projd/model" }
+goal-model = { package = "rsynapse-projd-model", path = "dbus/projd/model" }
+locus = { path = "dbus/locus" }
+steward-api = { path = "misc/steward-api" }
+tracing = "0.1.44"
+zbus = { version = "4.4", default-features = false, features = ["tokio"] }

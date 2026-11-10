@@ -1,7 +1,7 @@
 """Exercise migration against private real services, including conflict safety."""
 import json,os,pathlib,subprocess,sys,tempfile,time
 ROOT=pathlib.Path(__file__).resolve().parents[2]
-BIN=pathlib.Path(os.environ.get("CARGO_TARGET_DIR",ROOT/"projd/target"))/"release"
+BIN=pathlib.Path(os.environ.get("CARGO_TARGET_DIR",ROOT/"dbus/projd/target"))/"release"
 PROJ=os.environ.get("PROJ_BIN",str(BIN/"proj"))
 PROJD=os.environ.get("PROJD_BIN",str(BIN/"rsynapse-projd"))
 if "--child" not in sys.argv:

@@ -1,0 +1,17 @@
+[package]
+name = "rsynapse-plugin-launcher"
+version = "0.1.0"
+publish = false
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["rlib"]
+
+[dependencies]
+rsynapse-plugin = { path = "../rsynapse-plugin" }
+xdg = "2.5"
+desktop-entry.workspace = true
+fuzzy-matcher = "0.3.7"
+notify = "6.1.1"

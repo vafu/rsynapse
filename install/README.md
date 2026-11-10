@@ -11,7 +11,7 @@ bash install/dashboard-api.sh
 It installs `rsynapse-dashboard-api`, enables its systemd user unit, builds the
 local Grafana panels, and recreates Grafana with those panels mounted. Goal records
 stay in projd and are managed with `proj goal` and the shell checklist. See
-`../dashboard-api/README.md` for the API and UI workflow.
+`../misc/dashboard-api/README.md` for the API and UI workflow.
 The same install builds and mounts the read-only goal metrics panel and provisions
 its timeline/effort/completion dashboard, preserving existing `metrics` volumes.
 
@@ -38,7 +38,6 @@ Installed binaries currently include:
 - `workspace-terminal-id` (terminal-specific window discovery over the neutral API)
 - `rsynapse-shell`
 - `rsynapse-notifications`
-- `rnotes` (project tasks and Remarked notes client for projd + `org.remarked.Service`)
 - `rsynapse-daemon`
 - `rsynapse-cli`
 - `rsynapse-ui`
@@ -50,14 +49,6 @@ Daemon binaries and their systemd units use matching `rsynapse-*` names; their
 public D-Bus names remain `org.rsynapse.*`. Short commands `workspace-dbus`,
 `steward`, `locusd`, and `projd` are installed as relative compatibility symlinks.
 The `proj` and `locus` command names remain the domain-facing CLIs.
-
-The installer also publishes the `rnotes` agent skill to
-`${CODEX_HOME:-~/.codex}/skills/rnotes/` and removes the retired
-`project-management` and `remarked-cli` skills (moved to a dated
-`~/.codex/skills-archive-*` directory), plus the
-`rnotes-session-context` hook helper. It registers that helper as a
-`SessionStart` hook and persists its per-handler trust hash through
-`install/bin/rnotes-hook-install.py`; re-run the installer if the helper changes.
 
 `install/session-services.py` owns daemon artifact/metadata installation and
 legacy-name migration. The full installer calls it after building the binaries.
@@ -222,7 +213,7 @@ rendered systemd unit uses the same executable with no arguments. Replace any
 older unit invoking `~/.cargo/bin/locusd --schema ...` during a coordinated
 deployment. Stop the current service owner and its writers before overwriting
 the old daemon executable named `locus` with the CLI. The installer does not
-restart `locusd` automatically. See `../locus/README.md` for neutral-directory
+restart `locusd` automatically. See `../dbus/locus/README.md` for neutral-directory
 build commands, snapshot migration, and the deployment order.
 
 After starting the new locusd and projd, run `python3 install/migrate-projd.py`

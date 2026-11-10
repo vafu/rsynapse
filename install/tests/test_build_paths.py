@@ -23,7 +23,7 @@ class BuildEnvironment(unittest.TestCase):
                 "'target': os.environ.get('CARGO_TARGET_DIR')}))\n"
             )
             cargo.chmod(0o755)
-            for project in ("steward", "projd", "dashboard-api"):
+            for project in ("misc/steward", "dbus/projd", "misc/dashboard-api"):
                 for overrides in ({}, {"CARGO_HOME": str(root / "custom cache"),
                                        "CARGO_TARGET_DIR": "relative target"}):
                     with self.subTest(project=project, overrides=overrides):

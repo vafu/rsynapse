@@ -41,19 +41,19 @@ install_templates() {
 }
 
 echo "Installing release binaries to $local_bin"
-cargo_install "$repo_root/locus"
-cargo_install "$repo_root/workspace-dbus/service"
-cargo_install "$repo_root/workspace-dbus/terminal-id"
-cargo_install "$repo_root/projd"
+cargo_install "$repo_root/dbus/locus"
+cargo_install "$repo_root/dbus/workspace-dbus/service"
+cargo_install "$repo_root/dbus/workspace-dbus/terminal-id"
+cargo_install "$repo_root/dbus/projd"
 install -d "$local_bin"
-cargo_install "$repo_root/shell/app"
-cargo_install "$repo_root/shell/launcher/rsynapse-daemon"
-cargo_install "$repo_root/shell/launcher/rsynapse-cli"
-cargo_install "$repo_root/shell/launcher/rsynapse-ui"
-cargo_install "$repo_root/shell/core/desktop-entry"
-cargo_install "$repo_root/shell/rnotes"
+cargo_install "$repo_root/apps/shell"
+cargo_install "$repo_root/apps/notifications"
+cargo_install "$repo_root/apps/launcher/rsynapse-daemon"
+cargo_install "$repo_root/apps/launcher/rsynapse-cli"
+cargo_install "$repo_root/apps/launcher/rsynapse-ui"
+cargo_install "$repo_root/apps/shared/desktop-entry"
 
-cargo_install "$repo_root/steward"
+cargo_install "$repo_root/misc/steward"
 
 echo "Installing helper scripts to $local_bin"
 install -d "$local_bin" "$script_dir"
@@ -69,29 +69,6 @@ install -m 0755 "$repo_root/scripts/sone-cli" "$local_bin/sone-cli"
 # no plugin .so files are installed.
 echo "Installing desktop entries to $applications_dir"
 install_templates "$repo_root/install/applications" "$applications_dir" ".in"
-
-echo "Installing agent skills to $codex_skills_dir"
-install -d "$codex_skills_dir"
-install -d "$codex_skills_dir/rnotes"
-install -m 0644 "$repo_root/shell/rnotes/skills/rnotes/SKILL.md" "$codex_skills_dir/rnotes/SKILL.md"
-install -d "$codex_skills_dir/rnotes/references"
-install -m 0644 "$repo_root/shell/rnotes/skills/rnotes/references/"*.md "$codex_skills_dir/rnotes/references/"
-for retired in project-management remarked-cli; do
-    if [[ -e "$codex_skills_dir/$retired" ]]; then
-        archive_dir="${codex_skills_dir%/skills}-skills-archive-$(date +%Y%m%d)"
-        install -d "$archive_dir"
-        echo "Archiving retired skill: $retired -> $archive_dir"
-        mv "$codex_skills_dir/$retired" "$archive_dir/$retired"
-    fi
-done
-
-install -m 0755 "$repo_root/shell/rnotes/scripts/session-context.sh" "$local_bin/rnotes-session-context"
-if command -v codex >/dev/null 2>&1; then
-    python3 "$repo_root/install/bin/rnotes-hook-install.py" || \
-        echo "warning: could not register the rnotes SessionStart hook; emitting context via developer_instructions only" >&2
-else
-    echo "codex not found; skipped rnotes SessionStart hook registration"
-fi
 
 if [[ $apply_policy -eq 1 ]]; then
     if command -v xdg-mime >/dev/null 2>&1; then

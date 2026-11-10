@@ -1,0 +1,222 @@
+use crate::widgets::nerd_icon::NerdIcon;
+
+use super::project::ProjectDetails;
+
+mod git;
+mod init;
+mod item;
+mod source;
+mod workspace;
+pub(super) use init::ProjectInitializer;
+pub(super) use item::{SelectedProjectItem, SelectedProjectItemInput, SelectedProjectItemOutput};
+pub(super) use source::{selected_project_context, selected_project_status};
+
+use data_sources::text::non_empty;
+use git::{GitStatus, summary as git_summary};
+
+/// Workspace-level view: always carries the workspace display name when
+/// known, plus project details only when the workspace has a project.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub(super) struct SelectedWorkspaceView {
+    pub(super) workspace_id: Option<String>,
+    pub(super) visible: bool,
+    pub(super) name: Option<String>,
+    pub(super) project: Option<ProjectView>,
+}
+
+/// Project-level view: title, branch, and git metadata for a linked project.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub(super) struct ProjectView {
+    pub(super) project_id: Option<String>,
+    pub(super) path: Option<String>,
+    pub(super) visible: bool,
+    pub(super) title: String,
+    pub(super) branch: Option<String>,
+    pub(super) branch_full: Option<String>,
+    pub(super) git: Option<GitStatus>,
+}
+
+fn project_view(project: ProjectDetails, git: Option<GitStatus>) -> ProjectView {
+    if !project.has_project {
+        return ProjectView::default();
+    }
+
+    let title = project
+        .name
+        .as_deref()
+        .and_then(non_empty)
+        .map(str::to_owned)
+        .unwrap_or_default();
+    let branch_full = optional_text(project.branch);
+    let branch = branch_full
+        .clone()
+        .filter(|branch| distinct_from(branch, &title));
+    // Association presence is independent of whether its title has loaded yet.
+    let visible = true;
+
+    ProjectView {
+        project_id: project.project_id,
+        path: project.path,
+        visible,
+        title,
+        branch,
+        branch_full,
+        git,
+    }
+}
+
+fn distinct_from(value: &str, other: &str) -> bool {
+    value.trim() != other.trim()
+}
+
+fn optional_text(value: Option<String>) -> Option<String> {
+    value.and_then(|value| {
+        let value = value.trim().to_owned();
+        (!value.is_empty()).then_some(value)
+    })
+}
+
+pub(super) fn visible(view: &SelectedWorkspaceView) -> bool {
+    view.visible
+}
+
+pub(super) fn icon_name(view: &SelectedWorkspaceView) -> &'static str {
+    if view.project.is_some() {
+        "folder-symbolic"
+    } else {
+        "folder-new-symbolic"
+    }
+}
+
+pub(super) fn title_label(view: &SelectedWorkspaceView) -> &str {
+    if let Some(project) = &view.project {
+        non_empty(&project.title).unwrap_or("project")
+    } else {
+        view.name.as_deref().and_then(non_empty).unwrap_or("empty")
+    }
+}
+
+pub(super) fn branch_visible(view: &SelectedWorkspaceView) -> bool {
+    view.project
+        .as_ref()
+        .and_then(|project| project.branch.as_deref())
+        .and_then(non_empty)
+        .is_some()
+}
+
+pub(super) fn branch_label(view: &SelectedWorkspaceView) -> &str {
+    view.project
+        .as_ref()
+        .and_then(|project| project.branch.as_deref())
+        .unwrap_or_default()
+}
+
+pub(super) fn branch_for_clipboard(branch: Option<&str>) -> Option<&str> {
+    branch.and_then(non_empty)
+}
+
+pub(super) fn first_separator_visible(view: &SelectedWorkspaceView) -> bool {
+    branch_visible(view)
+}
+
+pub(super) fn branch_icon() -> NerdIcon {
+    NerdIcon::new(crate::widgets::nerd_icon::cod::COD_GITHUB)
+}
+
+pub(super) fn tooltip(view: &SelectedWorkspaceView) -> String {
+    let mut lines = Vec::new();
+    if let Some(name) = view.name.as_deref().and_then(non_empty) {
+        lines.push(format!("workspace: {name}"));
+    }
+    if let Some(project) = view.project.as_ref() {
+        if let Some(title) = non_empty(project.title.as_str()) {
+            lines.push(format!("cwd: {title}"));
+        }
+        if let Some(branch) = project.branch.as_deref().and_then(non_empty) {
+            lines.push(format!("branch: {branch}"));
+        }
+        if let Some(git) = project.git.as_ref() {
+            if git.has_changes() || git.stashes > 0 {
+                lines.push(git_summary(git));
+            }
+        }
+    }
+    lines.join("\n")
+}
+
+pub(super) fn classes(view: &SelectedWorkspaceView) -> Vec<&'static str> {
+    let mut classes = vec!["bar-item", "selected-project"];
+    if let Some(git) = view
+        .project
+        .as_ref()
+        .and_then(|project| project.git.as_ref())
+    {
+        if git.staged > 0 || git.unstaged > 0 || git.untracked > 0 {
+            classes.push("git-dirty");
+        }
+        if git.merging || git.rebasing {
+            classes.push("git-merging");
+        }
+    }
+    classes
+}
+
+#[allow(dead_code)]
+pub(super) fn git_visible(view: &SelectedWorkspaceView) -> bool {
+    view.project
+        .as_ref()
+        .and_then(|project| project.git.as_ref())
+        .is_some_and(GitStatus::has_changes)
+}
+
+/// Shows a spinner while a project is known but its git metadata has not
+/// resolved yet. Project-less workspaces never spin: their git stays `None`
+/// by design, and the workspace name carries the widget.
+pub(super) fn git_loading(view: &SelectedWorkspaceView) -> bool {
+    view.project
+        .as_ref()
+        .is_some_and(|project| project.git.is_none())
+}
+
+/// One fixed slot of the git status cluster. Each slot renders a single
+/// icon widget: nerd glyphs and bar text never share a label because the
+/// icon font's vertical metrics differ.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(super) enum GitPart {
+    Dirty,
+    Untracked,
+    Ahead,
+    Behind,
+    Merging,
+    Rebasing,
+}
+
+pub(super) fn git_part_visible(view: &SelectedWorkspaceView, part: GitPart) -> bool {
+    view.project
+        .as_ref()
+        .and_then(|project| project.git.as_ref())
+        .is_some_and(|git| match part {
+            GitPart::Dirty => git.staged > 0 || git.unstaged > 0,
+            GitPart::Untracked => git.untracked > 0,
+            GitPart::Ahead => git.ahead > 0,
+            GitPart::Behind => git.behind > 0,
+            GitPart::Merging => git.merging,
+            GitPart::Rebasing => git.rebasing,
+        })
+}
+
+pub(super) fn git_part_icon(part: GitPart) -> &'static str {
+    use crate::widgets::nerd_icon::cod;
+
+    match part {
+        GitPart::Dirty => cod::COD_DIFF_MODIFIED,
+        GitPart::Untracked => cod::COD_DIFF_ADDED,
+        GitPart::Ahead => "⇡",
+        GitPart::Behind => "⇣",
+        GitPart::Merging => cod::COD_GIT_MERGE,
+        GitPart::Rebasing => cod::COD_SYNC,
+    }
+}
+
+#[cfg(test)]
+mod test;

@@ -16,15 +16,7 @@ if [[ -z "${CARGO_TARGET_DIR:-}" ]]; then
     export CARGO_TARGET_DIR="/tmp/rsynapse-check-target"
 fi
 
-WORKSPACES=(
-    dashboard-api
-    locus
-    projd
-    shell
-    shell/launcher
-    steward
-    workspace-dbus
-)
+ROOT_WORKSPACE=(.)
 
 LIVE=0
 MODE=""
@@ -78,25 +70,16 @@ cargo_workspace() {
 }
 
 run_fmt() {
-    local workspace
-    for workspace in "${WORKSPACES[@]}"; do
-        cargo_workspace fmt "$workspace" --all --check || return 1
-    done
+    cargo fmt --all --check
 }
 
 run_clippy() {
-    local workspace
     # Keep the baseline visible: do not promote warnings to errors yet.
-    for workspace in "${WORKSPACES[@]}"; do
-        cargo_workspace clippy "$workspace" --all-targets || return 1
-    done
+    cargo clippy --workspace --all-targets
 }
 
 run_test() {
-    local workspace
-    for workspace in "${WORKSPACES[@]}"; do
-        cargo_workspace test "$workspace" || return 1
-    done
+    cargo test --workspace
 }
 
 run_manifest() {
@@ -129,19 +112,17 @@ PY
         status=1
     fi
 
-    echo "--- library-only stray lockfiles ---"
+    echo "--- stray lockfiles ---"
     local lock
     while IFS= read -r lock; do
-        case "$lock" in
-            ./dashboard-api/Cargo.lock|./locus/Cargo.lock|./projd/Cargo.lock|./shell/Cargo.lock|./shell/launcher/Cargo.lock|./steward/Cargo.lock|./workspace-dbus/Cargo.lock) ;;
-            *)
-                if [[ "$lock" != *"/target/"* && "$lock" != *"/.cargo-home/"* ]]; then
-                    echo "unexpected lockfile: ${lock#./}" >&2
-                    status=1
-                fi
-                ;;
-        esac
-    done < <(find . -name Cargo.lock -not -path '*/target/*' -not -path './.git/*' | sort)
+        if [[ "$lock" != "./Cargo.lock" ]]; then
+            echo "unexpected lockfile: ${lock#./}" >&2
+            status=1
+        fi
+    done < <(find . -name Cargo.lock -not -path '*/target/*' -not -path '*/.cargo-home/*' -not -path './.git/*' | sort)
+
+    echo "--- app data boundary ---"
+    ./scripts/check-data-access.sh || status=1
     return $status
 }
 
@@ -150,17 +131,13 @@ run_install_tests() {
 }
 
 run_python_syntax() {
-    python3 -m compileall -q install projd/tests steward/tests dashboard-api/tests \
-        workspace-dbus/service/tests
+    python3 -m compileall -q install dbus/projd/tests misc/steward/tests \
+        misc/dashboard-api/tests dbus/workspace-dbus/service/tests
 }
 
 build_release_bins() {
     # Build the binaries used by the private-session integration tests.
-    cargo build --release --manifest-path projd/Cargo.toml --workspace \
-        && cargo build --release --manifest-path steward/Cargo.toml --workspace \
-        && cargo build --release --manifest-path locus/Cargo.toml --workspace \
-        && cargo build --release --manifest-path workspace-dbus/Cargo.toml --workspace \
-        && cargo build --release --manifest-path dashboard-api/Cargo.toml --workspace
+    cargo build --release --workspace
 }
 
 run_dbus_tests() {
@@ -168,12 +145,12 @@ run_dbus_tests() {
 
     local status=0
     local tests=(
-        projd/tests/integration.py
-        projd/tests/checklist.py
-        projd/tests/labels.py
-        projd/tests/metrics.py
-        projd/tests/cancellation.py
-        dashboard-api/tests/metrics.py
+        dbus/projd/tests/integration.py
+        dbus/projd/tests/checklist.py
+        dbus/projd/tests/labels.py
+        dbus/projd/tests/metrics.py
+        dbus/projd/tests/cancellation.py
+        misc/dashboard-api/tests/metrics.py
     )
     local test
     for test in "${tests[@]}"; do
@@ -183,9 +160,8 @@ run_dbus_tests() {
         fi
     done
 
-    echo "--- dbus-run-session: shell-source systray ---"
-    if ! dbus-run-session -- cargo test --manifest-path shell/Cargo.toml \
-        -p shell-source --test systray -- --ignored; then
+    echo "--- dbus-run-session: data-sources systray ---"
+    if ! dbus-run-session -- cargo test -p data-sources --test systray -- --ignored; then
         status=1
     fi
 
@@ -193,10 +169,10 @@ run_dbus_tests() {
         echo "--- live tests ---"
         # These require a live compositor/session and are never part of the
         # hermetic gate.
-        dbus-run-session -- python3 workspace-dbus/service/tests/umbriel_live.py || status=1
-        dbus-run-session -- python3 dashboard-api/tests/integration.py || status=1
+        dbus-run-session -- python3 dbus/workspace-dbus/service/tests/umbriel_live.py || status=1
+        dbus-run-session -- python3 misc/dashboard-api/tests/integration.py || status=1
         artifacts="$(mktemp -d)"
-        dbus-run-session -- python3 steward/tests/session_restore.py --artifacts "$artifacts" || status=1
+        dbus-run-session -- python3 misc/steward/tests/session_restore.py --artifacts "$artifacts" || status=1
         rm -rf "$artifacts"
     fi
     return $status
@@ -204,7 +180,7 @@ run_dbus_tests() {
 
 run_panel_tests() {
     (
-        cd dashboard-api/grafana-plugin
+        cd misc/dashboard-api/grafana-plugin
         npm ci --no-audit --no-fund
         npm run typecheck
         npm run build

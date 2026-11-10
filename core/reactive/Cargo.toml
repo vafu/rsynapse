@@ -1,0 +1,17 @@
+[package]
+name = "shell-reactive"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+async-channel = "2.5.0"
+futures-util = "0.3.32"
+rxrust.workspace = true
+tokio = { version = "1.52.3", features = ["macros", "rt", "rt-multi-thread", "sync", "time"] }
+tracing.workspace = true
+
+[dev-dependencies]
+tokio = { version = "1.52.3", features = ["time"] }

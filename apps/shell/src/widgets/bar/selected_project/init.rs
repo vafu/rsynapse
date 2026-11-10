@@ -1,0 +1,141 @@
+use shell_core::gtk::{self, prelude::*};
+use std::{cell::Cell, rc::Rc};
+
+pub(super) async fn bind_workspace(
+    workspace: String,
+    path: &str,
+    initialize: bool,
+) -> Result<data_sources::proj::ProjectInfo, String> {
+    data_sources::proj::bind_workspace_project(workspace, path, initialize).await
+}
+
+#[derive(Clone)]
+pub(in crate::widgets::bar) struct ProjectInitializer {
+    button: gtk::glib::WeakRef<gtk::Button>,
+    active: Rc<Cell<bool>>,
+}
+
+impl std::fmt::Debug for ProjectInitializer {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("ProjectInitializer")
+            .field("active", &self.active.get())
+            .finish_non_exhaustive()
+    }
+}
+
+impl ProjectInitializer {
+    pub(in crate::widgets::bar) fn new(button: &gtk::Button) -> Self {
+        Self {
+            button: button.downgrade(),
+            active: Rc::new(Cell::new(false)),
+        }
+    }
+
+    /// Shortcut requests target global focus, even when the primary bar is on
+    /// another monitor. Capture its ID before the picker takes focus.
+    pub(in crate::widgets::bar) fn open_focused(&self) {
+        if self.active.replace(true) {
+            return;
+        }
+        self.sensitive(false);
+        let (sender, receiver) = async_channel::bounded(1);
+        relm4::spawn(async move {
+            let result = data_sources::proj::init_workspace_id().await;
+            let _ = sender.send(result).await;
+        });
+        let controller = self.clone();
+        gtk::glib::MainContext::default().spawn_local(async move {
+            let result = receiver.recv().await;
+            controller.active.set(false);
+            controller.sensitive(true);
+            match result {
+                Ok(Ok(id)) => controller.open(id.clone(), &format!("workspace {id}"), true),
+                Ok(Err(error)) => controller.error(&error),
+                Err(_) => {}
+            }
+        });
+    }
+
+    fn open(&self, workspace: String, name: &str, initialize: bool) {
+        let Some(_parent) = self.parent() else {
+            return;
+        };
+        if self.active.replace(true) {
+            return;
+        }
+        self.sensitive(false);
+        let dialog = gtk::FileDialog::builder()
+            .title(format!(
+                "{} for {name}",
+                if initialize {
+                    "Initialize project"
+                } else {
+                    "Choose project directory"
+                }
+            ))
+            .modal(true)
+            .accept_label(if initialize {
+                "Initialize project"
+            } else {
+                "Use project"
+            })
+            .build();
+        let controller = self.clone();
+        gtk::glib::MainContext::default().spawn_local(async move {
+            // Layer-shell bars have no xdg_toplevel parent handle. Exporting one
+            // for a native dialog can disconnect the bar's Wayland connection.
+            let path = match dialog.select_folder_future(None::<&gtk::Window>).await {
+                Ok(file) => file.path(),
+                Err(error) => {
+                    if !error.matches(gtk::DialogError::Dismissed)
+                        && !error.matches(gtk::DialogError::Cancelled)
+                    {
+                        controller.error(&error.to_string());
+                    }
+                    controller.active.set(false);
+                    controller.sensitive(true);
+                    return;
+                }
+            };
+            let Some(path) = path else {
+                controller.error("Choose a local directory.");
+                controller.active.set(false);
+                controller.sensitive(true);
+                return;
+            };
+            let (sender, receiver) = async_channel::bounded(1);
+            relm4::spawn(async move {
+                let result = bind_workspace(workspace, &path.to_string_lossy(), initialize).await;
+                let _ = sender.send(result.map_err(|e| e.to_string())).await;
+            });
+            if let Ok(Err(error)) = receiver.recv().await {
+                controller.error(&error);
+            }
+            controller.active.set(false);
+            controller.sensitive(true);
+        });
+    }
+
+    fn sensitive(&self, sensitive: bool) {
+        if let Some(button) = self.button.upgrade() {
+            button.set_sensitive(sensitive);
+        }
+    }
+
+    fn parent(&self) -> Option<gtk::Window> {
+        self.button.upgrade()?.root().and_downcast::<gtk::Window>()
+    }
+
+    fn error(&self, message: &str) {
+        let Some(_parent) = self.parent() else {
+            return;
+        };
+        let dialog = gtk::AlertDialog::builder()
+            .modal(true)
+            .message("Could not associate project")
+            .detail(message)
+            .build();
+        dialog.show(None::<&gtk::Window>);
+    }
+}

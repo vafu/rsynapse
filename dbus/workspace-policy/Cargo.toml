@@ -1,0 +1,12 @@
+[package]
+name = "workspace-policy"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+workspace-dbus-api.workspace = true
+locus.workspace = true
+proj-model.workspace = true

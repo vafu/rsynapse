@@ -1,117 +1,59 @@
-# Rsynapse Desktop Environment Workspace
+# Rsynapse Workspace
 
-This directory contains desktop-environment projects that work together as a
-small, Rust-first session stack. Prefer D-Bus and typed async streams for live
-reactive state. Do not rebuild a filesystem-backed IPC layer for shell hot
-paths.
-
-## First Steps
-
-Before planning or editing, read `README.md` for the workspace overview. When
-work touches `shell/`, also read `shell/README.md`, `shell/PROJECT.md`,
-`shell/PLAN.md`, and any nested `AGENTS.md` that applies to the files being
-changed.
-
-## Direction
-
-The current direction is:
+One root Cargo workspace for the Rust-first Rsynapse desktop session.
 
 ```text
-D-Bus services -> zbus async streams -> shell-core Observables -> Relm4 widgets
+apps/
+  shell/                    main bar, OSD, workspace selector, media overlay
+  notifications/            standalone notification daemon and center
+  launcher/                 launcher daemon, CLI, UI, and plugins
+  shared/
+    app-kit/                shared GTK app startup, tracing, request socket
+    data-sources/           all D-Bus/process/service adapters and writes
+    desktop-entry/          desktop entry parsing and launch helpers
+    nerd-icon-picker/       icon catalog and picker library
+  examples/                 small GTK source examples
+core/
+  reactive/                 Observable runtime, StateSignal, list reconciliation
+  shell-core/               Relm4 integration: app/model/list/window/CSS helpers
+  macros/                   model/view/source/dbus_model macros
+  rx-macros/                combine_latest and reactive authoring macros
+dbus/
+  locus/                    session relation service and CLI
+  projd/                    project-management service, model, and CLI
+  workspace-dbus/           compositor-neutral workspace projection
+  workspace-policy/         shared workspace naming/project policy
+misc/
+  steward/                  session metrics/listener side effects
+  steward-api/              steward D-Bus contract
+  dashboard-api/            HTTP/SSE + Grafana adapter
+  observability/            Graphite/Grafana deployment
+install/                    user-local installer, units, activation files
+scripts/                    repository checks and helpers
+docs/                       repository-level design notes
 ```
-
-`shell/` is the shell UI monorepo. It contains reusable GTK/Relm4 framework
-crates under `shell/core`, the current combined shell app under `shell/app`,
-and the launcher workspace under `shell/launcher`. Concrete Rsynapse surfaces
-live outside the framework crates but inside `shell/` when they are UI
-components.
-
-## Projects
-
-- `shell/`
-  The shell UI monorepo. `shell/core` owns reusable framework crates,
-  `shell/app` owns the current combined bar, OSD, notifications, request
-  socket, styles, and Rsynapse-specific UI policy, and `shell/launcher` owns the
-  launcher workspace. Package names such as `rsynapse-daemon` may be renamed
-  later.
-
-- `workspace-dbus/`
-  Compositor-neutral session D-Bus projection. `api/` owns the independent
-  workspace-dbus-api contract; `service/` implements Niri and Umbriel backends.
-  Consumers depend only on the API. Association cleanup belongs to steward,
-  not the projection service.
-
-- `locus/`
-  A session D-Bus relation service. It stores typed associations between
-  objects exposed by other services, such as workspace -> project or window ->
-  agent. It stores relations and emits relation change signals; source services
-  remain authoritative for their own properties.
-
-- `steward/`
-  A single-binary shell-source listener/side-effect host: metrics, naming,
-  session association policy and domain refresh triggers. It manages desktop
-  bindings through locusd and writes standard Carbon metrics to Graphite.
-  It does not own project-management CRUD or Grafana deployment.
-
-- `projd/`
-  Reusable persistent project-management D-Bus service `projd` and its `proj`
-  CLI. Own projects, optional Git checkouts, project CWD/name/icon and goals here. It is
-  unaware of shells, niri, locus, steward, AgentDBus and Grafana. Agents are
-  clients through proj. No project metadata mirrors in locus.
-
-- `dashboard-api/`
-  HTTP/SSE and Grafana UI adapter over projd and integration services, with no
-  project-management store. `observability/` owns shared Grafana/Graphite
-  deployment. No composite productivity formula is finalized.
-
-## Relation Service Shape
-
-Use D-Bus object semantics directly:
-
-- External objects are identified by bus, service, object path, and interface,
-  or by an explicitly typed stable key when object paths are ephemeral.
-- Relations are typed names, preferably reverse-DNS names.
-- The service should support setting, unsetting, querying targets, querying
-  subjects, and subscribing to relation changes.
-
-Do not turn `locus` into a second D-Bus or a general graph mirror. It is only
-the cross-service association store.
-
-## Existing Similar Systems
-
-GNOME TinySPARQL/Tracker is a low-footprint RDF triple store with SPARQL 1.1
-and D-Bus endpoints. KDE/NEPOMUK explored a broader semantic-desktop relation
-model and was later replaced in KDE by more focused indexing/search systems.
-These are relevant prior art, but Rsynapse currently wants a much smaller,
-typed session relation service rather than a general RDF desktop database.
 
 ## Boundaries
 
-The task-and-notes UI composes projd and Remarked in the shell. Personal notebooks
-live at `<project-cwd>/.notes/`; note frontmatter `task/<immutable-task-instance-id>`
-tags own the many-to-many task-note association. This is an intentional exception
-to the general cross-service-link rule: Locus remains for external desktop/session
-associations, not per-note task membership. Remarked does not own managed tasks;
-Steward is the automation-policy daemon.
+- UI code consumes typed adapters from `apps/shared/data-sources`. Widgets,
+  plugins, and notification UI must not use `zbus`, spawn service processes, or
+  read service state directly.
+- `core/reactive` is service-agnostic machinery. Do not add D-Bus, process, or
+  filesystem adapters to it.
+- `core/shell-core` is generic Relm4 integration. Do not add Rsynapse-specific
+  surfaces or service clients here.
+- Apps own product UI and app-local D-Bus server implementations. Launcher
+  command/shell plugins may execute user commands; those are actions, not data
+  observation.
+- `dbus/` owns service implementations and contracts. Keep project state in
+  projd, relations in locus, and compositor projection in workspace-dbus.
+- `misc/` is unsettled. Do not infer a strong architecture from it.
 
-- Keep reusable shell framework code in `shell/core`.
-- Keep Rsynapse product UI under `shell/`.
-- Keep compositor protocols in `workspace-dbus/service` and their shared D-Bus
-  contract in `workspace-dbus/api`.
-- Keep cross-service links in `locus`.
-- Keep agent state in AgentDBus/adjacent agent service repos.
-- Keep project-management state in projd; cross-service references stay in locusd.
-- Keep project/note state in remarked-related repos unless a shared project
-  service is intentionally introduced.
+## Workflow
 
-## Implementation Rules
-
-- Prefer `zbus` for D-Bus services and clients.
-- Prefer typed structs/enums at service boundaries.
-- Expose `ObjectManager`, `Properties`, and explicit signals where they fit.
-- Use stable IDs for persistent associations; do not persist short-lived object
-  paths unless the producing service guarantees their stability.
-- Avoid polling, sleeps, debounce-based correctness, and FUSE for live shell
-  state.
-- Keep generated or protocol-derived code generated; do not patch generated
-  files manually.
+- Read the nearest `AGENTS.md` before editing a subtree.
+- Use `scripts/check-data-access.sh` when touching app data access.
+- Verify with `cargo check --workspace`, focused crate tests, then
+  `cargo test --workspace`.
+- Keep every `AGENTS.md` short, current, and useful. It is working context, not
+  documentation exhaust; remove stale detail instead of letting it rot.
