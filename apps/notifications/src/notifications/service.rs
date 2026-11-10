@@ -13,6 +13,13 @@ pub(super) const NOTIFICATIONS_BUS_NAME: &str = "org.freedesktop.Notifications";
 pub(super) const NOTIFICATIONS_OBJECT_PATH: &str = "/org/freedesktop/Notifications";
 
 static CONNECTION: tokio::sync::OnceCell<zbus::Connection> = tokio::sync::OnceCell::const_new();
+/// The connection that owns `org.freedesktop.Notifications`.
+///
+/// Signals such as `ActionInvoked` are only delivered to clients whose match
+/// rules pin `sender=` to the notification server, so they must be emitted on
+/// this connection rather than on a separate one.
+static SERVER_CONNECTION: tokio::sync::OnceCell<zbus::Connection> =
+    tokio::sync::OnceCell::const_new();
 
 pub(super) fn request_close_notification(id: u32) {
     relm4::spawn_local(async move {
@@ -52,7 +59,9 @@ async fn close_notification(id: u32) -> zbus::Result<()> {
 }
 
 async fn action_invoked(id: u32, action_key: &str) -> zbus::Result<()> {
-    let connection = connection().await?;
+    let connection = SERVER_CONNECTION
+        .get_or_try_init(zbus::Connection::session)
+        .await?;
     connection
         .emit_signal(
             None::<&str>,
@@ -112,15 +121,19 @@ async fn run(
     input_sender: RelmSender<NotificationsInput>,
     state_updates: Receiver<bool>,
 ) -> zbus::Result<()> {
-    let interface = FreedesktopNotifications::new(input_sender);
-    let _connection = zbus::connection::Builder::session()?
+    let interface = FreedesktopNotifications::new(input_sender.clone());
+    let connection = zbus::connection::Builder::session()?
         .serve_at(NOTIFICATIONS_OBJECT_PATH, interface)?
-        .serve_at(NOTIFICATIONS_OBJECT_PATH, NotificationState::default())?
+        .serve_at(
+            NOTIFICATIONS_OBJECT_PATH,
+            NotificationState::new(input_sender),
+        )?
         .name(NOTIFICATIONS_BUS_NAME)?
         .build()
         .await?;
+    let _ = SERVER_CONNECTION.set(connection.clone());
 
-    publish_notification_state(&_connection, state_updates).await
+    publish_notification_state(&connection, state_updates).await
 }
 
 async fn publish_notification_state(
@@ -168,12 +181,19 @@ impl FreedesktopNotifications {
     }
 }
 
-#[derive(Default)]
 struct NotificationState {
     has_items: bool,
+    input_sender: RelmSender<NotificationsInput>,
 }
 
 impl NotificationState {
+    fn new(input_sender: RelmSender<NotificationsInput>) -> Self {
+        Self {
+            has_items: false,
+            input_sender,
+        }
+    }
+
     fn set_has_items(&mut self, has_items: bool) -> bool {
         if self.has_items == has_items {
             return false;
@@ -188,6 +208,25 @@ impl NotificationState {
     #[zbus(property)]
     fn has_items(&self) -> bool {
         self.has_items
+    }
+
+    /// Activates an action on a notification this server is showing.
+    ///
+    /// Runs the same path as a click in the notification UI: `ActionInvoked` is
+    /// emitted for the application that posted the notification and the
+    /// notification is closed. It exists so other clients, such as a Mist
+    /// bridge, can deliver a tap that happened on another device.
+    async fn invoke_action(&self, id: u32, action_key: String) -> zbus::fdo::Result<()> {
+        action_invoked(id, action_key.as_str())
+            .await
+            .map_err(|error| zbus::fdo::Error::Failed(error.to_string()))?;
+        self.input_sender
+            .send(NotificationsInput::Close {
+                id,
+                reason: NotificationClosedReason::Dismissed,
+            })
+            .map_err(|_| zbus::fdo::Error::Failed("notifications window is gone".to_owned()))?;
+        Ok(())
     }
 }
 
