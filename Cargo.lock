@@ -2727,6 +2727,7 @@ dependencies = [
  "rsynapse-plugin-calc",
  "rsynapse-plugin-commands",
  "rsynapse-plugin-launcher",
+ "rsynapse-plugin-mpris",
  "rsynapse-plugin-shell",
  "rsynapse-plugin-workspaces",
  "serde",
@@ -2838,6 +2839,14 @@ dependencies = [
  "notify 6.1.1",
  "rsynapse-plugin",
  "xdg",
+]
+
+[[package]]
+name = "rsynapse-plugin-mpris"
+version = "0.1.0"
+dependencies = [
+ "data-sources",
+ "rsynapse-plugin",
 ]
 
 [[package]]

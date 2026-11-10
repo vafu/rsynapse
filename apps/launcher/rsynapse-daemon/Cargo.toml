@@ -21,5 +21,6 @@ rsynapse-plugin-bluetooth = { path = "../rsynapse-plugin-bluetooth" }
 rsynapse-plugin-calc = { path = "../rsynapse-plugin-calc" }
 rsynapse-plugin-commands = { path = "../rsynapse-plugin-commands" }
 rsynapse-plugin-launcher = { path = "../rsynapse-plugin-launcher" }
+rsynapse-plugin-mpris = { path = "../rsynapse-plugin-mpris" }
 rsynapse-plugin-shell = { path = "../rsynapse-plugin-shell" }
 rsynapse-plugin-workspaces = { path = "../rsynapse-plugin-workspaces" }

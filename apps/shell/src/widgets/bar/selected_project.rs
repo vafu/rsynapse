@@ -9,7 +9,9 @@ mod source;
 mod workspace;
 pub(super) use init::ProjectInitializer;
 pub(super) use item::{SelectedProjectItem, SelectedProjectItemInput, SelectedProjectItemOutput};
-pub(super) use source::{selected_project_context, selected_project_status};
+pub(super) use source::{
+    selected_project_context, selected_project_scope, selected_project_status,
+};
 
 use data_sources::text::non_empty;
 use git::{GitStatus, summary as git_summary};

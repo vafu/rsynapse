@@ -19,6 +19,9 @@ dynamic plugin API, and bundled plugins.
 | `rsynapse-plugin-shell` | `cdylib` | Offers syntactically valid shell commands as low-priority results. |
 | `rsynapse-plugin-calc` | `cdylib` | Evaluates calculator expressions with `meval`. |
 | `rsynapse-plugin-commands` | `cdylib` | Runs configured command queries from `~/.config/rsynapse/config.toml`. |
+| `rsynapse-plugin-audio` | Library | Selects the default PipeWire output. |
+| `rsynapse-plugin-bluetooth` | Library | Connects or disconnects Bluetooth devices. |
+| `rsynapse-plugin-mpris` | Library | Selects which MPRIS player the shell media controls target. |
 
 ## D-Bus API
 
@@ -56,7 +59,9 @@ Plugins declare one `PluginSpec`: stable id, name, aliases, and scope
 (`DirectOnly`, `MainOnly`, or `Both`). Built-in direct entry points are `apps`
 (aliases: app, applications, launch), `projects` (project, proj), `workspaces`
 (workspace, ws), `shell` (sh, run, command), `calc` (calculator, =), `commands`
-(cmd, command), `audio`, and `bluetooth`.
+(cmd, command), `audio`, `bluetooth`, and `mpris` (media, player, music). Selecting an
+MPRIS player persists through Locus and the shell follows it reactively; choose
+`Automatic` to revert to following the playing player.
 
 The UI accepts positional launcher params:
 

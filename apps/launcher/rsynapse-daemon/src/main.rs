@@ -375,6 +375,7 @@ fn builtin_plugins() -> Vec<Box<dyn Plugin>> {
         rsynapse_plugin_calc::plugin(),
         rsynapse_plugin_commands::plugin(),
         rsynapse_plugin_launcher::plugin(),
+        rsynapse_plugin_mpris::plugin(),
         rsynapse_plugin_shell::plugin(),
     ];
     plugins.extend(rsynapse_plugin_workspaces::plugins());

@@ -2,7 +2,7 @@ use data_sources::{self, Observable, github, rx::Observable as _};
 use std::collections::BTreeSet;
 
 use super::{Scope, category::Category};
-use crate::widgets::bar::selected_project::{SelectedWorkspaceView, selected_project_context};
+use crate::widgets::bar::selected_project::{SelectedWorkspaceView, selected_project_scope};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum ProjectScope {
@@ -49,7 +49,7 @@ fn project_inventory(scope: Scope) -> Observable<Inventory> {
         "rsynapse.github-project-activity",
         format!("{scope:?}"),
         move || {
-            let project = selected_project_context(scope.output_name.clone())
+            let project = selected_project_scope(scope.output_name.clone())
                 .map(project_scope)
                 .distinct_until_changed()
                 .box_it();

@@ -11,6 +11,7 @@ use super::{
     context_zone::ContextZone,
     github_status::{GitHubStatus, Scope},
     project_label::ProjectLabel,
+    systray::{TrayItem, systray_items},
     workspaces::workspaces,
 };
 
@@ -29,6 +30,9 @@ pub(super) struct WorkspaceBar {
 
     #[source(workspaces(output_name.clone()))]
     project_labels: Vec<WorkspaceNode>,
+
+    #[source(systray_items())]
+    tray_items: Vec<crate::widgets::bar::systray::TrayItemNode>,
 }
 
 #[shell_macros::component(
@@ -59,9 +63,17 @@ impl SimpleComponent for WorkspaceBar {
                     set_halign: gtk::Align::Center,
                     set_valign: gtk::Align::Start,
                     set_orientation: gtk::Orientation::Vertical,
+                    set_spacing: 6,
 
                     #[local_ref]
                     github_status_root -> gtk::Box {},
+
+                    #[bind_list(tray_items, row = TrayItem)]
+                    tray_items -> gtk::Box {
+                        add_css_class: "tray-widget",
+                        set_halign: gtk::Align::Center,
+                        set_orientation: gtk::Orientation::Vertical,
+                    },
                 },
 
                 #[wrap(Some)]

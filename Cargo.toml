@@ -11,6 +11,7 @@ members = [
     "apps/launcher/rsynapse-plugin-calc",
     "apps/launcher/rsynapse-plugin-commands",
     "apps/launcher/rsynapse-plugin-launcher",
+    "apps/launcher/rsynapse-plugin-mpris",
     "apps/launcher/rsynapse-plugin-shell",
     "apps/launcher/rsynapse-plugin-workspaces",
     "apps/launcher/rsynapse-ui",

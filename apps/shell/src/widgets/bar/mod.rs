@@ -71,7 +71,6 @@ use self::selected_project::{
 };
 use self::source_errors::{SourceErrorRow, source_error_count, source_error_items};
 use self::system_stats::{ArcSide, SysStatsView, sys_stats};
-use self::systray::{TrayItem, systray_items};
 use self::time::{ClockView, clock};
 use self::window_tile::WindowTile;
 use self::workspace_bar::{WorkspaceBar, WorkspaceBarInit};
@@ -193,9 +192,6 @@ pub struct MainBar {
 
     #[source(brightness_status())]
     brightness: BrightnessView,
-
-    #[source(systray_items())]
-    tray_items: Vec<systray::TrayItemNode>,
 
     #[source(sys_stats())]
     system_stats: SysStatsView,
@@ -474,12 +470,6 @@ impl SimpleAsyncComponent for MainBar {
                         add_css_class: "system-indicators",
                         set_halign: gtk::Align::End,
                         set_orientation: gtk::Orientation::Horizontal,
-
-                        #[bind_list(tray_items, row = TrayItem)]
-                        tray_items -> gtk::Box {
-                            add_css_class: "tray-widget",
-                            set_orientation: gtk::Orientation::Horizontal,
-                        },
 
                         #[local_ref]
                         bluetooth_indicator -> gtk::Box {},

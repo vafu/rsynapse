@@ -5,6 +5,7 @@ use std::{
 };
 
 use futures_util::StreamExt;
+use locus::{RelationEndpoint, RelationRecord};
 use shell_rx_macros::combine_latest;
 use tokio::time::{MissedTickBehavior, interval};
 use zbus::{Connection, Proxy, fdo::DBusProxy, zvariant::OwnedValue};
@@ -18,6 +19,10 @@ use crate::{
 };
 
 const MPRIS_PREFIX: &str = "org.mpris.MediaPlayer2.";
+/// Locus relation storing the user's explicitly selected MPRIS player.
+pub const SELECTION_RELATION: &str = "org.rsynapse.mpris.player";
+/// Locus stable-key kind for the selected-player target value.
+pub const SELECTION_KIND: &str = "org.rsynapse.mpris.player";
 const PLAYER_PATH: &str = "/org/mpris/MediaPlayer2";
 const PLAYER_INTERFACE: &str = "org.mpris.MediaPlayer2.Player";
 const ROOT_INTERFACE: &str = "org.mpris.MediaPlayer2";
@@ -88,14 +93,31 @@ impl TryFrom<OwnedValue> for Metadata {
 /// and playback rate. No D-Bus property is polled on a timer.
 pub fn player() -> Observable<MprisSnapshot> {
     shared_by_key("mpris-player", "active", || {
-        switch_map(player_names(), |names| {
-            switch_map(choose_player(names), |player| match player {
-                Some(player) => player_snapshot(player),
-                None => once(MprisSnapshot::default()),
+        let names = player_names();
+        let selected = selected_player();
+        combine_latest!(names, selected => |(names, selected)| (names, selected))
+            .switch_map(|(names, selected)| {
+                switch_map(choose_player(names, selected), |player| match player {
+                    Some(player) => player_snapshot(player),
+                    None => once(MprisSnapshot::default()),
+                })
             })
-        })
-        .distinct_until_changed()
-        .box_it()
+            .distinct_until_changed()
+            .box_it()
+    })
+}
+
+/// The user's explicitly selected MPRIS player, if any.
+///
+/// Reads the Locus selection relation reactively so the shell follows changes
+/// made from the launcher without polling.
+pub fn selected_player() -> Observable<Option<String>> {
+    shared_by_key("mpris-selected-player", "active", || {
+        let subject = RelationEndpoint::stable_key(SELECTION_KIND, "active");
+        crate::watch_relation_subject(subject, SELECTION_RELATION)
+            .map(|records| records.first().and_then(selected_player_value))
+            .distinct_until_changed()
+            .box_it()
     })
 }
 
@@ -134,15 +156,22 @@ fn player_names() -> Observable<Vec<String>> {
     .box_it()
 }
 
-fn choose_player(names: Vec<String>) -> Observable<Option<String>> {
+fn choose_player(names: Vec<String>, selected: Option<String>) -> Observable<Option<String>> {
     if names.is_empty() {
         return once(None);
     }
 
     from_task(move |sender| {
         let names = names.clone();
+        let selected = selected.clone();
         async move {
             let result = async {
+                // An explicit selection wins while that player is present.
+                if let Some(selected) = selected.as_deref()
+                    && names.iter().any(|name| name == selected)
+                {
+                    return Ok(Some(selected.to_owned()));
+                }
                 let connection = Connection::session()
                     .await
                     .map_err(|error| format!("connect MPRIS session bus failed: {error}"))?;
@@ -344,13 +373,115 @@ async fn list_players(bus: &DBusProxy<'_>) -> Result<Vec<String>, String> {
         .list_names()
         .await
         .map_err(|error| format!("list MPRIS bus names failed: {error}"))?;
+    Ok(players_from_names(
+        names.into_iter().map(|name| name.to_string()),
+    ))
+}
+
+fn players_from_names(names: impl Iterator<Item = String>) -> Vec<String> {
     let mut players = names
-        .into_iter()
-        .map(|name| name.to_string())
         .filter(|name| name.starts_with(MPRIS_PREFIX))
         .collect::<Vec<_>>();
     players.sort();
-    Ok(players)
+    players
+}
+
+/// Selected player bus name from a Locus selection record, if present.
+fn selected_player_value(record: &RelationRecord) -> Option<String> {
+    if record.relation != SELECTION_RELATION {
+        return None;
+    }
+    let RelationEndpoint::StableKey { kind, id } = &record.target else {
+        return None;
+    };
+    (kind == SELECTION_KIND && id.starts_with(MPRIS_PREFIX)).then(|| id.clone())
+}
+
+/// Blocking snapshot of live MPRIS player bus names for launcher plugins.
+pub fn players_blocking() -> Result<Vec<String>, String> {
+    let connection = zbus::blocking::Connection::session()
+        .map_err(|error| format!("connect MPRIS session bus failed: {error}"))?;
+    let bus = zbus::blocking::fdo::DBusProxy::new(&connection)
+        .map_err(|error| format!("connect MPRIS bus proxy failed: {error}"))?;
+    let names = bus
+        .list_names()
+        .map_err(|error| format!("list MPRIS bus names failed: {error}"))?;
+    Ok(players_from_names(
+        names.into_iter().map(|name| name.to_string()),
+    ))
+}
+
+/// Blocking player identity (`org.mpris.MediaPlayer2` `Identity` property).
+pub fn player_identity_blocking(player: &str) -> String {
+    let Ok(connection) = zbus::blocking::Connection::session() else {
+        return player.to_owned();
+    };
+    let Ok(proxy) =
+        zbus::blocking::Proxy::new(&connection, player.to_owned(), PLAYER_PATH, ROOT_INTERFACE)
+    else {
+        return player.to_owned();
+    };
+    proxy
+        .get_property::<String>("Identity")
+        .ok()
+        .filter(|identity| !identity.trim().is_empty())
+        .unwrap_or_else(|| player.to_owned())
+}
+
+/// Blocking read of the user's selected MPRIS player, if any.
+pub fn selected_player_blocking() -> Result<Option<String>, String> {
+    let connection = zbus::blocking::Connection::session()
+        .map_err(|error| format!("connect session bus failed: {error}"))?;
+    let proxy = locus::RelationsProxyBlocking::new(&connection)
+        .map_err(|error| format!("connect locus proxy failed: {error}"))?;
+    let subject = RelationEndpoint::stable_key(SELECTION_KIND, "active");
+    let targets = proxy
+        .targets(subject, SELECTION_RELATION)
+        .map_err(|error| format!("read selected MPRIS player: {error}"))?;
+    Ok(targets.iter().find_map(|endpoint| match endpoint {
+        RelationEndpoint::StableKey { kind, id }
+            if kind == SELECTION_KIND && id.starts_with(MPRIS_PREFIX) =>
+        {
+            Some(id.clone())
+        }
+        _ => None,
+    }))
+}
+
+/// Clears the explicit MPRIS player selection, reverting to automatic choice.
+pub fn clear_selected_player_blocking() -> Result<(), String> {
+    let connection = zbus::blocking::Connection::session()
+        .map_err(|error| format!("connect session bus failed: {error}"))?;
+    let proxy = locus::RelationsProxyBlocking::new(&connection)
+        .map_err(|error| format!("connect locus proxy failed: {error}"))?;
+    proxy
+        .clear(
+            RelationEndpoint::stable_key(SELECTION_KIND, "active"),
+            SELECTION_RELATION,
+        )
+        .map(|_| ())
+        .map_err(|error| format!("clear selected MPRIS player: {error}"))
+}
+
+/// Blocking write of the user's selected MPRIS player through Locus.
+pub fn set_selected_player_blocking(player: &str) -> Result<(), String> {
+    if !player.starts_with(MPRIS_PREFIX) {
+        return Err(format!("not an MPRIS player bus name: {player}"));
+    }
+    let connection = zbus::blocking::Connection::session()
+        .map_err(|error| format!("connect session bus failed: {error}"))?;
+    let proxy = locus::RelationsProxyBlocking::new(&connection)
+        .map_err(|error| format!("connect locus proxy failed: {error}"))?;
+    let _: locus::RelationState = proxy
+        .set_one_with_persistence(
+            RelationEndpoint::stable_key(SELECTION_KIND, "active"),
+            SELECTION_RELATION,
+            RelationEndpoint::stable_key(SELECTION_KIND, player),
+            std::collections::HashMap::from([("source".to_owned(), "manual".to_owned())]),
+            true,
+        )
+        .map_err(|error| format!("set selected MPRIS player: {error}"))?;
+    Ok(())
 }
 
 async fn playback_status(connection: &Connection, name: &str) -> PlaybackStatus {
@@ -443,7 +574,10 @@ mod test {
 
     use zbus::zvariant::{OwnedValue, Value};
 
-    use super::{MPRIS_PREFIX, PlaybackStatus, interpolate, parse_metadata, parse_playback_status};
+    use super::{
+        MPRIS_PREFIX, PlaybackStatus, SELECTION_KIND, SELECTION_RELATION, interpolate,
+        parse_metadata, parse_playback_status, players_from_names, selected_player_value,
+    };
 
     fn value<T>(value: T) -> OwnedValue
     where
@@ -529,6 +663,63 @@ mod test {
     fn player_names_use_mpris_prefix() {
         assert!("org.mpris.MediaPlayer2.spotify".starts_with(MPRIS_PREFIX));
         assert!(!"org.mpris.MediaPlayer2".starts_with(MPRIS_PREFIX));
+    }
+
+    #[test]
+    fn players_are_filtered_and_sorted() {
+        let names = players_from_names(
+            [
+                "org.mpris.MediaPlayer2.vlc",
+                "org.freedesktop.DBus",
+                "org.mpris.MediaPlayer2.firefox",
+                "org.mpris.MediaPlayer2.vlc",
+            ]
+            .into_iter()
+            .map(str::to_owned),
+        );
+        assert_eq!(
+            names,
+            vec![
+                "org.mpris.MediaPlayer2.firefox".to_owned(),
+                "org.mpris.MediaPlayer2.vlc".to_owned(),
+                "org.mpris.MediaPlayer2.vlc".to_owned(),
+            ]
+        );
+    }
+
+    fn selection_record(target: locus::RelationEndpoint) -> super::RelationRecord {
+        super::RelationRecord {
+            subject: locus::RelationEndpoint::stable_key(SELECTION_KIND, "active"),
+            relation: SELECTION_RELATION.to_owned(),
+            target,
+            metadata: std::collections::HashMap::new(),
+            created_at_unix_ms: 0,
+            updated_at_unix_ms: 0,
+        }
+    }
+
+    #[test]
+    fn selected_player_value_reads_mpris_targets_only() {
+        let record = selection_record(locus::RelationEndpoint::stable_key(
+            SELECTION_KIND,
+            "org.mpris.MediaPlayer2.spotify",
+        ));
+        assert_eq!(
+            selected_player_value(&record).as_deref(),
+            Some("org.mpris.MediaPlayer2.spotify")
+        );
+
+        let wrong_kind = selection_record(locus::RelationEndpoint::stable_key(
+            "org.rsynapse.workspace.id",
+            "org.mpris.MediaPlayer2.spotify",
+        ));
+        assert_eq!(selected_player_value(&wrong_kind), None);
+
+        let not_mpris = selection_record(locus::RelationEndpoint::stable_key(
+            SELECTION_KIND,
+            "org.example.player",
+        ));
+        assert_eq!(selected_player_value(&not_mpris), None);
     }
 }
 
