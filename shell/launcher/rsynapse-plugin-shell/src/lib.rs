@@ -1,6 +1,8 @@
 use std::process::{Command, Stdio};
 
-use rsynapse_plugin::{Plugin, PluginGroup, PluginResponse, QueryContext, ResultItem};
+use rsynapse_plugin::{
+    LauncherActivity, Plugin, PluginGroup, PluginResponse, QueryContext, ResultItem,
+};
 
 struct ShellPlugin;
 
@@ -86,6 +88,7 @@ impl Plugin for ShellPlugin {
                 icon: "utilities-terminal".to_string(),
                 data: command.to_string(),
                 score: std::f64::MIN,
+                activity: LauncherActivity::None,
                 current: false,
                 keep_open: false,
             }],

@@ -684,6 +684,7 @@ mod tests {
             icon: String::new(),
             data: "$(whoami)".into(),
             score: 0.0,
+            activity: rsynapse_launcher_api::LauncherActivity::None,
             current: false,
             keep_open: false,
         };

@@ -15,8 +15,8 @@ use relm4::gtk::gdk;
 use relm4::gtk::glib;
 use relm4::prelude::*;
 use rsynapse_launcher_api::{
-    KeyEvent as LauncherKeyEvent, KeyRequest, KeyResponse, LauncherHint, LauncherMode,
-    LauncherResult, LauncherView, SearchRequest, SearchResponse, ShowRequest,
+    KeyEvent as LauncherKeyEvent, KeyRequest, KeyResponse, LauncherActivity, LauncherHint,
+    LauncherMode, LauncherResult, LauncherView, SearchRequest, SearchResponse, ShowRequest,
 };
 use shell_core::keybind::{
     HoldAction, HoldBindings, HoldWatcher, KeyChord, Keybind, KeybindWatcher,
@@ -538,6 +538,13 @@ impl App {
             return;
         };
         let keep_open = result.keep_open;
+        if keep_open && result.activity == LauncherActivity::Connecting {
+            if let Some(current) = self.results.get_mut(self.selected as usize) {
+                current.activity = LauncherActivity::Connecting;
+                current.description = "Connecting…".to_owned();
+            }
+            self.refresh_list();
+        }
         if !keep_open {
             // Release the layer-shell keyboard grab before activating another
             // output's workspace or window. The compositor must be free to move
@@ -603,11 +610,23 @@ impl App {
             if !result.icon.is_empty() {
                 row.add_prefix(&result_icon(&result.icon));
             }
-            if result.current {
-                let check = gtk::Image::from_icon_name("object-select-symbolic");
-                check.add_css_class("accent");
-                check.set_valign(gtk::Align::Center);
-                row.add_suffix(&check);
+            match result.activity {
+                LauncherActivity::Connecting | LauncherActivity::Busy => {
+                    let spinner = gtk::Spinner::new();
+                    spinner.start();
+                    spinner.set_valign(gtk::Align::Center);
+                    spinner.add_css_class("launcher-row-spinner");
+                    spinner.set_tooltip_text(Some("Connecting…"));
+                    row.add_suffix(&spinner);
+                }
+                LauncherActivity::None => {
+                    if result.current {
+                        let check = gtk::Image::from_icon_name("object-select-symbolic");
+                        check.add_css_class("accent");
+                        check.set_valign(gtk::Align::Center);
+                        row.add_suffix(&check);
+                    }
+                }
             }
 
             self.list_box.append(&row);

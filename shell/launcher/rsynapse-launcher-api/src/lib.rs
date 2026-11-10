@@ -41,6 +41,20 @@ pub struct LauncherResult {
     pub keep_open: bool,
     /// Plugin-provided relevance score; not shown by the UI.
     pub score: f64,
+    /// Optional transient activity indicator for this row.
+    #[serde(default)]
+    pub activity: LauncherActivity,
+}
+
+/// Transient activity shown by the launcher row rather than encoded in its text.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "lowercase")]
+#[zvariant(signature = "s")]
+pub enum LauncherActivity {
+    #[default]
+    None,
+    Connecting,
+    Busy,
 }
 
 /// Search request with invocation params and the current query.

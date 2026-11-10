@@ -2,7 +2,7 @@
 use std::fmt::Debug;
 
 pub use rsynapse_launcher_api::{
-    KeyEvent, KeyResponse, LauncherGroup as PluginGroup, LauncherHint as Hint,
+    KeyEvent, KeyResponse, LauncherActivity, LauncherGroup as PluginGroup, LauncherHint as Hint,
     LauncherResult as ResultItem, LauncherView as PluginView,
 };
 

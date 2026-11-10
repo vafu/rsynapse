@@ -1,4 +1,6 @@
-use rsynapse_plugin::{Plugin, PluginGroup, PluginResponse, QueryContext, ResultItem};
+use rsynapse_plugin::{
+    LauncherActivity, Plugin, PluginGroup, PluginResponse, QueryContext, ResultItem,
+};
 
 struct CalcPlugin;
 
@@ -33,6 +35,7 @@ impl Plugin for CalcPlugin {
                         icon: "accessories-calculator".to_string(),
                         data: result.to_string(),
                         score: 100.0,
+                        activity: LauncherActivity::None,
                         current: false,
                         keep_open: false,
                     }],

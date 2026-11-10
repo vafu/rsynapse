@@ -4,8 +4,8 @@ use std::collections::HashMap;
 use locus::{RelationEndpoint, RelationRecord, keys};
 use proj_model::ProjectInfo;
 use rsynapse_plugin::{
-    Hint, KeyEvent, KeyResponse, Plugin, PluginGroup, PluginResponse, PluginView, QueryContext,
-    ResultItem,
+    Hint, KeyEvent, KeyResponse, LauncherActivity, Plugin, PluginGroup, PluginResponse, PluginView,
+    QueryContext, ResultItem,
 };
 use zbus::blocking::{Connection, Proxy};
 use zbus::zvariant::OwnedObjectPath;
@@ -449,6 +449,7 @@ impl Plugin for WorkspacesPlugin {
                         icon: icon,
                         data: format!("{}\u{1f}{}", item.output, item.index),
                         score: 1_000.0 - position as f64,
+                        activity: LauncherActivity::None,
                         current: workspace_policy::is_current(item, focused_path.as_deref()),
                         keep_open: false,
                     }
@@ -491,6 +492,7 @@ impl Plugin for WorkspacesPlugin {
                 },
                 data: project.cwd,
                 score: 1_000.0 - index as f64,
+                activity: LauncherActivity::None,
                 current: current_project.as_deref() == Some(project.id.as_str()),
                 keep_open: false,
             })
@@ -505,6 +507,7 @@ impl Plugin for WorkspacesPlugin {
                     icon: "list-remove-symbolic".into(),
                     data: String::new(),
                     score: -1.0,
+                    activity: LauncherActivity::None,
                     current: false,
                     keep_open: false,
                 });
@@ -517,6 +520,7 @@ impl Plugin for WorkspacesPlugin {
                 icon: "document-edit-symbolic".into(),
                 data: query.to_owned(),
                 score: -1.0,
+                activity: LauncherActivity::None,
                 current: false,
                 keep_open: false,
             });

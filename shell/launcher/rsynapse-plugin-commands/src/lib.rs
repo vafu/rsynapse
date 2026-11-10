@@ -3,7 +3,9 @@ use std::process::{Command, Stdio};
 use std::sync::RwLock;
 
 use regex::Regex;
-use rsynapse_plugin::{Plugin, PluginGroup, PluginResponse, QueryContext, ResultItem};
+use rsynapse_plugin::{
+    LauncherActivity, Plugin, PluginGroup, PluginResponse, QueryContext, ResultItem,
+};
 use serde::Deserialize;
 
 #[derive(Deserialize, Default)]
@@ -224,6 +226,7 @@ impl JsonResultItem {
             icon: final_icon,
             data: final_data,
             score: -(index as f64),
+            activity: LauncherActivity::None,
             current: false,
             keep_open: false,
         }

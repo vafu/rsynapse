@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 
 use rsynapse_plugin::{
-    Hint, Plugin, PluginGroup, PluginResponse, PluginView, QueryContext, ResultItem,
+    Hint, LauncherActivity, Plugin, PluginGroup, PluginResponse, PluginView, QueryContext,
+    ResultItem,
 };
 use zbus::{
     blocking::{Connection, Proxy},
@@ -95,6 +96,11 @@ impl Plugin for BluetoothPlugin {
                     score: 1_000.0 - index as f64,
                     current: device.connected,
                     keep_open: true,
+                    activity: if device.connecting || !device.connected {
+                        LauncherActivity::Connecting
+                    } else {
+                        LauncherActivity::None
+                    },
                 }
             })
             .collect();
@@ -263,5 +269,20 @@ mod tests {
         });
         assert_eq!(devices[0].name, "alpha");
         assert_eq!(devices[1].name, "zeta");
+    }
+
+    #[test]
+    fn connecting_device_reports_spinner_activity() {
+        let mut device = device("headset", false);
+        device.connecting = true;
+        assert_eq!(device.subtitle(), "Connecting...");
+        assert_eq!(
+            if device.connecting {
+                LauncherActivity::Connecting
+            } else {
+                LauncherActivity::None
+            },
+            LauncherActivity::Connecting
+        );
     }
 }

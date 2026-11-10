@@ -1,7 +1,8 @@
 use std::process::Command;
 
 use rsynapse_plugin::{
-    Hint, Plugin, PluginGroup, PluginResponse, PluginView, QueryContext, ResultItem,
+    Hint, LauncherActivity, Plugin, PluginGroup, PluginResponse, PluginView, QueryContext,
+    ResultItem,
 };
 use serde_json::Value;
 
@@ -75,6 +76,7 @@ impl Plugin for AudioPlugin {
                 icon: "audio-speakers-symbolic".to_owned(),
                 data: sink.id.to_string(),
                 score: 1_000.0 - index as f64,
+                activity: LauncherActivity::None,
                 current: sink.is_default,
                 keep_open: false,
             })

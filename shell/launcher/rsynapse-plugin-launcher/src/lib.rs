@@ -1,7 +1,9 @@
 use fuzzy_matcher::FuzzyMatcher;
 use fuzzy_matcher::skim::SkimMatcherV2;
 use notify::{RecursiveMode, Watcher};
-use rsynapse_plugin::{Plugin, PluginGroup, PluginResponse, QueryContext, ResultItem};
+use rsynapse_plugin::{
+    LauncherActivity, Plugin, PluginGroup, PluginResponse, QueryContext, ResultItem,
+};
 use std::{
     collections::HashSet,
     fs,
@@ -177,6 +179,7 @@ impl Plugin for LauncherPlugin {
                 icon: app.icon.clone().unwrap_or_default(),
                 data: String::new(),
                 score: score as f64,
+                activity: LauncherActivity::None,
                 current: false,
                 keep_open: false,
             })
