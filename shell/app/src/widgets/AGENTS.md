@@ -3,6 +3,22 @@
 Widgets own their view models and display policy. Reusable D-Bus -> Observable
 adapters live in `shell-source` and are consumed directly.
 
+## Lists Reconcile, Items Subscribe (mandatory)
+
+Any collection of widgets — bar lists, popover contents, dropdowns — has two
+strictly separate update paths:
+
+1. **Structure** (add/remove/move/filter) is the only thing that may reconcile
+   rows. Drive it from a structural list source of stable keys via
+   `#[bind_list(...)]` or `set_component_list*`.
+2. **Data** (status, title, icon, counts, connected state, …) is owned by each
+   row through its own `#[source(per_key_source(key))]`.
+
+Never derive row existence from a full data snapshot, and never insert/append/
+remove child widgets imperatively in `update`/`init` to mirror snapshot data.
+"The list is small" or "it is in a popover" is not an exception. See
+`shell/CORE_WIDGETS_GUIDE.md` ("Lists Reconcile, Items Subscribe").
+
 - Keep each widget module self-contained. `mod.rs` declares the Relm4/GTK
   component and the public-facing model/init types for that widget module.
 - Widget-local source files compose `shell-source` adapters into view models.

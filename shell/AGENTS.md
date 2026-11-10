@@ -96,6 +96,11 @@ Consumer source rules:
 - Do not add a top-level `src/sources` module.
 - A provider should expose `Observable<ViewModel>` or
   `Observable<Option<ViewModel>>` for `#[source(...)]` bindings.
+- Lists reconcile, items subscribe. Structural list sources carry stable keys
+  only; each row subscribes to its own per-key `#[source(...)]`. Never rebuild
+  or imperatively mutate a row collection from a full data snapshot in
+  `update`/`init`, including popover or nested lists. See
+  `CORE_WIDGETS_GUIDE.md`.
 - Prefer enum-shaped view models when they simplify Relm4 view matching; use
   subcomponents when enum unpacking makes the view awkward.
 - Keep helper structs, parsing, formatting, and path construction private unless

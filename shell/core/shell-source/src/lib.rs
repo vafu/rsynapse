@@ -13,6 +13,7 @@ pub mod github;
 mod keyed_list;
 mod list_diff;
 mod locus_watch;
+pub mod mist;
 pub mod mpris;
 pub mod proj;
 pub mod session;

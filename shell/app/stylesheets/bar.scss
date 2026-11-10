@@ -144,6 +144,45 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
   }
 }
 
+.mist-popover contents {
+  min-width: 240px;
+}
+
+.mist-device-list {
+  min-width: 220px;
+}
+
+.mist-empty {
+  color: #{$panel-muted};
+  padding: 4px 2px;
+}
+
+.mist-device-icon {
+  -gtk-icon-size: #{$panel-meta-icon-size};
+  font-size: 14pt;
+}
+
+.mist-device-name {
+  font-weight: 600;
+}
+
+.mist-device-status {
+  font-size: 9pt;
+  color: #{$panel-muted};
+
+  &.mist-connected {
+    color: #{$sys_ok};
+  }
+}
+
+.mist-device-selected {
+  font-size: 8pt;
+  color: #{$accent_color};
+  padding: 1px 6px;
+  border-radius: 999px;
+  background-color: #{$indicator-fill};
+}
+
 .bar-corner-icon,
 .selected-project-icon,
 .bar-indicator-icon {
@@ -748,6 +787,12 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
 }
 
 .bt-count {
+  font-size: 8pt;
+  margin-left: 18px;
+  margin-top: -14px;
+}
+
+.mist-count {
   font-size: 8pt;
   margin-left: 18px;
   margin-top: -14px;

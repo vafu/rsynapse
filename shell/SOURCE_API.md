@@ -304,6 +304,13 @@ Useful operators for shell authors:
   re-subscribing existing keys, and value changes emit incremental
   `ListDiff`s. `source::materialize_list` applies those diffs for consumers
   that need a replaying full-list value such as a shared source.
+- For list surfaces, expose **two** sources: a structural key list for
+  `#[bind_list]`, and a per-key item source (`entry(key)`) that each row
+  subscribes to. A single flat `Observable<Vec<Item>>` from a D-Bus property is
+  a data snapshot, not a reconciliation trigger — project it into the key list
+  and per-key lookups (as `shell_source::github::{activity, activity_entry}`
+  does) rather than rebuilding rows from the snapshot. See
+  `CORE_WIDGETS_GUIDE.md` ("Lists Reconcile, Items Subscribe").
 - `debounce` and throttling where widget behavior needs transient timing
 - `Observable::create` for low-level custom sources
 

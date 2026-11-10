@@ -12,6 +12,7 @@ mod goals;
 mod icon_resolver;
 mod layout_indicator;
 mod media;
+mod mist;
 mod monitors;
 mod network;
 mod overlays;
@@ -53,6 +54,7 @@ use self::format::{
     battery_icon_name, battery_tooltip, source_error_count_label, source_error_tooltip,
 };
 use self::media::{MediaView, media_status};
+use self::mist::MistIndicator;
 use self::monitors::{primary_output, secondary_bar_changes};
 
 use self::goals::{GoalIndicator, GoalIndicatorOutput};
@@ -160,6 +162,7 @@ pub struct MainBar {
     _goal_indicator: Option<Controller<GoalIndicator>>,
     _bluetooth_indicator: Option<Controller<BluetoothIndicator>>,
     _network_indicators: Option<Controller<NetworkIndicators>>,
+    _mist_indicator: Option<Controller<MistIndicator>>,
     _child_bars: Vec<SecondaryBar>,
     _monitor_list: Option<gtk::gio::ListModel>,
     _audio_osd_ready: bool,
@@ -483,6 +486,9 @@ impl SimpleAsyncComponent for MainBar {
                         #[local_ref]
                         bluetooth_indicator -> gtk::Box {},
 
+                        #[local_ref]
+                        mist_indicator -> gtk::MenuButton {},
+
                         gtk::Box {
                             set_css_classes: &bar_item::classes(&[
                                 bar_item::SQUARE_CLASS,
@@ -718,6 +724,7 @@ impl SimpleAsyncComponent for MainBar {
             None,
             None,
             None,
+            None,
             child_bars,
             monitor_list,
             false,
@@ -758,6 +765,10 @@ impl SimpleAsyncComponent for MainBar {
         let network_indicators_builder = NetworkIndicators::builder();
         let network_indicators = network_indicators_builder.root.clone();
         model._network_indicators = Some(network_indicators_builder.launch(()).detach());
+
+        let mist_indicator_builder = MistIndicator::builder();
+        let mist_indicator = mist_indicator_builder.root.clone();
+        model._mist_indicator = Some(mist_indicator_builder.launch(()).detach());
 
         let widgets = view_output!();
         let input_sender = sender.input_sender().clone();

@@ -45,6 +45,13 @@ pub(crate) mod md {
     pub(crate) const MD_HARDDISK: &str = "\u{f02ca}";
     pub(crate) const MD_HEART: &str = "\u{f02d1}";
     pub(crate) const MD_HEART_OUTLINE: &str = "\u{f02d5}";
+    pub(crate) const MD_BRIDGE: &str = "\u{f0618}";
+    pub(crate) const MD_CELLPHONE: &str = "\u{f011c}";
+    pub(crate) const MD_DESKTOP_TOWER: &str = "\u{f01c5}";
+    pub(crate) const MD_DEVICES: &str = "\u{f0fb0}";
+    pub(crate) const MD_LAPTOP: &str = "\u{f0322}";
+    pub(crate) const MD_SERVER: &str = "\u{f048b}";
+    pub(crate) const MD_TABLET: &str = "\u{f04f6}";
     pub(crate) const MD_LEAF: &str = "\u{f032a}";
     pub(crate) const MD_ROBOT: &str = "\u{f06a9}";
     pub(crate) const MD_SPEEDOMETER: &str = "\u{f04c5}";
