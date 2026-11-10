@@ -4,7 +4,8 @@ use std::sync::RwLock;
 
 use regex::Regex;
 use rsynapse_plugin::{
-    LauncherActivity, Plugin, PluginGroup, PluginResponse, QueryContext, ResultItem,
+    ActionHint, LauncherActivity, Plugin, PluginResponse, PluginScope, PluginSpec, QueryContext,
+    ResultItem,
 };
 use serde::Deserialize;
 
@@ -234,18 +235,13 @@ impl JsonResultItem {
 }
 
 impl Plugin for CommandsPlugin {
-    fn name(&self) -> &'static str {
-        "Commands"
-    }
-
-    fn groups(&self) -> Vec<PluginGroup> {
-        vec![PluginGroup {
-            id: "commands".to_owned(),
-            title: "Commands".to_owned(),
-            description: "Run configured command queries".to_owned(),
-            aliases: vec!["cmd".to_owned(), "command".to_owned()],
-            plugin: String::new(),
-        }]
+    fn spec(&self) -> PluginSpec {
+        PluginSpec {
+            id: "commands",
+            name: "Commands",
+            aliases: &["cmd", "command"],
+            scope: PluginScope::Both,
+        }
     }
 
     fn reload(&self) {
@@ -269,7 +265,8 @@ impl Plugin for CommandsPlugin {
         }
 
         PluginResponse {
-            view: None,
+            summary: String::new(),
+            actions: vec![ActionHint::Apply],
             results,
         }
     }

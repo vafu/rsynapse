@@ -15,13 +15,15 @@ use relm4::gtk::gdk;
 use relm4::gtk::glib;
 use relm4::prelude::*;
 use rsynapse_launcher_api::{
-    KeyEvent as LauncherKeyEvent, KeyRequest, KeyResponse, LauncherActivity, LauncherHint,
-    LauncherMode, LauncherResult, LauncherView, SearchRequest, SearchResponse, ShowRequest,
+    ActionHint, KeyEvent as LauncherKeyEvent, KeyRequest, KeyResponse, LauncherActivity,
+    LauncherMode, LauncherResult, SearchRequest, SearchResponse, ShowRequest,
 };
 use shell_core::keybind::{
     HoldAction, HoldBindings, HoldWatcher, KeyChord, Keybind, KeybindWatcher,
 };
 
+const DEFAULT_TITLE: &str = "Launch";
+const DEFAULT_SUBTITLE: &str = "Apps, commands & more";
 const MAX_ITEMS: usize = 10;
 const RSYNAPSE_UI_CSS_PRIORITY: u32 = gtk::STYLE_PROVIDER_PRIORITY_USER + 1;
 
@@ -97,7 +99,7 @@ impl SimpleComponent for App {
 
         let widgets = view_output!();
 
-        let title = gtk::Label::new(Some("Rsynapse"));
+        let title = gtk::Label::new(Some(DEFAULT_TITLE));
         title.add_css_class("workspace-selector-title");
         title.set_xalign(0.0);
 
@@ -384,7 +386,7 @@ impl SimpleComponent for App {
                 if generation != self.search_generation.get() {
                     return;
                 }
-                self.apply_view(&response.view);
+                self.apply_response_view(&response);
                 let mut results = response.results;
                 results.truncate(MAX_ITEMS);
                 self.results = results;
@@ -565,27 +567,41 @@ impl App {
         });
     }
 
-    fn apply_view(&self, view: &LauncherView) {
-        self.title.set_text(if view.title.is_empty() {
-            "Rsynapse"
+    fn apply_response_view(&self, response: &SearchResponse) {
+        self.title.set_text(if response.plugin_name.is_empty() {
+            DEFAULT_TITLE
         } else {
-            &view.title
+            &response.plugin_name
         });
-        self.subtitle.set_text(&view.subtitle);
-        self.subtitle.set_visible(!view.subtitle.is_empty());
-        self.search_entry
-            .set_placeholder_text(Some(if view.placeholder.is_empty() {
-                "Search"
-            } else {
-                &view.placeholder
-            }));
-        self.apply_hints(&view.hints);
+        self.title.set_visible(true);
+        self.subtitle.set_text(if response.summary.is_empty() {
+            DEFAULT_SUBTITLE
+        } else {
+            &response.summary
+        });
+        self.subtitle.set_visible(true);
+        self.search_entry.set_placeholder_text(Some("Search"));
+        self.apply_actions(&response.actions);
     }
 
-    fn apply_hints(&self, hints: &[LauncherHint]) {
+    fn apply_actions(&self, actions: &[ActionHint]) {
+        let mut hints = vec![("↑↓", "choose")];
+        for action in actions {
+            hints.push(match action {
+                ActionHint::Apply => ("Enter", "apply"),
+                ActionHint::Toggle => ("Enter", "toggle"),
+                ActionHint::Remove => ("Del", "remove"),
+                ActionHint::Focus => ("Enter", "focus"),
+            });
+        }
+        hints.push(("Esc", "close"));
+        self.apply_hints(&hints);
+    }
+
+    fn apply_hints(&self, hints: &[(&str, &str)]) {
         let text = hints
             .iter()
-            .map(|hint| format!("{} {}", hint.key, hint.label))
+            .map(|(key, label)| format!("{key} {label}"))
             .collect::<Vec<_>>()
             .join(" · ");
         self.hints.set_text(&text);

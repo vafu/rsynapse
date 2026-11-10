@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
-use rsynapse_launcher_api::{EngineProxy, SearchRequest};
+use rsynapse_launcher_api::{EngineProxy, PluginScope, SearchRequest};
 use tabled::{Table, Tabled};
 use zbus::Connection;
 
@@ -17,15 +17,15 @@ struct ResultRow {
 }
 
 #[derive(Tabled)]
-struct GroupRow {
+struct PluginRow {
     #[tabled(rename = "ID")]
     id: String,
-    #[tabled(rename = "Title")]
-    title: String,
+    #[tabled(rename = "Name")]
+    name: String,
     #[tabled(rename = "Aliases")]
     aliases: String,
-    #[tabled(rename = "Plugin")]
-    plugin: String,
+    #[tabled(rename = "Scope")]
+    scope: String,
 }
 
 #[derive(Parser, Debug)]
@@ -50,7 +50,7 @@ enum Commands {
         /// The ID of the item to execute
         id: String,
     },
-    /// List launcher groups and aliases.
+    /// List launcher plugins and aliases.
     Describe,
 }
 
@@ -93,17 +93,22 @@ async fn main() -> Result<()> {
         }
         Commands::Describe => {
             let response = proxy.describe().await?;
-            let groups = response
-                .groups
+            let plugins = response
+                .plugins
                 .into_iter()
-                .map(|group| GroupRow {
-                    id: group.id,
-                    title: group.title,
-                    aliases: group.aliases.join(", "),
-                    plugin: group.plugin,
+                .map(|plugin| PluginRow {
+                    id: plugin.id,
+                    name: plugin.name,
+                    aliases: plugin.aliases.join(", "),
+                    scope: match plugin.scope {
+                        PluginScope::DirectOnly => "direct",
+                        PluginScope::MainOnly => "main",
+                        PluginScope::Both => "main+direct",
+                    }
+                    .to_owned(),
                 })
                 .collect::<Vec<_>>();
-            println!("{}", Table::new(groups));
+            println!("{}", Table::new(plugins));
         }
     }
 

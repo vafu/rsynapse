@@ -2,7 +2,8 @@ use fuzzy_matcher::FuzzyMatcher;
 use fuzzy_matcher::skim::SkimMatcherV2;
 use notify::{RecursiveMode, Watcher};
 use rsynapse_plugin::{
-    LauncherActivity, Plugin, PluginGroup, PluginResponse, QueryContext, ResultItem,
+    ActionHint, LauncherActivity, Plugin, PluginResponse, PluginScope, PluginSpec, QueryContext,
+    ResultItem,
 };
 use std::{
     collections::HashSet,
@@ -118,22 +119,13 @@ fn start_watcher_thread(index: Arc<Mutex<AppIndex>>) {
 }
 
 impl Plugin for LauncherPlugin {
-    fn name(&self) -> &'static str {
-        "Application Launcher"
-    }
-
-    fn groups(&self) -> Vec<PluginGroup> {
-        vec![PluginGroup {
-            id: "apps".to_owned(),
-            title: "Applications".to_owned(),
-            description: "Launch installed applications".to_owned(),
-            aliases: vec![
-                "app".to_owned(),
-                "applications".to_owned(),
-                "launch".to_owned(),
-            ],
-            plugin: String::new(),
-        }]
+    fn spec(&self) -> PluginSpec {
+        PluginSpec {
+            id: "apps",
+            name: "Applications",
+            aliases: &["app", "applications", "launch"],
+            scope: PluginScope::Both,
+        }
     }
 
     fn default_execute(&self) -> Option<&'static str> {
@@ -186,7 +178,8 @@ impl Plugin for LauncherPlugin {
             .collect();
 
         PluginResponse {
-            view: None,
+            summary: String::new(),
+            actions: vec![ActionHint::Apply],
             results,
         }
     }

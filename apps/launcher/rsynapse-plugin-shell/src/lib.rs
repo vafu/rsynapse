@@ -1,7 +1,8 @@
 use std::process::{Command, Stdio};
 
 use rsynapse_plugin::{
-    LauncherActivity, Plugin, PluginGroup, PluginResponse, QueryContext, ResultItem,
+    ActionHint, LauncherActivity, Plugin, PluginResponse, PluginScope, PluginSpec, QueryContext,
+    ResultItem,
 };
 
 struct ShellPlugin;
@@ -26,18 +27,13 @@ fn is_valid_shell_syntax(query: &str) -> bool {
 }
 
 impl Plugin for ShellPlugin {
-    fn name(&self) -> &'static str {
-        "Shell Executor"
-    }
-
-    fn groups(&self) -> Vec<PluginGroup> {
-        vec![PluginGroup {
-            id: "shell".to_owned(),
-            title: "Shell".to_owned(),
-            description: "Run a shell command".to_owned(),
-            aliases: vec!["sh".to_owned(), "run".to_owned(), "command".to_owned()],
-            plugin: String::new(),
-        }]
+    fn spec(&self) -> PluginSpec {
+        PluginSpec {
+            id: "shell",
+            name: "Shell",
+            aliases: &["sh", "run", "command"],
+            scope: PluginScope::Both,
+        }
     }
 
     fn default_execute(&self) -> Option<&'static str> {
@@ -80,7 +76,8 @@ impl Plugin for ShellPlugin {
         }
 
         PluginResponse {
-            view: None,
+            summary: String::new(),
+            actions: vec![ActionHint::Apply],
             results: vec![ResultItem {
                 id: format!("shell-exec-{}", command),
                 title: command.to_string(),

@@ -1,34 +1,24 @@
 use rsynapse_plugin::{
-    Hint, LauncherActivity, Plugin, PluginGroup, PluginResponse, PluginView, QueryContext,
-    ResultItem,
+    ActionHint, LauncherActivity, Plugin, PluginResponse, PluginScope, PluginSpec, QueryContext,
+    QueryMode, ResultItem,
 };
 
-const GROUP_ID: &str = "audio";
+const PLUGIN_ID: &str = "audio";
 
 pub struct AudioPlugin;
 
 impl Plugin for AudioPlugin {
-    fn name(&self) -> &'static str {
-        "Audio"
-    }
-
-    fn groups(&self) -> Vec<PluginGroup> {
-        vec![PluginGroup {
-            id: GROUP_ID.to_owned(),
-            title: "Audio Output".to_owned(),
-            description: "Choose the default audio output".to_owned(),
-            aliases: vec![
-                "audio".to_owned(),
-                "sound".to_owned(),
-                "sink".to_owned(),
-                "output".to_owned(),
-            ],
-            plugin: String::new(),
-        }]
+    fn spec(&self) -> PluginSpec {
+        PluginSpec {
+            id: PLUGIN_ID,
+            name: "Audio Output",
+            aliases: &["audio", "sound", "sink", "output"],
+            scope: PluginScope::DirectOnly,
+        }
     }
 
     fn query(&self, context: &QueryContext<'_>) -> PluginResponse {
-        if context.group != Some(GROUP_ID) {
+        if context.mode != QueryMode::Direct {
             return PluginResponse::default();
         }
 
@@ -76,25 +66,8 @@ impl Plugin for AudioPlugin {
             .unwrap_or_else(|| "No default output".to_owned());
 
         PluginResponse {
-            view: Some(PluginView {
-                title: "Audio Output".to_owned(),
-                subtitle,
-                placeholder: "Search audio outputs".to_owned(),
-                hints: vec![
-                    Hint {
-                        key: "↑↓".to_owned(),
-                        label: "choose".to_owned(),
-                    },
-                    Hint {
-                        key: "Enter".to_owned(),
-                        label: "apply".to_owned(),
-                    },
-                    Hint {
-                        key: "Esc".to_owned(),
-                        label: "close".to_owned(),
-                    },
-                ],
-            }),
+            summary: subtitle,
+            actions: vec![ActionHint::Apply],
             results,
         }
     }

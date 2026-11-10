@@ -13,7 +13,7 @@ dynamic plugin API, and bundled plugins.
 | `rsynapse-daemon` | Binary | Owns `org.rsynapse.Engine`, loads plugins, serves search/execute over D-Bus. |
 | `rsynapse-cli` | Binary | CLI client for querying and executing launcher results. |
 | `rsynapse-ui` | Binary | GTK4/Relm4 launcher UI client. |
-| `rsynapse-plugin` | Library | Plugin trait, groups, query/key context, and result item types. |
+| `rsynapse-plugin` | Library | Plugin trait, routing spec, query/key context, and result item types. |
 | `rsynapse-launcher-api` | Library | Shared D-Bus wire types and generated engine/toggle proxies. |
 | `rsynapse-plugin-launcher` | `cdylib` | Indexes `.desktop` applications from XDG application directories. |
 | `rsynapse-plugin-shell` | `cdylib` | Offers syntactically valid shell commands as low-priority results. |
@@ -36,12 +36,13 @@ Methods:
 - `Execute(id: String) -> String`
 
 `SearchRequest` carries invocation params, the query, and the current selection.
-The first param selects a plugin group by id/alias; remaining params and the
-query are forwarded to that group's plugin. If no group matches, all plugins are
-queried and all params are forwarded as filters. `SearchResponse` includes the
-dynamic launcher view (title, subtitle, placeholder, hints) and result rows.
+The first param selects a direct-callable plugin by id/alias; remaining params
+and the query are forwarded to that plugin. If no plugin matches, plugins with
+`MainOnly`/`Both` scope are queried and all params are forwarded as filters.
+`SearchResponse` includes the focused plugin id/name, optional live summary,
+semantic action hints, and result rows. Launcher chrome is UI-owned.
 
-`Describe` returns the default view plus all plugin groups and aliases.
+`Describe` returns plugin routing metadata and aliases.
 
 `HandleKey` forwards non-navigation keys (for example `Delete`) to the plugin
 that owns the selected result. Plugins can perform an action directly and return
@@ -51,10 +52,11 @@ that owns the selected result. Plugins can perform an action directly and return
 can handle execution directly, provide a default execute template, or users can
 override plugin execute templates in `~/.config/rsynapse/config.toml`.
 
-Plugins declare one or more param-selectable groups. Built-in groups are `apps`
+Plugins declare one `PluginSpec`: stable id, name, aliases, and scope
+(`DirectOnly`, `MainOnly`, or `Both`). Built-in direct entry points are `apps`
 (aliases: app, applications, launch), `projects` (project, proj), `workspaces`
-(workspace, ws), `shell` (sh, run, command), `calc` (calculator, =), and
-`commands` (cmd, command).
+(workspace, ws), `shell` (sh, run, command), `calc` (calculator, =), `commands`
+(cmd, command), `audio`, and `bluetooth`.
 
 The UI accepts positional launcher params:
 

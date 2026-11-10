@@ -2,30 +2,36 @@
 use serde::{Deserialize, Serialize};
 use zbus::zvariant::Type;
 
-/// One dynamic keyboard hint shown by the launcher footer.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
-pub struct LauncherHint {
-    pub key: String,
-    pub label: String,
+/// Semantic launcher action. The UI owns the key binding and label.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+#[zvariant(signature = "s")]
+pub enum ActionHint {
+    #[default]
+    Apply,
+    Toggle,
+    Remove,
+    Focus,
 }
 
-/// Launcher header and footer content for the current request/group.
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
-pub struct LauncherView {
-    pub title: String,
-    pub subtitle: String,
-    pub placeholder: String,
-    pub hints: Vec<LauncherHint>,
+/// Whether a plugin takes part in the aggregate search, direct invocation, or both.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "snake_case")]
+#[zvariant(signature = "s")]
+pub enum PluginScope {
+    #[default]
+    DirectOnly,
+    MainOnly,
+    Both,
 }
 
-/// A param-selectable plugin group.
+/// Stable plugin metadata. This is not launcher presentation.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
-pub struct LauncherGroup {
+pub struct LauncherPlugin {
     pub id: String,
-    pub title: String,
-    pub description: String,
+    pub name: String,
     pub aliases: Vec<String>,
-    pub plugin: String,
+    pub scope: PluginScope,
 }
 
 /// One launcher result row.
@@ -65,21 +71,27 @@ pub struct SearchRequest {
     pub selected: String,
 }
 
-/// Search results plus the dynamic view for the resolved group.
+/// Search results plus the focused direct plugin's data-level context.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, Type)]
 pub struct SearchResponse {
-    pub view: LauncherView,
+    /// Directly invoked plugin id, or empty for aggregate search.
+    pub plugin: String,
+    /// Display name of the directly invoked plugin.
+    pub plugin_name: String,
+    /// Live one-line context supplied by the plugin, if any.
+    pub summary: String,
+    /// Semantic actions available for the current results.
+    pub actions: Vec<ActionHint>,
     pub results: Vec<LauncherResult>,
 }
 
 /// Version of the static plugin trait/wire contract built into the daemon.
-pub const PLUGIN_ABI_VERSION: u32 = 1;
+pub const PLUGIN_ABI_VERSION: u32 = 2;
 
-/// Static launcher metadata: default view and all available groups.
+/// Static launcher metadata: plugins and entry points.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, Type)]
 pub struct DescribeResponse {
-    pub default_view: LauncherView,
-    pub groups: Vec<LauncherGroup>,
+    pub plugins: Vec<LauncherPlugin>,
     pub abi_version: u32,
 }
 

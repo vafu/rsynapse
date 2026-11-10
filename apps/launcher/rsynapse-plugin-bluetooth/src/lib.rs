@@ -1,30 +1,25 @@
 use data_sources::bluetooth;
 use rsynapse_plugin::{
-    Hint, LauncherActivity, Plugin, PluginGroup, PluginResponse, PluginView, QueryContext,
-    ResultItem,
+    ActionHint, LauncherActivity, Plugin, PluginResponse, PluginScope, PluginSpec, QueryContext,
+    QueryMode, ResultItem,
 };
 
-const GROUP_ID: &str = "bluetooth";
+const PLUGIN_ID: &str = "bluetooth";
 
 pub struct BluetoothPlugin;
 
 impl Plugin for BluetoothPlugin {
-    fn name(&self) -> &'static str {
-        "Bluetooth"
-    }
-
-    fn groups(&self) -> Vec<PluginGroup> {
-        vec![PluginGroup {
-            id: GROUP_ID.to_owned(),
-            title: "Bluetooth".to_owned(),
-            description: "Connect or disconnect Bluetooth devices".to_owned(),
-            aliases: vec!["bluetooth".to_owned(), "bt".to_owned()],
-            plugin: String::new(),
-        }]
+    fn spec(&self) -> PluginSpec {
+        PluginSpec {
+            id: PLUGIN_ID,
+            name: "Bluetooth",
+            aliases: &["bluetooth", "bt"],
+            scope: PluginScope::DirectOnly,
+        }
     }
 
     fn query(&self, context: &QueryContext<'_>) -> PluginResponse {
-        if context.group != Some(GROUP_ID) {
+        if context.mode != QueryMode::Direct {
             return PluginResponse::default();
         }
 
@@ -73,25 +68,8 @@ impl Plugin for BluetoothPlugin {
             .collect();
 
         PluginResponse {
-            view: Some(PluginView {
-                title: "Bluetooth".to_owned(),
-                subtitle,
-                placeholder: "Search Bluetooth devices".to_owned(),
-                hints: vec![
-                    Hint {
-                        key: "↑↓".to_owned(),
-                        label: "choose".to_owned(),
-                    },
-                    Hint {
-                        key: "Enter".to_owned(),
-                        label: "toggle".to_owned(),
-                    },
-                    Hint {
-                        key: "Esc".to_owned(),
-                        label: "close".to_owned(),
-                    },
-                ],
-            }),
+            summary: subtitle,
+            actions: vec![ActionHint::Toggle],
             results,
         }
     }
