@@ -4,6 +4,9 @@
 //! re-declaring the D-Bus interface.
 use proj_model::ProjectInfo;
 
+mod remarked_ui;
+pub use remarked_ui::RemarkedUiProxy;
+
 #[zbus::proxy(
     interface = "org.rsynapse.Steward.Associations1",
     default_service = "org.rsynapse.Steward",

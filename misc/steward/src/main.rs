@@ -5,6 +5,7 @@ mod git_status;
 mod goal_work;
 mod metrics;
 mod namer;
+mod notebook;
 mod productivity;
 mod relations;
 mod session;
@@ -36,6 +37,7 @@ async fn main() -> anyhow::Result<()> {
     let metrics = Metrics::new(locus.clone(), carbon_host, carbon_port);
     let (shutdown, shutdown_signal) = tokio::sync::watch::channel(false);
     let mut metrics = tokio::spawn(async move { metrics.run(shutdown_signal).await });
+    let notebooks = tokio::spawn(async move { notebook::run().await });
     let namer = Namer::new(locus.clone());
     let namer = tokio::spawn(async move { namer.run().await });
     let git_status = GitStatus::new(locus.clone());
@@ -46,6 +48,7 @@ async fn main() -> anyhow::Result<()> {
         biased;
         result = &mut metrics => report("metrics", result),
         result = namer => report("namer", result),
+        result = notebooks => report("notebook", result),
         result = git_status => report("git_status", result),
         result = associations => report("associations", result),
         _ = tokio::signal::ctrl_c() => {
