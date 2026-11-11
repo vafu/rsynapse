@@ -61,7 +61,9 @@ Plugins declare one `PluginSpec`: stable id, name, aliases, and scope
 (workspace, ws), `shell` (sh, run, command), `calc` (calculator, =), `commands`
 (cmd, command), `audio`, `bluetooth`, and `mpris` (media, player, music). Selecting an
 MPRIS player persists through Locus and the shell follows it reactively; choose
-`Automatic` to revert to following the playing player.
+`Automatic` to revert to following the playing player. Each MPRIS row also shows
+the player's current track and artist, its playback-state icon, and local
+artwork when the player exposes a `file://` cover.
 
 The UI accepts positional launcher params:
 

@@ -428,6 +428,63 @@ pub fn player_identity_blocking(player: &str) -> String {
         .unwrap_or_else(|| player.to_owned())
 }
 
+/// Blocking one-shot snapshot of a single MPRIS player's live media state.
+///
+/// Used by the launcher to describe every player in a row without running a
+/// reactive subscription per player. Position is read as-is rather than
+/// interpolated; callers that need progress should use [`player`].
+pub fn player_snapshot_blocking(player: &str) -> Result<MprisSnapshot, String> {
+    let connection = zbus::blocking::Connection::session()
+        .map_err(|error| format!("connect MPRIS session bus failed: {error}"))?;
+    let root =
+        zbus::blocking::Proxy::new(&connection, player.to_owned(), PLAYER_PATH, ROOT_INTERFACE)
+            .map_err(|error| format!("connect MPRIS player {player} failed: {error}"))?;
+    let proxy = zbus::blocking::Proxy::new(
+        &connection,
+        player.to_owned(),
+        PLAYER_PATH,
+        PLAYER_INTERFACE,
+    )
+    .map_err(|error| format!("connect MPRIS player {player} failed: {error}"))?;
+
+    let identity = root
+        .get_property::<String>("Identity")
+        .ok()
+        .filter(|identity| !identity.trim().is_empty())
+        .unwrap_or_else(|| player.to_owned());
+    let playback_status = proxy
+        .get_property::<String>("PlaybackStatus")
+        .ok()
+        .map(|status| parse_playback_status(&status))
+        .unwrap_or_default();
+    let metadata = proxy
+        .get_property::<Metadata>("Metadata")
+        .unwrap_or_default();
+    let can_control = proxy.get_property::<bool>("CanControl").unwrap_or(false);
+    let can_go_next = can_control && proxy.get_property::<bool>("CanGoNext").unwrap_or(false);
+    let can_go_previous =
+        can_control && proxy.get_property::<bool>("CanGoPrevious").unwrap_or(false);
+    let can_play = proxy.get_property::<bool>("CanPlay").unwrap_or(false);
+    let can_pause = proxy.get_property::<bool>("CanPause").unwrap_or(false);
+    let position_us = proxy.get_property::<i64>("Position").unwrap_or_default();
+
+    Ok(MprisSnapshot {
+        player: player.to_owned(),
+        identity,
+        track_id: metadata.track_id,
+        title: metadata.title,
+        artist: metadata.artist,
+        album: metadata.album,
+        art_url: metadata.art_url,
+        playback_status,
+        position_us,
+        length_us: metadata.length_us,
+        can_go_next,
+        can_go_previous,
+        can_play_pause: can_control && (can_play || can_pause),
+    })
+}
+
 /// Blocking read of the user's selected MPRIS player, if any.
 pub fn selected_player_blocking() -> Result<Option<String>, String> {
     let connection = zbus::blocking::Connection::session()
