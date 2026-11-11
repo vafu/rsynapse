@@ -261,7 +261,7 @@ where
         let path = descriptor_error_path(&descriptor.key());
         let descriptor = descriptor.clone();
         let observable =
-            defer(move || from_stream_result(property_stream::<T>(descriptor.clone())))
+            defer(move || from_stream_result(property_stream::<T>(descriptor.clone(), false)))
                 .distinct_until_changed()
                 .box_it();
         log_errors("dbus-property", path, observable)
@@ -309,6 +309,33 @@ where
     property(descriptor)
         .map(move |value| value.unwrap_or_else(|| default.clone()))
         .box_it()
+}
+
+/// Emits a typed D-Bus property value, substituting `default` when a read
+/// fails for an optional property.
+///
+/// Unlike [`property_or`], a failed `Properties.Get` is treated as "absent"
+/// rather than a source error. This suits optional properties on third-party
+/// services (StatusNotifierItem icon fields, MPRIS capability flags) that may
+/// legitimately reject a read while the object is still present. Connection
+/// failures still surface as errors so real availability problems stay visible.
+pub fn property_or_lenient<T>(descriptor: PropertyDescriptor, default: T) -> Observable<T>
+where
+    T: TryFrom<OwnedValue> + Clone + PartialEq + Send + 'static,
+    T::Error: fmt::Display,
+{
+    let key = descriptor.key();
+    shared_by_key("dbus-property-lenient", key, move || {
+        let path = descriptor_error_path(&descriptor.key());
+        let descriptor = descriptor.clone();
+        let observable =
+            defer(move || from_stream_result(property_stream::<T>(descriptor.clone(), true)))
+                .distinct_until_changed()
+                .box_it();
+        log_errors("dbus-property-lenient", path, observable)
+    })
+    .map(move |value| value.unwrap_or_else(|| default.clone()))
+    .box_it()
 }
 
 /// Emits a seeded typed D-Bus property value, substituting `default` while absent.
@@ -367,7 +394,7 @@ where
     Source::from_task(move |sender| {
         let descriptor = descriptor.clone();
         async move {
-            let mut stream = Box::pin(property_stream::<T>(descriptor.clone()));
+            let mut stream = Box::pin(property_stream::<T>(descriptor.clone(), false));
             while let Some(item) = stream.next().await {
                 let result = item.and_then(|value| {
                     value.ok_or_else(|| format!("D-Bus property {} is absent", descriptor.key()))
@@ -394,7 +421,7 @@ where
     Source::from_task(move |sender| {
         let descriptor = descriptor.clone();
         async move {
-            let mut stream = Box::pin(property_stream::<Vec<T>>(descriptor.clone()));
+            let mut stream = Box::pin(property_stream::<Vec<T>>(descriptor.clone(), false));
             while let Some(item) = stream.next().await {
                 let result = item.map(|value| value.and_then(|mut values| values.drain(..).next()));
                 if sender.send(result).await.is_err() {
@@ -553,10 +580,13 @@ struct PropertyStreamState {
     proxy: Option<Proxy<'static>>,
     stream: Option<BoxedPropertiesChangedStream>,
     phase: PropertyPhase,
+    /// Treat property-read failures as absence instead of source errors.
+    lenient: bool,
 }
 
 fn property_stream<T>(
     descriptor: PropertyDescriptor,
+    lenient: bool,
 ) -> impl Stream<Item = Result<Option<T>, String>>
 where
     T: TryFrom<OwnedValue> + Send + 'static,
@@ -568,6 +598,7 @@ where
             proxy: None,
             stream: None,
             phase: PropertyPhase::Connect,
+            lenient,
         },
         |mut state| async move {
             loop {
@@ -632,6 +663,7 @@ where
                         state.phase = PropertyPhase::Watch;
                         let result = read_property::<T>(&state.descriptor, state.proxy()).await;
                         match result {
+                            Err(_) if state.lenient => return Some((Ok(None), state)),
                             Err(error) => {
                                 if retry_after_service_return(
                                     state.descriptor.object.bus,
@@ -693,6 +725,9 @@ where
                             PropertyChange::Emit(value) => return Some((value, state)),
                             PropertyChange::Ignore => continue,
                             PropertyChange::Error(error) => {
+                                if state.lenient {
+                                    continue;
+                                }
                                 tracing::warn!(
                                     source = %state.descriptor.key(),
                                     %error,
@@ -732,6 +767,7 @@ where
             proxy: None,
             stream: None,
             phase: PropertyPhase::Connect,
+            lenient: false,
         },
         move |mut state| {
             let initial = initial.clone();

@@ -506,7 +506,10 @@ where
     T: TryFrom<OwnedValue> + Clone + PartialEq + Send + 'static,
     T::Error: Display,
 {
-    dbus::property_or(PropertyDescriptor::new(object.clone(), name), default)
+    // StatusNotifierItem fields are optional and third-party items (e.g. Slack)
+    // may reject reads while still being present. Treat a failed read as absent
+    // instead of a source error.
+    dbus::property_or_lenient(PropertyDescriptor::new(object.clone(), name), default)
 }
 
 pub(super) fn menu_path(key: &TrayItemKey, owner: &str) -> Observable<Option<String>> {

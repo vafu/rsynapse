@@ -1,11 +1,8 @@
 use std::{
     any::{Any, TypeId},
-    collections::{HashMap, VecDeque},
+    collections::HashMap,
     path::{Path, PathBuf},
-    sync::{
-        Arc, Mutex, OnceLock, Weak,
-        atomic::{AtomicU64, Ordering},
-    },
+    sync::{Arc, Mutex, OnceLock, Weak},
 };
 
 use futures_util::{Stream, StreamExt};
@@ -602,7 +599,9 @@ pub fn log_errors<T>(
 where
     T: Send + 'static,
 {
+    let clear_path = path.clone();
     observable
+        .tap(move |_| clear_source_error(source, &clear_path))
         .map_err(move |error| {
             record_source_error(source, &path, &error);
             eprintln!("[shell-core/source/{source}] {}: {error}", path.display());
@@ -611,9 +610,12 @@ where
         .box_it()
 }
 
+/// Number of sources whose most recent observation failed and have not
+/// recovered. This is what the bar's error badge shows, so a transient burst
+/// does not pin the counter forever.
 pub fn error_count() -> Observable<u64> {
     errors()
-        .map(|errors| errors.total)
+        .map(|errors| errors.active)
         .distinct_until_changed()
         .box_it()
 }
@@ -651,39 +653,88 @@ where
 }
 
 struct SourceErrorState {
-    total: AtomicU64,
-    recent: Mutex<VecDeque<SourceError>>,
+    registry: Mutex<SourceErrorRegistry>,
     subject: Mutex<SharedSubject<'static, SourceErrors, String>>,
 }
 
 fn source_error_state() -> &'static SourceErrorState {
     static SOURCE_ERROR_STATE: OnceLock<SourceErrorState> = OnceLock::new();
     SOURCE_ERROR_STATE.get_or_init(|| SourceErrorState {
-        total: AtomicU64::new(0),
-        recent: Mutex::new(VecDeque::new()),
+        registry: Mutex::new(SourceErrorRegistry::default()),
         subject: Mutex::new(Shared::subject()),
     })
 }
 
-pub fn record_source_error(source: &'static str, path: &Path, message: &str) {
-    let state = source_error_state();
-    let total = state.total.fetch_add(1, Ordering::SeqCst) + 1;
-    let snapshot = {
-        let mut recent = state
-            .recent
-            .lock()
-            .expect("source error history lock poisoned");
-        recent.push_front(SourceError {
-            id: total,
-            source,
-            path: path.to_path_buf(),
-            message: message.to_owned(),
-        });
+/// Tracks which sources are currently failing.
+///
+/// Repeated failures of the same source update its entry instead of stacking,
+/// so the active count reflects distinct broken sources rather than retry
+/// volume. A recovery (`clear`) removes the entry.
+#[derive(Default)]
+struct SourceErrorRegistry {
+    total: u64,
+    active: HashMap<(String, PathBuf), SourceError>,
+}
+
+impl SourceErrorRegistry {
+    fn record(&mut self, source: &'static str, path: &Path, message: &str) -> SourceErrors {
+        self.total += 1;
+        self.active.insert(
+            active_key(source, path),
+            SourceError {
+                id: self.total,
+                source,
+                path: path.to_path_buf(),
+                message: message.to_owned(),
+            },
+        );
+        self.snapshot()
+    }
+
+    fn clear(&mut self, source: &'static str, path: &Path) -> Option<SourceErrors> {
+        self.active.remove(&active_key(source, path))?;
+        Some(self.snapshot())
+    }
+
+    fn snapshot(&self) -> SourceErrors {
+        let mut recent = self.active.values().cloned().collect::<Vec<_>>();
+        recent.sort_by(|left, right| right.id.cmp(&left.id));
         recent.truncate(MAX_SOURCE_ERRORS);
         SourceErrors {
-            total,
-            recent: recent.iter().cloned().collect(),
+            total: self.total,
+            active: self.active.len() as u64,
+            recent,
         }
+    }
+}
+
+fn active_key(source: &str, path: &Path) -> (String, PathBuf) {
+    (source.to_owned(), path.to_path_buf())
+}
+
+/// Records that `source` at `path` is currently failing.
+pub fn record_source_error(source: &'static str, path: &Path, message: &str) {
+    let state = source_error_state();
+    let snapshot = state
+        .registry
+        .lock()
+        .expect("source error state lock poisoned")
+        .record(source, path, message);
+    if let Ok(mut subject) = state.subject.lock() {
+        subject.next(snapshot);
+    }
+}
+
+/// Clears a previously recorded failure once `source` at `path` emits again.
+pub fn clear_source_error(source: &'static str, path: &Path) {
+    let state = source_error_state();
+    let Some(snapshot) = state
+        .registry
+        .lock()
+        .expect("source error state lock poisoned")
+        .clear(source, path)
+    else {
+        return;
     };
     if let Ok(mut subject) = state.subject.lock() {
         subject.next(snapshot);
@@ -691,16 +742,11 @@ pub fn record_source_error(source: &'static str, path: &Path, message: &str) {
 }
 
 fn source_error_snapshot(state: &SourceErrorState) -> SourceErrors {
-    SourceErrors {
-        total: state.total.load(Ordering::SeqCst),
-        recent: state
-            .recent
-            .lock()
-            .expect("source error history lock poisoned")
-            .iter()
-            .cloned()
-            .collect(),
-    }
+    state
+        .registry
+        .lock()
+        .expect("source error state lock poisoned")
+        .snapshot()
 }
 
 fn trace_source_lifecycle(action: &str, label: &str) {
@@ -742,9 +788,11 @@ mod tests {
         },
     };
 
+    use std::path::Path;
+
     use super::{
-        ShareReplayHub, ShareReplayState, ShareReplaySubscription, from_stream_result,
-        shared_by_key, source_cache,
+        ShareReplayHub, ShareReplayState, ShareReplaySubscription, SourceErrorRegistry,
+        from_stream_result, shared_by_key, source_cache,
     };
 
     #[derive(Clone, Default)]
@@ -1092,6 +1140,34 @@ mod tests {
         second_subject.clone().next(8);
         assert_eq!(values.lock().unwrap().as_slice(), &[7, 8]);
         assert!(terminal.lock().unwrap().is_none());
+    }
+
+    #[test]
+    fn source_error_registry_counts_distinct_active_sources_only() {
+        let mut registry = SourceErrorRegistry::default();
+        let one = Path::new("dbus/session:a:P:I:p");
+        let two = Path::new("dbus/session:b:P:I:p");
+
+        registry.record("dbus-property", one, "boom");
+        registry.record("dbus-property", one, "boom again");
+        let snapshot = registry.record("dbus-property", two, "other");
+
+        assert_eq!(snapshot.total, 3);
+        assert_eq!(snapshot.active, 2);
+        assert_eq!(snapshot.recent.len(), 2);
+    }
+
+    #[test]
+    fn source_error_registry_clears_active_source_on_recovery() {
+        let mut registry = SourceErrorRegistry::default();
+        let path = Path::new("dbus/session:a:P:I:p");
+        registry.record("dbus-property", path, "boom");
+
+        let cleared = registry.clear("dbus-property", path).expect("cleared");
+        assert_eq!(cleared.active, 0);
+        assert_eq!(cleared.total, 1);
+        assert!(cleared.recent.is_empty());
+        assert!(registry.clear("dbus-property", path).is_none());
     }
 
     struct RecordU32 {

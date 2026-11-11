@@ -195,7 +195,7 @@ fn choose_player(names: Vec<String>, selected: Option<String>) -> Observable<Opt
 }
 
 fn player_snapshot(player: String) -> Observable<MprisSnapshot> {
-    let identity = dbus::property_or(
+    let identity = dbus::property_or_lenient(
         PropertyDescriptor::new(player_object(&player, ROOT_INTERFACE), "Identity"),
         player.clone(),
     );
@@ -505,7 +505,10 @@ where
     T: TryFrom<OwnedValue> + Clone + PartialEq + Send + 'static,
     T::Error: fmt::Display,
 {
-    dbus::property_or(
+    // MPRIS properties are optional: playerctld and some players reject reads
+    // for capabilities when nothing is playing. Treat that as absence rather
+    // than a source error so idle players do not flood the error outlet.
+    dbus::property_or_lenient(
         PropertyDescriptor::new(player_object(player, PLAYER_INTERFACE), name),
         default,
     )

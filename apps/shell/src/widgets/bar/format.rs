@@ -22,7 +22,7 @@ pub(super) fn battery_icon_name(battery: &BatteryView) -> String {
 }
 
 pub(super) fn source_error_tooltip(count: u64) -> String {
-    format!("{count} source error(s) caught")
+    format!("{count} source(s) currently failing")
 }
 
 pub(super) fn source_error_count_label(count: u64) -> String {

@@ -22,7 +22,7 @@ pub use rxrust;
 pub use rxrust::prelude as rx;
 pub use state::StateSignal;
 pub use stream::{Source, SourceSubscription};
-pub use support::{from_stream_result, log_errors, record_source_error};
+pub use support::{clear_source_error, from_stream_result, log_errors, record_source_error};
 
 pub type Observable<T, E = String> = SharedBoxedObservable<'static, T, E>;
 
@@ -209,7 +209,10 @@ pub struct SourceError {
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct SourceErrors {
+    /// Lifetime count of source errors observed since process start.
     pub total: u64,
+    /// Sources whose most recent observation failed and have not recovered.
+    pub active: u64,
     pub recent: Vec<SourceError>,
 }
 
