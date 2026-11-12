@@ -7,6 +7,7 @@ use rsynapse_plugin::{
 
 const PROJECTS_ID: &str = "projects";
 const WORKSPACES_ID: &str = "workspaces";
+const MAX_VISIBLE_RESULTS: usize = 10;
 
 struct ProjectsPlugin;
 struct WorkspacesPlugin;
@@ -75,7 +76,7 @@ fn project_results(
 ) -> Vec<ResultItem> {
     let words = query.to_lowercase();
     let words = words.split_whitespace().collect::<Vec<_>>();
-    let mut results = snapshot
+    let projects = snapshot
         .projects
         .iter()
         .filter(|project| {
@@ -100,9 +101,9 @@ fn project_results(
         })
         .collect::<Vec<_>>();
 
-    if query.is_empty() {
+    let action = if query.is_empty() {
         if snapshot.current_project_id.is_some() {
-            results.push(ResultItem {
+            Some(ResultItem {
                 id: "unassign".into(),
                 title: "Unassign project".into(),
                 description: "Remove the project association from this workspace".into(),
@@ -112,10 +113,12 @@ fn project_results(
                 activity: LauncherActivity::None,
                 current: false,
                 keep_open: false,
-            });
+            })
+        } else {
+            None
         }
     } else {
-        results.push(ResultItem {
+        Some(ResultItem {
             id: "rename".into(),
             title: format!("Rename to “{query}”"),
             description: "Set the workspace name".into(),
@@ -125,7 +128,14 @@ fn project_results(
             activity: LauncherActivity::None,
             current: false,
             keep_open: false,
-        });
+        })
+    };
+    let project_limit = action
+        .as_ref()
+        .map_or(usize::MAX, |_| MAX_VISIBLE_RESULTS.saturating_sub(1));
+    let mut results = projects.into_iter().take(project_limit).collect::<Vec<_>>();
+    if let Some(action) = action {
+        results.push(action);
     }
     results
 }
@@ -285,4 +295,64 @@ impl Plugin for WorkspacesPlugin {
 
 pub fn plugins() -> Vec<Box<dyn Plugin>> {
     vec![Box::new(ProjectsPlugin), Box::new(WorkspacesPlugin)]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::project_results;
+    use data_sources::proj::ProjectInfo;
+    use data_sources::workspace_launcher::WorkspaceLauncherSnapshot;
+
+    fn project(id: &str, name: &str) -> ProjectInfo {
+        ProjectInfo {
+            id: id.into(),
+            name: name.into(),
+            cwd: format!("/work/{name}"),
+            checkout_id: String::new(),
+            icon: String::new(),
+            icon_origin: String::new(),
+        }
+    }
+
+    #[test]
+    fn unassign_ends_the_visible_project_rows() {
+        let snapshot = WorkspaceLauncherSnapshot {
+            projects: (0..20)
+                .map(|index| project(&format!("p{index}"), &format!("project-{index}")))
+                .collect(),
+            current_project_id: Some("p1".into()),
+            ..WorkspaceLauncherSnapshot::default()
+        };
+
+        let results = project_results(&snapshot, "");
+
+        assert_eq!(results.len(), 10);
+        assert_eq!(results[0].id, "project:p0");
+        assert_eq!(results.last().map(|item| item.id.as_str()), Some("unassign"));
+    }
+
+    #[test]
+    fn unassign_is_last_when_all_projects_fit() {
+        let snapshot = WorkspaceLauncherSnapshot {
+            projects: vec![project("p1", "one"), project("p2", "two")],
+            current_project_id: Some("p1".into()),
+            ..WorkspaceLauncherSnapshot::default()
+        };
+
+        let results = project_results(&snapshot, "");
+
+        assert_eq!(results.last().map(|item| item.id.as_str()), Some("unassign"));
+    }
+
+    #[test]
+    fn unassign_is_hidden_without_a_current_project() {
+        let snapshot = WorkspaceLauncherSnapshot {
+            projects: vec![project("p1", "project")],
+            ..WorkspaceLauncherSnapshot::default()
+        };
+
+        let results = project_results(&snapshot, "");
+
+        assert!(results.iter().all(|item| item.id != "unassign"));
+    }
 }
