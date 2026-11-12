@@ -3,8 +3,8 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use zbus::zvariant::OwnedObjectPath;
 
-fn project() -> goal_model::ProjectInfo {
-    goal_model::ProjectInfo {
+fn project() -> proj_model::ProjectInfo {
+    proj_model::ProjectInfo {
         id: "observed-project".into(),
         name: "Observed".into(),
         cwd: "/known/project".into(),
@@ -17,18 +17,18 @@ fn project() -> goal_model::ProjectInfo {
 struct Projects(Arc<Mutex<usize>>);
 #[interface(name = "org.rsynapse.Proj.Manager1")]
 impl Projects {
-    fn resolve_project(&self, path: &str) -> zbus::fdo::Result<goal_model::ProjectInfo> {
+    fn resolve_project(&self, path: &str) -> zbus::fdo::Result<proj_model::ProjectInfo> {
         if path.starts_with("/known/project/") || path == "/known/project" {
             Ok(project())
         } else {
             Err(zbus::fdo::Error::InvalidArgs("unknown project".into()))
         }
     }
-    async fn register_project(&self, path: &str) -> zbus::fdo::Result<goal_model::ProjectInfo> {
+    async fn register_project(&self, path: &str) -> zbus::fdo::Result<proj_model::ProjectInfo> {
         *self.0.lock().await += 1;
         self.resolve_project(path)
     }
-    fn list_checkouts(&self) -> Vec<goal_model::CheckoutInfo> {
+    fn list_checkouts(&self) -> Vec<proj_model::CheckoutInfo> {
         vec![]
     }
 }
@@ -159,9 +159,9 @@ async fn exercise() -> anyhow::Result<()> {
     let registrations = Arc::new(Mutex::new(0));
     let service = zbus::connection::Builder::session()?
         .serve_at(locus::OBJECT_PATH, Relations(records.clone()))?
-        .serve_at(goal_model::ROOT_PATH, Projects(registrations.clone()))?
+        .serve_at(proj_model::ROOT_PATH, Projects(registrations.clone()))?
         .name(locus::BUS_NAME)?
-        .name(goal_model::BUS_NAME)?
+        .name(proj_model::BUS_NAME)?
         .build()
         .await?;
     let client = LocusClient::connect().await?;

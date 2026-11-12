@@ -5,7 +5,7 @@ use crate::{
 };
 use chrono::{Local, TimeZone};
 use data_sources::{Observable, rx::Observable as _};
-use goal_model::{PREFERENCES_KIND, WORKDAY_TARGETS, WorkdayTargets};
+use proj_model::{PREFERENCES_KIND, WORKDAY_TARGETS, WorkdayTargets};
 use locus::RelationEndpoint;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};

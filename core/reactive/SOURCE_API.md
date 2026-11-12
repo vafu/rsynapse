@@ -114,22 +114,12 @@ manual edits use the project captured when the picker opened.
 empty set. Owner-bound subscriptions clear immediately on owner loss/replacement,
 share/replay per project and follow property changes. Atomic label mutations stay
 in the consumer's projd client; there is no label mirror in Locus.
-`active_goal(project_id)` observes `Project1.ActiveGoal`. `goal_title(key)`,
-`goal_description(key)` and `goal_status(key)` observe individual Goal1 properties.
-The bar switches the active task's property subscriptions with project/goal
-selection. Persistent task keys are IDs; historical dated keys are `date/ID`.
-The typed goal snapshot includes parent IDs and note paths for checklist rows.
-`goal_identities()` observes Metrics1's task-instance catalog through Manager1
-changes. Checklist sorting uses its immutable instance IDs and creation times;
-legacy unknown timestamps remain unknown. Presentation of complete subgoal groups
-and sibling ordering belongs to the widget-local source.
-Goal tooltips compose each ancestor's `goal_title(key)` property with the
-current subgoal title; the bar label shows only the current task. A unique in-progress child is also included when its
-parent is selected; multiple in-progress siblings are not chosen implicitly.
-`goal_tracking()` exposes typed current task-instance identity, project IDs,
-selection and ancestry for headless attribution. It subscribes before its initial
-snapshot and emits an empty tracking set on service-owner loss, then refreshes
-on return so collectors stop/restart observation without attributing downtime.
+`active_task(project_id)` observes remarked's `Tasks1.GetActiveTask(project)`.
+It opens the notebook through `Notebooks1`, subscribes to `TasksChanged` before
+the initial read, and projects the active `kind/task` note as an id/title/status
+value. Projd no longer exposes task or goal properties; project metadata and the
+active-task namespace meet at the project id.
+
 `data_sources::proj::removed_projects()` delivers typed metadata-removal events
 for integration cleanup. Collection snapshots exclude deleted registrations;
 read/refresh operations do not recreate them.

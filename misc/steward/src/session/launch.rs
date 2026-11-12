@@ -20,7 +20,7 @@ impl Rules {
         let path = std::env::var_os("STEWARD_SESSION_LAUNCHERS_PATH")
             .map(PathBuf::from)
             .unwrap_or_else(|| {
-                goal_model::xdg::config_home()
+                proj_model::xdg::config_home()
                     .unwrap_or_else(|_| PathBuf::from(".config"))
                     .join("rsynapse/session-launchers.json")
             });

@@ -55,10 +55,7 @@ try:
         futures=[ex.submit(call,'SetProjectIconIfUnset','ss',project,'AUTO'),ex.submit(call,'SetProjectIcon','ss',project,'MANUAL')]
         [f.result() for f in futures]
     assert prop(ppath,'org.rsynapse.Proj.Project1','Icon')=='MANUAL'
-    cli('goal','add','habit1','--kind','habit','--title','Personal budget','--success','At most 30 minutes','--date','2026-10-07')
-    cli('goal','add','outcome1','--project',str(repo),'--title','Preserved outcome','--success','Preserved criterion','--date','2026-10-07')
     assert prop(ppath,'org.rsynapse.Proj.Project1','Cwd')==str(child)
-    goals=json.loads(cli('goal','list','--all','--json'))
     git('checkout','-b','new-branch')
     wait(lambda:any(c['branch']=='new-branch' for c in json.loads(cli('checkout','list','--json'))))
     objects=json.loads(subprocess.check_output(['busctl','--user','--json=short','call','org.rsynapse.Proj','/org/rsynapse/Proj','org.freedesktop.DBus.ObjectManager','GetManagedObjects'],text=True))['data'][0]
@@ -69,10 +66,8 @@ try:
     cli('remove',project)
     assert not any(p['id']==project for p in json.loads(cli('project','list','--json')))
     assert any(p['id']==other_project for p in json.loads(cli('project','list','--json')))
-    assert json.loads(cli('goal','list','--all','--json'))==goals
     assert (repo/'file.txt').read_bytes()==original and (repo/'file.txt').stat().st_mtime_ns==mtime
     assert subprocess.run([PROJ,'metadata',str(repo)],capture_output=True).returncode!=0
-    cli('goal','status','outcome1','completed','--date','2026-10-07')
     assert not any(p['id']==project or p['checkout_id']==first['checkout-id'] for p in json.loads(cli('project','list','--json')))
     assert subprocess.run([PROJ,'metadata',str(repo)],capture_output=True).returncode!=0
     assert cli('add',str(repo)).strip()!=project

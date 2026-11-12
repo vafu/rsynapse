@@ -89,7 +89,7 @@ pub fn path() -> PathBuf {
     if let Some(path) = std::env::var_os("STEWARD_SESSION_STORE_PATH") {
         return PathBuf::from(path);
     }
-    goal_model::xdg::state_home()
+    proj_model::xdg::state_home()
         .unwrap_or_else(|_| PathBuf::from(".local/state"))
         .join("rsynapse/steward/sessions.json")
 }

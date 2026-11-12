@@ -43,7 +43,7 @@ impl Manager {
     async fn capture_once(&self, name: &str, explicit: bool) -> anyhow::Result<model::Session> {
         let source = observe::read(&self.connection).await?;
         let records = self.locus.list("").await?;
-        let projects: Vec<goal_model::ProjectInfo> =
+        let projects: Vec<proj_model::ProjectInfo> =
             self.projd().await?.call("ListProjects", &()).await?;
         let previous = self.store.lock().await.get("current").ok();
         let home = std::env::var("HOME").unwrap_or_else(|_| "/".to_owned());

@@ -2,7 +2,7 @@
 
 use std::path::{Path, PathBuf};
 
-use goal_model::ProjectInfo;
+use proj_model::ProjectInfo;
 
 /// Resolve the notebook for a focused project.
 ///
@@ -46,7 +46,10 @@ mod tests {
         let root = std::env::temp_dir().join(format!("steward-notebook-{}", std::process::id()));
         let notes = root.join(".notes");
         std::fs::create_dir_all(&notes).unwrap();
-        assert_eq!(notebook_scope(Some(&project(root.display().to_string()))), Some(notes));
+        assert_eq!(
+            notebook_scope(Some(&project(root.display().to_string()))),
+            Some(notes)
+        );
         std::fs::remove_dir_all(root).unwrap();
     }
 }

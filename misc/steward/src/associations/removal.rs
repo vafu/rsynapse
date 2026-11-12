@@ -22,7 +22,7 @@ async fn clear(locus: &LocusClient, record: RelationRecord) -> anyhow::Result<()
 }
 pub(super) async fn removed(
     locus: &LocusClient,
-    project: goal_model::RemovedProjectInfo,
+    project: proj_model::RemovedProjectInfo,
 ) -> anyhow::Result<()> {
     for relation in [relations::WORKSPACE_PROJECT, WINDOW_PROJECT] {
         for record in locus.list(relation).await? {
@@ -35,14 +35,14 @@ pub(super) async fn removed(
     }
     reconcile_agents(
         locus,
-        &HashSet::from([goal_model::object_path("Projects", &project.project.id)]),
+        &HashSet::from([proj_model::object_path("Projects", &project.project.id)]),
         true,
     )
     .await
 }
 pub(super) async fn reconcile(
     locus: &LocusClient,
-    projects: Vec<goal_model::ProjectInfo>,
+    projects: Vec<proj_model::ProjectInfo>,
 ) -> anyhow::Result<()> {
     let ids: HashSet<_> = projects.iter().map(|p| p.id.clone()).collect();
     crate::session::reconcile_projects(locus, &ids).await?;
@@ -103,12 +103,12 @@ pub(super) async fn reconcile(
             ..
         } = &mut record.subject
         {
-            if service == goal_model::BUS_NAME && interface == goal_model::PROJECT_INTERFACE {
+            if service == proj_model::BUS_NAME && interface == proj_model::PROJECT_INTERFACE {
                 if let Some(project) = projects.iter().find(|p| {
                     let encoded: String = p.id.bytes().map(|b| format!("{b:02x}")).collect();
-                    *path == format!("{}/Projects/n{encoded}", goal_model::ROOT_PATH)
+                    *path == format!("{}/Projects/n{encoded}", proj_model::ROOT_PATH)
                 }) {
-                    *path = goal_model::object_path("Projects", &project.id);
+                    *path = proj_model::object_path("Projects", &project.id);
                     locus
                         .set_with_persistence(
                             record.subject.clone(),
@@ -127,7 +127,7 @@ pub(super) async fn reconcile(
     }
     let paths = projects
         .iter()
-        .map(|p| goal_model::object_path("Projects", &p.id))
+        .map(|p| proj_model::object_path("Projects", &p.id))
         .collect();
     reconcile_agents(locus, &paths, false).await
 }
@@ -144,8 +144,8 @@ async fn reconcile_agents(
             ..
         } = &record.subject
         {
-            if service == goal_model::BUS_NAME
-                && interface == goal_model::PROJECT_INTERFACE
+            if service == proj_model::BUS_NAME
+                && interface == proj_model::PROJECT_INTERFACE
                 && paths.contains(path) == matching
             {
                 clear(locus, record).await?;

@@ -135,6 +135,10 @@ run_python_syntax() {
         misc/dashboard-api/tests dbus/workspace-dbus/service/tests
 }
 
+run_script_tests() {
+    python3 -m unittest discover -s scripts/tests -p 'test_*.py'
+}
+
 build_release_bins() {
     # Build the binaries used by the private-session integration tests.
     cargo build --release --workspace
@@ -148,9 +152,7 @@ run_dbus_tests() {
         dbus/projd/tests/integration.py
         dbus/projd/tests/checklist.py
         dbus/projd/tests/labels.py
-        dbus/projd/tests/metrics.py
         dbus/projd/tests/cancellation.py
-        misc/dashboard-api/tests/metrics.py
     )
     local test
     for test in "${tests[@]}"; do
@@ -195,6 +197,7 @@ case "$MODE" in
     test-dbus) run_step test-dbus run_dbus_tests ;;
     test-install) run_step test-install run_install_tests ;;
     test-python) run_step test-python run_python_syntax ;;
+    test-scripts) run_step test-scripts run_script_tests ;;
     test-panel) run_step test-panel run_panel_tests ;;
     manifest) run_step manifest run_manifest ;;
     all)
@@ -203,6 +206,7 @@ case "$MODE" in
         run_step test run_test
         run_step test-install run_install_tests
         run_step test-python run_python_syntax
+        run_step test-scripts run_script_tests
         run_step test-panel run_panel_tests
         run_step clippy run_clippy
         run_step test-dbus run_dbus_tests

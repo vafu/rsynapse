@@ -1,10 +1,7 @@
 mod git;
-mod goals;
 mod icon;
 mod labels;
-mod metrics;
 mod migrate;
-mod notes;
 mod projects;
 mod store;
 mod watch;
@@ -71,23 +68,6 @@ impl ProjectObject {
             .map_err(error)?
             .map_err(error)
     }
-    #[zbus(property)]
-    async fn active_goal(&self) -> zbus::fdo::Result<OwnedObjectPath> {
-        let store = self.1.clone();
-        let id = self.0.id.clone();
-        let key = tokio::task::spawn_blocking(move || store.active_goal(&id))
-            .await
-            .map_err(error)?
-            .map_err(error)?;
-        let store = self.1.clone();
-        let goal = tokio::task::spawn_blocking(move || store.goal_by_key(&key))
-            .await
-            .map_err(error)?
-            .map_err(error)?;
-        Ok(goal
-            .map(|goal| OwnedObjectPath::try_from(goal.object_path()).unwrap())
-            .unwrap_or_else(|| OwnedObjectPath::try_from("/").unwrap()))
-    }
 }
 struct CheckoutObject(CheckoutInfo, Arc<Store>);
 #[interface(name = "org.rsynapse.Proj.Checkout1")]
@@ -130,96 +110,6 @@ impl CheckoutObject {
         )
     }
 }
-struct GoalObject(GoalInfo, Arc<Store>);
-#[interface(name = "org.rsynapse.Proj.Goal1")]
-impl GoalObject {
-    #[zbus(property)]
-    fn key(&self) -> String {
-        self.0.key()
-    }
-    #[zbus(property)]
-    fn id(&self) -> &str {
-        &self.0.id
-    }
-    #[zbus(property)]
-    fn date(&self) -> &str {
-        &self.0.date
-    }
-    #[zbus(property)]
-    fn title(&self) -> &str {
-        &self.0.title
-    }
-    #[zbus(property)]
-    fn kind(&self) -> &str {
-        &self.0.kind
-    }
-    #[zbus(property)]
-    fn project_path(&self) -> &str {
-        &self.0.project
-    }
-    #[zbus(property)]
-    fn project(&self) -> zbus::fdo::Result<OwnedObjectPath> {
-        Ok(
-            if self
-                .1
-                .projects()
-                .map_err(error)?
-                .iter()
-                .any(|p| p.id == self.0.project_id)
-            {
-                path("Projects", &self.0.project_id)
-            } else {
-                OwnedObjectPath::try_from("/").unwrap()
-            },
-        )
-    }
-    #[zbus(property)]
-    fn description(&self) -> &str {
-        &self.0.description
-    }
-    #[zbus(property)]
-    fn note_path(&self) -> &str {
-        &self.0.note_path
-    }
-    #[zbus(property)]
-    async fn parent(&self) -> zbus::fdo::Result<OwnedObjectPath> {
-        let store = self.1.clone();
-        let key = self.0.parent_id.clone();
-        let goal = tokio::task::spawn_blocking(move || store.goal_by_key(&key))
-            .await
-            .map_err(error)?
-            .map_err(error)?;
-        Ok(goal
-            .map(|goal| OwnedObjectPath::try_from(goal.object_path()).unwrap())
-            .unwrap_or_else(|| OwnedObjectPath::try_from("/").unwrap()))
-    }
-    #[zbus(property)]
-    async fn children(&self) -> zbus::fdo::Result<Vec<OwnedObjectPath>> {
-        let store = self.1.clone();
-        let key = self.0.key();
-        let goals = tokio::task::spawn_blocking(move || store.children_of(&key))
-            .await
-            .map_err(error)?
-            .map_err(error)?;
-        Ok(goals
-            .into_iter()
-            .map(|goal| OwnedObjectPath::try_from(goal.object_path()).unwrap())
-            .collect())
-    }
-    #[zbus(property)]
-    fn success_criterion(&self) -> &str {
-        &self.0.success
-    }
-    #[zbus(property)]
-    fn priority(&self) -> &str {
-        &self.0.priority
-    }
-    #[zbus(property)]
-    fn status(&self) -> &str {
-        &self.0.status
-    }
-}
-
 async fn publish_project(conn: &Connection, info: ProjectInfo) -> zbus::Result<()> {
     let p = path("Projects", &info.id);
     if let Ok(handle) = conn.object_server().interface::<_, ProjectObject>(&p).await {
@@ -288,55 +178,6 @@ async fn publish_checkout(
     }
     Ok(())
 }
-async fn publish_goal(conn: &Connection, info: GoalInfo) -> zbus::Result<()> {
-    let p = OwnedObjectPath::try_from(goal_path(&info.date, &info.id)).unwrap();
-    if let Ok(handle) = conn.object_server().interface::<_, GoalObject>(&p).await {
-        let before = {
-            let mut object = handle.get_mut().await;
-            let old = object.0.clone();
-            object.0 = info.clone();
-            old
-        };
-        let object = handle.get().await;
-        let e = handle.signal_context();
-        if before.title != info.title {
-            object.title_changed(e).await?;
-        }
-        if before.kind != info.kind {
-            object.kind_changed(e).await?;
-        }
-        if before.project != info.project {
-            object.project_path_changed(e).await?;
-        }
-        if before.project_id != info.project_id {
-            object.project_changed(e).await?;
-        }
-        if before.description != info.description {
-            object.description_changed(e).await?;
-        }
-        if before.note_path != info.note_path {
-            object.note_path_changed(e).await?;
-        }
-        if before.success != info.success {
-            object.success_criterion_changed(e).await?;
-        }
-        if before.priority != info.priority {
-            object.priority_changed(e).await?;
-        }
-        if before.status != info.status {
-            object.status_changed(e).await?;
-        }
-    } else {
-        let manager = conn
-            .object_server()
-            .interface::<_, Manager>(ROOT_PATH)
-            .await?;
-        let store = manager.get().await.store.clone();
-        conn.object_server().at(p, GoalObject(info, store)).await?;
-    }
-    Ok(())
-}
-
 impl Manager {
     async fn register(&self, cwd: String, conn: &Connection) -> zbus::fdo::Result<ProjectInfo> {
         self.register_inner(cwd, conn, true, false).await
@@ -678,181 +519,6 @@ impl Manager {
         Self::changed(&e, "project", &id).await.map_err(error)?;
         Ok(project)
     }
-    async fn list_goals(&self, date: String) -> zbus::fdo::Result<Vec<GoalInfo>> {
-        let store = self.store.clone();
-        tokio::task::spawn_blocking(move || {
-            Ok::<_, anyhow::Error>(
-                store
-                    .goals()?
-                    .into_iter()
-                    .filter(|goal| date.is_empty() || goal.date == date)
-                    .collect(),
-            )
-        })
-        .await
-        .map_err(error)?
-        .map_err(error)
-    }
-    async fn set_active_goal(
-        &self,
-        project_id: String,
-        key: String,
-        #[zbus(connection)] conn: &Connection,
-        #[zbus(signal_context)] e: SignalContext<'_>,
-    ) -> zbus::fdo::Result<()> {
-        let _lock = self.mutation.lock().await;
-        let project = self
-            .store
-            .projects()
-            .map_err(error)?
-            .into_iter()
-            .find(|p| p.id == project_id)
-            .ok_or_else(|| zbus::fdo::Error::FileNotFound("Project not found".into()))?;
-        if !key.is_empty() {
-            let goal = self
-                .store
-                .goals()
-                .map_err(error)?
-                .into_iter()
-                .find(|g| g.key() == key)
-                .ok_or_else(|| zbus::fdo::Error::FileNotFound("Goal not found".into()))?;
-            if goal.project_id != project_id || !goal.is_open() {
-                return Err(zbus::fdo::Error::InvalidArgs(
-                    "Active goal must be an open task in this project".into(),
-                ));
-            }
-        }
-        self.store
-            .select_goal(&project_id, &key, metrics::now_ms())
-            .map_err(error)?;
-        self.active_changed(conn, &project).await?;
-        Self::changed(&e, "active-goal", &project_id)
-            .await
-            .map_err(error)
-    }
-    async fn set_goal_status(
-        &self,
-        key: String,
-        status: String,
-        #[zbus(connection)] conn: &Connection,
-        #[zbus(signal_context)] e: SignalContext<'_>,
-    ) -> zbus::fdo::Result<GoalInfo> {
-        let _lock = self.mutation.lock().await;
-        let mut goal = self
-            .store
-            .goals()
-            .map_err(error)?
-            .into_iter()
-            .find(|g| g.key() == key)
-            .ok_or_else(|| zbus::fdo::Error::FileNotFound("Goal not found".into()))?;
-        goal.status = status;
-        let _: Goal = goal
-            .clone()
-            .try_into()
-            .map_err(zbus::fdo::Error::InvalidArgs)?;
-        self.store
-            .save_goal(&goal, false, metrics::now_ms())
-            .map_err(error)?;
-        publish_goal(conn, goal.clone()).await.map_err(error)?;
-        if !goal.is_open() {
-            self.clear_active(&key, conn).await?;
-        }
-        Self::changed(&e, "goal", &key).await.map_err(error)?;
-        Ok(goal)
-    }
-    async fn edit_goal(
-        &self,
-        key: String,
-        fields: std::collections::HashMap<String, String>,
-        #[zbus(connection)] conn: &Connection,
-        #[zbus(signal_context)] e: SignalContext<'_>,
-    ) -> zbus::fdo::Result<GoalInfo> {
-        let _lock = self.mutation.lock().await;
-        let mut goal = self
-            .store
-            .goals()
-            .map_err(error)?
-            .into_iter()
-            .find(|g| g.key() == key)
-            .ok_or_else(|| zbus::fdo::Error::FileNotFound("Goal not found".into()))?;
-        for (field, value) in fields {
-            match field.as_str() {
-                "title" => goal.title = value,
-                "description" => goal.description = value,
-                _ => {
-                    return Err(zbus::fdo::Error::InvalidArgs(
-                        "Editable fields are title and description".into(),
-                    ));
-                }
-            }
-        }
-        let _: Goal = goal
-            .clone()
-            .try_into()
-            .map_err(zbus::fdo::Error::InvalidArgs)?;
-        self.store
-            .save_goal(&goal, false, metrics::now_ms())
-            .map_err(error)?;
-        publish_goal(conn, goal.clone()).await.map_err(error)?;
-        Self::changed(&e, "goal", &key).await.map_err(error)?;
-        Ok(goal)
-    }
-    async fn create_goal(
-        &self,
-        info: GoalInfo,
-        #[zbus(connection)] conn: &Connection,
-        #[zbus(signal_context)] e: SignalContext<'_>,
-    ) -> zbus::fdo::Result<GoalInfo> {
-        let info = self.write_goal(info, true, conn).await?;
-        Self::changed(&e, "goal", &info.key())
-            .await
-            .map_err(error)?;
-        Ok(info)
-    }
-    async fn update_goal(
-        &self,
-        info: GoalInfo,
-        #[zbus(connection)] conn: &Connection,
-        #[zbus(signal_context)] e: SignalContext<'_>,
-    ) -> zbus::fdo::Result<GoalInfo> {
-        let info = self.write_goal(info, false, conn).await?;
-        Self::changed(&e, "goal", &info.key())
-            .await
-            .map_err(error)?;
-        Ok(info)
-    }
-    async fn remove_goal(
-        &self,
-        date: String,
-        id: String,
-        #[zbus(connection)] conn: &Connection,
-        #[zbus(signal_context)] e: SignalContext<'_>,
-    ) -> zbus::fdo::Result<bool> {
-        let key = goal_key(&date, &id);
-        let removed = self.delete_goal(&date, &id, conn).await?;
-        if removed {
-            Self::changed(&e, "goal", &key).await.map_err(error)?;
-        }
-        Ok(removed)
-    }
-    /// Reassigns a task and all of its descendants to another project. The
-    /// subtree keeps its internal parent links and ids; only the project
-    /// membership changes. Returns the moved goals in hierarchy order.
-    async fn move_goal_hierarchy(
-        &self,
-        key: String,
-        project_id: String,
-        #[zbus(connection)] conn: &Connection,
-        #[zbus(signal_context)] e: SignalContext<'_>,
-    ) -> zbus::fdo::Result<Vec<GoalInfo>> {
-        let moved = self.move_hierarchy(&key, &project_id, conn).await?;
-        for goal in &moved {
-            Self::changed(&e, "goal", &goal.key())
-                .await
-                .map_err(error)?;
-        }
-        Ok(moved)
-    }
     #[zbus(signal)]
     async fn changed(e: &SignalContext<'_>, kind: &str, id: &str) -> zbus::Result<()>;
     #[zbus(signal)]
@@ -862,9 +528,6 @@ impl Manager {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let store = Arc::new(Store::open(&store::default_path())?);
-    goals::initialize(&store)?;
-    store.initialize_history(metrics::now_ms())?;
-    store.interrupt_open_work(metrics::now_ms())?;
     let (watch, requests) = tokio::sync::mpsc::unbounded_channel();
     let manager = Manager {
         store: store.clone(),
@@ -872,11 +535,9 @@ async fn main() -> anyhow::Result<()> {
         watch,
         checkout_mutations: Arc::new(Mutex::new(std::collections::HashMap::new())),
     };
-    let metrics = metrics::Metrics::new(store.clone(), manager.mutation.clone());
     let conn = zbus::connection::Builder::session()?
         .serve_at(ROOT_PATH, zbus::fdo::ObjectManager)?
         .serve_at(ROOT_PATH, manager.clone())?
-        .serve_at(ROOT_PATH, metrics.clone())?
         .build()
         .await?;
     for p in store.projects()? {
@@ -884,9 +545,6 @@ async fn main() -> anyhow::Result<()> {
     }
     for c in store.checkouts()? {
         publish_checkout(&conn, c, store.clone()).await?;
-    }
-    for g in store.goals()? {
-        publish_goal(&conn, g).await?;
     }
     watch::start(manager.clone(), conn.clone(), requests)?;
     for checkout in store.checkouts()? {
@@ -900,7 +558,6 @@ async fn main() -> anyhow::Result<()> {
             });
         }
     }
-    metrics.monitor_owners(conn.clone()).await?;
     conn.request_name(BUS_NAME).await?;
     eprintln!(
         "projd owns {BUS_NAME}; store {}",
@@ -908,6 +565,5 @@ async fn main() -> anyhow::Result<()> {
     );
     let mut terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
     tokio::select! { _=tokio::signal::ctrl_c()=>{}, _=terminate.recv()=>{} }
-    metrics.close_all("recorder-stopped").await?;
     Ok(())
 }

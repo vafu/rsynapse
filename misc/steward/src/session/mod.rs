@@ -44,9 +44,9 @@ impl Manager {
     async fn projd(&self) -> anyhow::Result<Proxy<'_>> {
         Ok(Proxy::new(
             &self.connection,
-            goal_model::BUS_NAME,
-            goal_model::ROOT_PATH,
-            goal_model::MANAGER_INTERFACE,
+            proj_model::BUS_NAME,
+            proj_model::ROOT_PATH,
+            proj_model::MANAGER_INTERFACE,
         )
         .await?)
     }
@@ -196,7 +196,7 @@ pub async fn watch(manager: Arc<Manager>) -> anyhow::Result<()> {
                 message = owners.next() => {
                     let message = message.ok_or_else(|| anyhow::anyhow!("session owner source ended"))?;
                     let args = message.args()?;
-                    [workspace_dbus_api::BUS_NAME, locus::BUS_NAME, goal_model::BUS_NAME].contains(&args.name().as_str())
+                    [workspace_dbus_api::BUS_NAME, locus::BUS_NAME, proj_model::BUS_NAME].contains(&args.name().as_str())
                 }
             };
             if changed {

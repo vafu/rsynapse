@@ -32,7 +32,9 @@ async fn push(scope: Option<&Path>) -> anyhow::Result<()> {
     let proxy = steward_api::RemarkedUiProxy::new(&connection).await?;
     proxy
         .open_notebook((
-            scope.map(|path| path.display().to_string()).unwrap_or_default(),
+            scope
+                .map(|path| path.display().to_string())
+                .unwrap_or_default(),
             Vec::new(),
         ))
         .await?;

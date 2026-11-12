@@ -14,9 +14,9 @@ impl GitStatus {
         let conn = zbus::Connection::session().await?;
         let proxy = Proxy::new(
             &conn,
-            goal_model::BUS_NAME,
-            goal_model::ROOT_PATH,
-            goal_model::MANAGER_INTERFACE,
+            proj_model::BUS_NAME,
+            proj_model::ROOT_PATH,
+            proj_model::MANAGER_INTERFACE,
         )
         .await?;
         let mut changes =
@@ -37,7 +37,7 @@ impl GitStatus {
             paths.dedup();
             for path in paths {
                 if let Err(e) = proxy
-                    .call::<_, _, goal_model::ProjectInfo>("Refresh", &(path,))
+                    .call::<_, _, proj_model::ProjectInfo>("Refresh", &(path,))
                     .await
                 {
                     eprintln!("[steward/project-refresh] {e}");

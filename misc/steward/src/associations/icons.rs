@@ -53,7 +53,7 @@ pub(super) async fn migrate(locus: &LocusClient) -> anyhow::Result<()> {
             if let Some(icon) = icons.iter().find(|r| r.subject == subject) {
                 if let RelationEndpoint::StableKey { kind, id } = &icon.target {
                     if kind == "org.rsynapse.icon.glyph" {
-                        let result: goal_model::ProjectInfo =
+                        let result: proj_model::ProjectInfo =
                             proj.call("AdoptProjectIcon", &(project, id)).await?;
                         // Preserve conflicting legacy choices rather than silently discarding them.
                         if result.icon == *id {

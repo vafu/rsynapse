@@ -1,5 +1,5 @@
 use super::super::selected_project::selected_project_status;
-use data_sources::{self, Observable, proj::GoalInfo, rx::Observable as _};
+use data_sources::{self, Observable, proj::ActiveTask, rx::Observable as _};
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub(in crate::widgets::bar) struct GoalBarVm {
@@ -8,7 +8,6 @@ pub(in crate::widgets::bar) struct GoalBarVm {
     pub description: String,
     pub tooltip: String,
     pub active: String,
-    context_keys: Vec<String>,
 }
 
 pub(in crate::widgets::bar) fn goal_bar(output: Option<String>) -> Observable<GoalBarVm> {
@@ -20,123 +19,37 @@ pub(in crate::widgets::bar) fn goal_bar(output: Option<String>) -> Observable<Go
 
 fn goal_bar_inner(output: Option<String>) -> Observable<GoalBarVm> {
     let project = selected_project_status(output)
-        .map(|v| v.project.and_then(|p| p.project_id))
+        .map(|view| view.project.and_then(|project| project.project_id))
         .distinct_until_changed()
         .box_it();
-    let checklist = data_sources::switch_map(project, |id| {
+    data_sources::switch_map(project, |id| {
         let Some(id) = id else {
             return data_sources::once(GoalBarVm::default());
         };
-        data_sources::proj::goals()
-            .combine_latest(
-                data_sources::proj::active_goal(id.clone()),
-                move |goals, active| {
-                    let goals = goals.into_iter().filter(|g| g.project_id == id).collect();
-                    view(id.clone(), goals, active.as_str())
-                },
-            )
+        data_sources::proj::active_task(id.clone())
+            .map(move |task| view(id.clone(), task))
             .distinct_until_changed()
             .box_it()
     })
     .distinct_until_changed()
-    .box_it();
-    data_sources::switch_map(checklist, tracked_context)
-        .distinct_until_changed()
-        .box_it()
-}
-fn tracked_context(vm: GoalBarVm) -> Observable<GoalBarVm> {
-    if vm.active.is_empty() {
-        return data_sources::once(vm);
-    }
-    let current_key = vm
-        .context_keys
-        .last()
-        .cloned()
-        .unwrap_or_else(|| vm.active.clone());
-    data_sources::combine_latest(
-        vm.context_keys
-            .iter()
-            .map(|key| data_sources::proj::goal_title(key.clone()))
-            .collect(),
-    )
-    .combine_latest(
-        data_sources::proj::goal_description(current_key),
-        move |titles, description| {
-            let mut vm = vm.clone();
-            vm.title = titles
-                .last()
-                .cloned()
-                .unwrap_or_else(|| "Choose goal".into());
-            vm.description = description;
-            vm.tooltip = tooltip(&titles.join(" › "), &vm.description);
-            vm
-        },
-    )
-    .distinct_until_changed()
     .box_it()
 }
-fn view(project: String, goals: Vec<GoalInfo>, active: &str) -> GoalBarVm {
-    let selected = goals
-        .iter()
-        .find(|g| g.object_path() == active && g.is_open());
-    let mut context = Vec::new();
-    let mut current = selected;
-    while let Some(goal) = current {
-        if context.iter().any(|g: &&GoalInfo| g.key() == goal.key()) {
-            break;
-        }
-        context.push(goal);
-        current = goals.iter().find(|g| g.key() == goal.parent_id);
-    }
-    context.reverse();
-    while let Some(goal) = context.last() {
-        let mut in_progress = goals
-            .iter()
-            .filter(|g| g.parent_id == goal.key() && g.status == "in-progress");
-        let Some(child) = in_progress.next() else {
-            break;
-        };
-        if in_progress.next().is_some() || context.iter().any(|g| g.key() == child.key()) {
-            break;
-        }
-        context.push(child);
-    }
-    let mut result = GoalBarVm {
-        project_id: Some(project),
-        title: context
-            .last()
-            .map(|g| g.title.clone())
-            .unwrap_or_else(|| "Choose goal".into()),
-        description: context
-            .last()
-            .map(|g| g.description.clone())
-            .unwrap_or_else(|| "Project goals and subtasks".into()),
-        active: selected.map(|g| g.key()).unwrap_or_default(),
-        tooltip: String::new(),
-        context_keys: context.iter().map(|g| g.key()).collect(),
-    };
-    let breadcrumb = context
-        .iter()
-        .map(|g| g.title.as_str())
-        .collect::<Vec<_>>()
-        .join(" › ");
-    result.tooltip = tooltip(
-        if breadcrumb.is_empty() {
-            &result.title
-        } else {
-            &breadcrumb
-        },
-        &result.description,
-    );
-    result
-}
-fn tooltip(title: &str, description: &str) -> String {
-    if description.is_empty() {
-        title.to_owned()
-    } else {
-        format!("{title}\n\n{description}")
-    }
-}
 
-#[cfg(test)]
-mod test;
+fn view(project: String, task: Option<ActiveTask>) -> GoalBarVm {
+    let Some(task) = task else {
+        return GoalBarVm {
+            project_id: Some(project),
+            title: "Choose task".into(),
+            description: "No active task".into(),
+            ..Default::default()
+        };
+    };
+    let tooltip = format!("{}\n\n{}", task.title, task.status);
+    GoalBarVm {
+        project_id: Some(project),
+        title: task.title,
+        description: task.status,
+        tooltip,
+        active: task.id,
+    }
+}

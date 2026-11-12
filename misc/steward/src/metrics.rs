@@ -69,10 +69,6 @@ impl Metrics {
         let mut agents = crate::agent_metrics::AgentTracker::new();
         let mut usage_events = crate::agent_metrics::usage_events().into_stream();
         let mut agent_events = crate::agent_metrics::snapshots(&self.locus).into_stream();
-        let mut goal_work = crate::goal_work::Recorder::connect().await?;
-        let mut goal_updates = data_sources::proj::goal_tracking().into_stream();
-        let mut current_focus = FocusState::default();
-        let mut current_goals = Vec::new();
         let mut states = activity_focus(
             effective_focus(focus_state(&self.locus), data_sources::session::locked()),
             data_sources::wayland::input_idle(input_idle_threshold()?),
@@ -91,8 +87,6 @@ impl Metrics {
                         let observed = Instant::now();
                         tracker.observe(state.clone(), observed);
                         publish_events(&mut tracker, &batch_sender);
-                        current_focus=state.clone();
-                        goal_work.observe(crate::goal_work::scope(&state,&current_goals)).await;
                         productivity.focus(state.clone(), crate::productivity::tracker_now());
                         publish_pending(productivity.publish(&self.locus).await?, &batch_sender);
                         publish_pending(workdays.observe(&state, &self.locus).await?, &batch_sender);
@@ -101,14 +95,6 @@ impl Metrics {
                     }
                     Some(Err(error)) => break Err(anyhow::anyhow!("focus/activity source failed: {error}")),
                     None => break Err(anyhow::anyhow!("focus/activity source ended")),
-                },
-                item=goal_updates.next()=>match item {
-                    Some(Ok(goals))=>{
-                        current_goals=goals;
-                        goal_work.reconcile(crate::goal_work::scope(&current_focus,&current_goals)).await;
-                    }
-                    Some(Err(error))=>break Err(anyhow::anyhow!("goal tracking source failed: {error}")),
-                    None=>break Err(anyhow::anyhow!("goal tracking source ended")),
                 },
                 item = usage_events.next() => match item {
                     Some(Ok(event)) => {
@@ -144,7 +130,6 @@ impl Metrics {
             }
         };
         tracker.finish(Instant::now());
-        goal_work.finish().await;
         agents.finish(Instant::now());
         productivity.finish(crate::productivity::tracker_now());
         publish_pending(productivity.publish(&self.locus).await?, &batch_sender);

@@ -9,9 +9,8 @@ use locus::RelationEndpoint;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
-pub const METRICS: [&str; 9] = [
+pub const METRICS: [&str; 8] = [
     "background_idle",
-    "goal_background_idle",
     "personal_active",
     "personal_idle",
     "personal_active_with_background_work",
@@ -63,13 +62,12 @@ impl Tracker {
         Ok(tracker)
     }
 
-    fn flags(&self, day: &str) -> [bool; 9] {
+    fn flags(&self, day: &str) -> [bool; 8] {
         let (Some(focus), Some(policy)) = (&self.focus, &self.policy) else {
-            return [false; 9];
+            return [false; 8];
         };
         let class = policy.human_class(focus);
         let mut background = false;
-        let mut goal_background = false;
         let mut work_busy = false;
         let mut background_idle_agent = false;
         for session in &self.agents.sessions {
@@ -85,7 +83,6 @@ impl Tracker {
                 work_busy = true;
                 if !focused && focus.window_id.is_some() {
                     background = true;
-                    goal_background |= policy.agent_goals(session, day);
                 }
             }
             if session.state == "idle"
@@ -104,7 +101,6 @@ impl Tracker {
         let idle = focus.idle && !focus.locked;
         [
             idle && background,
-            idle && goal_background,
             personal && !focus.idle,
             personal && focus.idle,
             personal && !focus.idle && background,
@@ -235,7 +231,6 @@ impl Tracker {
 
 #[cfg(test)]
 mod tests {
-    use super::super::{Goal, Priority, Status};
     use super::*;
     use crate::agent_metrics::Session;
     fn start() -> f64 {
@@ -345,45 +340,7 @@ mod tests {
         assert_eq!(values["work_while_locked"], 30.0);
         assert_eq!(values["personal_idle"], 30.0);
     }
-    #[test]
-    fn goals_expire_at_midnight_and_never_override_personal_classification() {
-        let t = next_midnight(start()) - 30.0;
-        let mut tracker = setup(t);
-        tracker.policy.as_mut().unwrap().goals.push(Goal {
-            id: "goal1".into(),
-            date: date(t),
-            title: "title".into(),
-            success: "criterion".into(),
-            kind: super::super::GoalType::Outcome,
-            project: Some("/work".into()),
-            priority: Priority::High,
-            status: Status::InProgress,
-            ..Default::default()
-        });
-        let mut s = session("a", 2);
-        s.workspace = "unknown".into();
-        tracker.agents(
-            Snapshot {
-                sessions: vec![s.clone()],
-                ..Snapshot::default()
-            },
-            t,
-        );
-        tracker.finish(t + 60.0);
-        assert_eq!(tracker.days[&date(t)].seconds["goal_background_idle"], 30.0);
-        assert_eq!(
-            tracker.days[&date(t + 60.0)].seconds.get("background_idle"),
-            None
-        );
-        s.workspace = "personal".into();
-        assert!(
-            !tracker
-                .policy
-                .as_ref()
-                .unwrap()
-                .eligible_agent(&s, &date(t))
-        );
-    }
+
     #[test]
     fn classification_changes_are_not_retroactive_and_restarts_do_not_backfill() {
         let t = start();

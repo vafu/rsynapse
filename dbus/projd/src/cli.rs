@@ -3,13 +3,8 @@ use clap::{Parser, Subcommand};
 use proj_model::api::ManagerProxy;
 use proj_model::*;
 use std::path::PathBuf;
-#[path = "cli/goals.rs"]
-mod goal_cli;
 #[path = "cli/labels.rs"]
 mod labels_cli;
-#[path = "cli/metrics.rs"]
-mod metrics_cli;
-use goal_cli::GoalCommand;
 
 #[derive(Parser)]
 #[command(name = "proj", about = "Project-management client for projd", version)]
@@ -19,9 +14,7 @@ struct Args {
 }
 #[derive(Subcommand)]
 enum Command {
-    /// Summarize recorded goal work by project and task.
-    Report(metrics_cli::ReportArgs),
-    /// Permanently remove project metadata. Files and goal history are untouched.
+    /// Permanently remove project metadata. Notebook files are untouched.
     #[command(alias = "trash")]
     Remove { id: String },
     /// Register a project directory (defaults to the current directory).
@@ -58,11 +51,6 @@ enum Command {
     Checkout {
         #[command(subcommand)]
         command: CheckoutCommand,
-    },
-    #[command(alias = "task")]
-    Goal {
-        #[command(subcommand)]
-        command: GoalCommand,
     },
 }
 #[derive(Subcommand)]
@@ -131,7 +119,6 @@ async fn main() -> anyhow::Result<()> {
     let conn = zbus::Connection::session().await?;
     let proxy = ManagerProxy::new(&conn).await?;
     match args.command {
-        Command::Report(args) => metrics_cli::report(&proxy, args).await?,
         Command::Remove { id } => {
             let removed: bool = proxy.remove_project(&id).await?;
             anyhow::ensure!(removed, "Project is not registered");
@@ -200,7 +187,6 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
         }
-        Command::Goal { command } => goal_cli::run(&proxy, command).await?,
     }
     Ok(())
 }

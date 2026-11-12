@@ -60,7 +60,6 @@ desktop-entry = { path = "apps/shared/desktop-entry" }
 workspace-policy = { path = "dbus/workspace-policy" }
 workspace-dbus-api = { path = "dbus/workspace-dbus/api" }
 proj-model = { package = "rsynapse-projd-model", path = "dbus/projd/model" }
-goal-model = { package = "rsynapse-projd-model", path = "dbus/projd/model" }
 locus = { path = "dbus/locus" }
 steward-api = { path = "misc/steward-api" }
 tracing = "0.1.44"

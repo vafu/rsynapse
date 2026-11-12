@@ -20,9 +20,6 @@ use std::{
 
 pub const CLASSIFICATION: &str = "org.rsynapse.context.classification";
 pub const WORKSPACE_CONTEXT: &str = "org.rsynapse.workspace.context";
-pub use goal_model::{AGENT_GOAL, GOAL_KIND, Goal, GoalType};
-#[cfg(test)]
-use goal_model::{Priority, Status};
 const SUMMARY: &str = "org.rsynapse.productivity.summary";
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize, ValueEnum)]
@@ -38,55 +35,24 @@ pub enum Classification {
 pub struct Policy {
     pub workspaces: HashMap<String, Classification>,
     pub projects: BTreeMap<PathBuf, Classification>,
-    pub goals: Vec<Goal>,
-    pub links: HashMap<String, Vec<String>>,
     workspace_projects: HashMap<String, PathBuf>,
 }
 
 pub fn policies(locus: &LocusClient) -> Observable<Policy> {
     shell_rx_macros::combine_latest!(
         relations::records(locus.clone(), CLASSIFICATION),
-        data_sources::proj::goals(),
-        relations::records(locus.clone(), AGENT_GOAL),
         relations::records(locus.clone(), relations::WORKSPACE_PROJECT)
-        => |(classes, goals, links, projects)| {
-            let mut policy=Policy::from_records(&classes,&[],&links,&projects);
-            policy.goals=goals.into_iter().filter_map(|g|Goal::try_from(g).ok()).collect();
-            policy
+        => |(classes, projects)| {
+            Policy::from_records(&classes, &projects)
         },
     )
     .distinct_until_changed()
     .box_it()
 }
 
-pub fn goals(records: &[RelationRecord]) -> Vec<Goal> {
-    records
-        .iter()
-        .filter_map(|r| {
-            let goal: Goal = serde_json::from_str(r.metadata.get("goal")?).ok()?;
-            let RelationEndpoint::StableKey { kind, id } = &r.target else {
-                return None;
-            };
-            (kind == GOAL_KIND
-                && *id == goal.key()
-                && goal_model::valid_id(&goal.id)
-                && chrono::NaiveDate::parse_from_str(&goal.date, "%Y-%m-%d").is_ok())
-            .then_some(goal)
-        })
-        .collect()
-}
-
 impl Policy {
-    fn from_records(
-        classes: &[RelationRecord],
-        records: &[RelationRecord],
-        links: &[RelationRecord],
-        projects: &[RelationRecord],
-    ) -> Self {
-        let mut policy = Self {
-            goals: goals(records),
-            ..Self::default()
-        };
+    fn from_records(classes: &[RelationRecord], projects: &[RelationRecord]) -> Self {
+        let mut policy = Self::default();
         for record in classes {
             let Some(class) = record
                 .metadata
@@ -101,24 +67,6 @@ impl Policy {
                 }
                 if kind == locus::keys::PROJECT_PATH {
                     policy.projects.insert(PathBuf::from(id), class);
-                }
-            }
-        }
-        for record in links {
-            if let (
-                RelationEndpoint::StableKey { kind, id },
-                RelationEndpoint::StableKey {
-                    kind: target_kind,
-                    id: target,
-                },
-            ) = (&record.subject, &record.target)
-            {
-                if kind == locus::keys::AGENT_SESSION_ID && target_kind == GOAL_KIND {
-                    policy
-                        .links
-                        .entry(id.clone())
-                        .or_default()
-                        .push(target.clone());
                 }
             }
         }
@@ -176,20 +124,7 @@ impl Policy {
                 .map(PathBuf::as_path),
         )
     }
-    pub fn agent_goals(&self, session: &Session, day: &str) -> bool {
-        let links = self
-            .links
-            .get(&format!("{}/{}", session.agent, session.session_id));
-        self.goals.iter().any(|g| {
-            g.date == day
-                && g.status.is_open()
-                && g.kind == GoalType::Outcome
-                && ((g.project.as_ref().is_some_and(|root| {
-                    !session.cwd.is_empty() && Path::new(&session.cwd).starts_with(root)
-                })) || links.is_some_and(|links| links.contains(&g.key())))
-        })
-    }
-    pub fn eligible_agent(&self, session: &Session, day: &str) -> bool {
+    pub fn eligible_agent(&self, session: &Session, _day: &str) -> bool {
         if session.subagent
             || !matches!(session.state.as_str(), "thinking" | "tool-use")
             || session.window.is_none()
@@ -200,8 +135,7 @@ impl Policy {
             Some(&session.workspace),
             (!session.cwd.is_empty()).then(|| Path::new(&session.cwd)),
         );
-        class != Classification::Personal
-            && (class == Classification::Work || self.agent_goals(session, day))
+        class == Classification::Work
     }
 }
 
@@ -230,58 +164,5 @@ mod tests {
             policy.classify(None, Some(Path::new("/work-other"))),
             Classification::Unclassified
         );
-    }
-    #[test]
-    fn explicit_session_goal_link_is_scoped_by_day_and_status() {
-        let goal = Goal {
-            id: "g1".into(),
-            date: "2026-10-05".into(),
-            title: "title".into(),
-            success: "criterion".into(),
-            kind: GoalType::Outcome,
-            project: Some("/other".into()),
-            priority: Priority::High,
-            status: Status::Planned,
-            ..Default::default()
-        };
-        let mut policy = Policy {
-            links: HashMap::from([("codex/session".into(), vec![goal.key()])]),
-            goals: vec![goal],
-            ..Policy::default()
-        };
-        let session = Session {
-            session_id: "session".into(),
-            agent: "codex".into(),
-            state: "thinking".into(),
-            window: Some("1".into()),
-            ..Session::default()
-        };
-        assert!(policy.eligible_agent(&session, "2026-10-05"));
-        assert!(!policy.eligible_agent(&session, "2026-10-06"));
-        policy.goals[0].status = Status::Completed;
-        assert!(!policy.eligible_agent(&session, "2026-10-05"));
-    }
-
-    #[test]
-    fn habits_never_grant_agent_credit_and_old_goals_remain_outcomes() {
-        let old = serde_json::json!({"id":"g1","date":"2026-10-05","title":"title","project":"/work","success":"criterion","priority":"high","status":"planned"});
-        let mut goal: Goal = serde_json::from_value(old).unwrap();
-        assert_eq!(goal.kind, GoalType::Outcome);
-        assert_eq!(goal.project, Some(PathBuf::from("/work")));
-        goal.kind = GoalType::Habit;
-        let policy = Policy {
-            links: HashMap::from([("codex/session".into(), vec![goal.key()])]),
-            goals: vec![goal],
-            ..Policy::default()
-        };
-        let session = Session {
-            session_id: "session".into(),
-            agent: "codex".into(),
-            cwd: "/work/src".into(),
-            state: "thinking".into(),
-            window: Some("1".into()),
-            ..Session::default()
-        };
-        assert!(!policy.eligible_agent(&session, "2026-10-05"));
     }
 }

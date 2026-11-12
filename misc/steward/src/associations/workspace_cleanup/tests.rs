@@ -233,10 +233,10 @@ fn window_moves_and_monitor_changes_are_not_workspace_lifetime_events() {
 }
 
 #[test]
-fn workspace_lifecycle_cleans_associations_and_preserves_projects_and_goals() {
+fn workspace_lifecycle_cleans_associations_and_preserves_projects() {
     if std::env::var_os("WORKSPACE_CLEANUP_WORKER").is_none() {
         let status = std::process::Command::new("dbus-run-session").arg("--").arg(std::env::current_exe().unwrap())
-            .args(["--exact", "associations::workspace_cleanup::tests::workspace_lifecycle_cleans_associations_and_preserves_projects_and_goals", "--nocapture"])
+            .args(["--exact", "associations::workspace_cleanup::tests::workspace_lifecycle_cleans_associations_and_preserves_projects", "--nocapture"])
             .env("WORKSPACE_CLEANUP_WORKER", "1").status().unwrap();
         assert!(status.success());
         return;
@@ -254,10 +254,6 @@ async fn exercise() -> anyhow::Result<()> {
         RelationEndpoint::stable_key(locus::keys::PROJECT_PATH, "/project"),
         "project.goal",
     );
-    let goal = record(
-        RelationEndpoint::stable_key(goal_model::GOAL_KIND, "goal-survives"),
-        "goal.project",
-    );
     let named = record(
         RelationEndpoint::stable_key(locus::keys::WORKSPACE_NAME, "coding"),
         "workspace.icon",
@@ -271,7 +267,6 @@ async fn exercise() -> anyhow::Result<()> {
             record(subject("owner-loss"), "workspace.project"),
             record(subject("stale"), "workspace.project"),
             project.clone(),
-            goal.clone(),
             named.clone(),
         ],
         fail_next: false,
@@ -348,7 +343,7 @@ async fn exercise() -> anyhow::Result<()> {
     source.release_name(BUS_NAME).await?;
     let removed: RelationRecord = removals.next().await.unwrap().body().deserialize()?;
     assert_eq!(removed.subject, subject("owner-loss"));
-    assert_eq!(store.lock().await.records, [project, goal, named]);
+    assert_eq!(store.lock().await.records, [project, named]);
     worker.abort();
 
     // Failed durable cleanup cannot advance the tracker and lose a retry.

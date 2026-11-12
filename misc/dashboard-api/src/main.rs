@@ -10,28 +10,22 @@ use axum::{
     routing::get,
 };
 use futures_util::{StreamExt, stream};
-use goal_model::{
-    PREFERENCES_KIND, WORKDAY_TARGETS, WorkdayTargets,
-    api::{ManagerProxy, MetricsProxy},
-};
+use proj_model::{PREFERENCES_KIND, WORKDAY_TARGETS, WorkdayTargets, api::ManagerProxy};
 use locus::{RelationEndpoint, RelationRecord, RelationState, RelationsProxy};
 use std::{collections::HashMap, convert::Infallible, sync::Arc};
 use tokio::sync::{Mutex, broadcast};
 use tower_http::cors::CorsLayer;
 use zbus::Connection;
-mod metrics;
 
 #[derive(Clone, Copy)]
 enum Change {
-    Goals,
-    Metrics,
+    Projects,
     Targets,
 }
 
 #[derive(Clone)]
 struct App {
     proj: ManagerProxy<'static>,
-    metrics: MetricsProxy<'static>,
     locus: RelationsProxy<'static>,
     writes: Arc<Mutex<()>>,
     events: broadcast::Sender<Change>,
@@ -124,8 +118,7 @@ async fn events(
             Ok(change) => Some((
                 Ok(Event::default()
                     .event(match change {
-                        Change::Goals => "goals-changed",
-                        Change::Metrics => "goal-metrics-changed",
+                        Change::Projects => "projects-changed",
                         Change::Targets => "workday-targets-changed",
                     })
                     .data("refresh")),
@@ -141,7 +134,6 @@ async fn events(
 }
 async fn watch(app: App) -> anyhow::Result<tokio::task::JoinHandle<()>> {
     let mut domain = app.proj.receive_changed().await?;
-    let mut work = app.metrics.receive_work_changed().await?;
     let mut added = app.locus.receive_relation_added().await?;
     let mut updated = app.locus.receive_relation_updated().await?;
     let mut removed = app.locus.receive_relation_removed().await?;
@@ -155,15 +147,7 @@ async fn watch(app: App) -> anyhow::Result<tokio::task::JoinHandle<()>> {
                         break;
                     };
                     if message.args().is_ok_and(|args| args.kind != "checkout") {
-                        let _ = app.events.send(Change::Goals);
-                    }
-                }
-                message = work.next() => {
-                    if message.is_some() {
-                        let _ = app.events.send(Change::Metrics);
-                    } else {
-                        eprintln!("[dashboard] projd work stream ended; restart to reconnect");
-                        break;
+                        let _ = app.events.send(Change::Projects);
                     }
                 }
                 message = added.next() => {
@@ -224,10 +208,8 @@ async fn main() -> anyhow::Result<()> {
     let locus = RelationsProxy::new(&conn).await?;
     let proj = ManagerProxy::new(&conn).await?;
     let (event_sender, _) = broadcast::channel(32);
-    let metrics = MetricsProxy::new(&conn).await?;
     let app = App {
         proj,
-        metrics,
         locus,
         writes: Arc::new(Mutex::new(())),
         events: event_sender,
@@ -245,7 +227,6 @@ async fn main() -> anyhow::Result<()> {
         .allow_methods([Method::GET, Method::PUT])
         .allow_headers([axum::http::header::CONTENT_TYPE]);
     let router = Router::new()
-        .route("/api/goal-metrics", get(metrics::query))
         .route(
             "/api/workday-targets",
             get(target_settings).put(save_targets),

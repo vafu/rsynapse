@@ -49,7 +49,7 @@ impl Manager {
         } else {
             None
         };
-        let projects: Vec<goal_model::ProjectInfo> =
+        let projects: Vec<proj_model::ProjectInfo> =
             self.projd().await?.call("ListProjects", &()).await?;
         let mut report = RestoreReport::default();
         let mut used = BTreeSet::new();
@@ -98,7 +98,7 @@ impl Manager {
         &self,
         source: &observe::Snapshot,
         control: &ControlProxy<'_>,
-        projects: &[goal_model::ProjectInfo],
+        projects: &[proj_model::ProjectInfo],
         workspace: &model::Workspace,
         used: &mut BTreeSet<String>,
         report: &mut RestoreReport,
