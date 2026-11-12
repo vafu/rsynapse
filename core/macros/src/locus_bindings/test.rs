@@ -331,7 +331,7 @@ fn expands_component_bind_list() {
 
             view! {
                 gtk::Window {
-                    #[bind_list(window_nodes, row = WindowTitle)]
+                    #[bind_list(window_nodes, row = WindowTitle, key = WindowTitleInit::key)]
                     window_list -> gtk::Box {}
 
                     gtk::Label {
@@ -363,7 +363,8 @@ fn expands_component_bind_list() {
     assert!(source.contains("# [name = \"window_list\"]"));
     assert!(source.contains("# [track"));
     assert!(source.contains("model . changed (sources :: Field :: WindowNodes)"));
-    assert!(source.contains("set_component_list"));
+    assert!(source.contains("set_component_list_by_key"));
+    assert!(source.contains("WindowTitleInit :: key"));
     assert!(source.contains("\"window_list\""));
     assert!(source.contains(":: shell_core :: list :: ComponentListUpdate"));
     assert!(source.contains("WindowTitle"));

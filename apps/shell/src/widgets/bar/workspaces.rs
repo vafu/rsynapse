@@ -3,14 +3,28 @@ use shell_rx_macros::combine_latest;
 
 mod visibility;
 
+use std::collections::HashMap;
+
 use super::WindowNode;
 use super::window_source::{WindowSnapshot, window_snapshots};
 use super::workspace::{self, WorkspaceObject};
 
-pub(super) type WorkspaceNode = WorkspaceEntry;
+pub(super) type WorkspaceNode = WorkspaceRow;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) struct WorkspaceEntry {
+pub(super) struct WorkspaceRow {
+    pub(super) workspace: WorkspaceObject,
+    pub(super) edge_placeholder: bool,
+}
+
+impl WorkspaceRow {
+    pub(super) fn identity(&self) -> String {
+        self.workspace.path_key().to_owned()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct WorkspaceEntry {
     pub(super) workspace: WorkspaceObject,
     index: u32,
     output_path: Option<String>,
@@ -21,11 +35,27 @@ pub(super) struct WorkspaceEntry {
 
 pub(super) fn workspaces(output_name: Option<String>) -> Observable<Vec<WorkspaceNode>> {
     let output_path = output_name.as_deref().map(workspace::output_path_for_name);
+    let order = match output_name {
+        Some(output_name) => workspace::output_workspaces(output_name).map(Some).box_it(),
+        None => data_sources::once(None).box_it(),
+    };
     data_sources::switch_map_list(workspace::workspaces(), workspace_entry)
+        .combine_latest(order, |workspaces, order| (workspaces, order))
         .map(move |workspaces| {
-            let mut workspaces = filter_workspaces_for_output(workspaces, output_path.as_deref());
+            let (workspaces, order) = workspaces;
+            let mut workspaces = filter_workspaces_for_output(
+                workspaces,
+                output_path.as_deref(),
+                order.as_deref(),
+            );
             visibility::mark_edge_placeholders(&mut workspaces);
             workspaces
+                .into_iter()
+                .map(|workspace| WorkspaceRow {
+                    workspace: workspace.workspace,
+                    edge_placeholder: workspace.edge_placeholder,
+                })
+                .collect()
         })
         .distinct_until_changed()
         .box_it()
@@ -112,6 +142,7 @@ fn selected_workspace_sorted_windows(
 fn filter_workspaces_for_output(
     mut workspaces: Vec<WorkspaceEntry>,
     output_path: Option<&str>,
+    order: Option<&[WorkspaceObject]>,
 ) -> Vec<WorkspaceEntry> {
     let Some(output_path) = output_path else {
         sort_workspaces(&mut workspaces);
@@ -128,8 +159,39 @@ fn filter_workspaces_for_output(
 
     // During hotplug a monitor and its projected output can appear/disappear
     // in either order. Never render other outputs' workspaces as a fallback.
-    sort_workspaces(&mut filtered);
+    sort_workspaces_by_output_order(&mut filtered, order);
     filtered
+}
+
+fn sort_workspaces_by_output_order(
+    workspaces: &mut [WorkspaceEntry],
+    order: Option<&[WorkspaceObject]>,
+) {
+    let Some(order) = order else {
+        sort_workspaces(workspaces);
+        return;
+    };
+    let positions = order
+        .iter()
+        .enumerate()
+        .map(|(index, workspace)| (workspace.path_key(), index))
+        .collect::<HashMap<_, _>>();
+    workspaces.sort_by(|left, right| {
+        position_of(left, &positions)
+            .cmp(&position_of(right, &positions))
+            .then_with(|| left.index.cmp(&right.index))
+            .then_with(|| left.workspace.path_key().cmp(right.workspace.path_key()))
+    });
+}
+
+fn position_of(
+    workspace: &WorkspaceEntry,
+    positions: &HashMap<&str, usize>,
+) -> usize {
+    positions
+        .get(workspace.workspace.path_key())
+        .copied()
+        .unwrap_or(usize::MAX)
 }
 
 fn workspace_matches_output(
@@ -150,7 +212,8 @@ fn sort_workspaces(workspaces: &mut [WorkspaceEntry]) {
 #[cfg(test)]
 mod tests {
     use super::{
-        filter_workspaces_for_output, selected_workspace_sorted_windows, workspace_matches_output,
+        WorkspaceRow, filter_workspaces_for_output, selected_workspace_sorted_windows,
+        workspace_matches_output,
     };
     use crate::widgets::bar::{
         window_source::WindowSnapshot,
@@ -194,10 +257,50 @@ mod tests {
         assert_eq!(
             filter_workspaces_for_output(
                 workspaces.clone(),
-                Some("/org/rsynapse/Workspace/Outputs/x4D49534D41544348")
+                Some("/org/rsynapse/Workspace/Outputs/x4D49534D41544348"),
+                None,
             ),
             Vec::new()
         );
+    }
+
+    #[test]
+    fn output_order_wins_over_stale_workspace_indexes() {
+        let first = workspace(2, Some("/org/rsynapse/Workspace/Outputs/x44502D32"));
+        let second = workspace(1, Some("/org/rsynapse/Workspace/Outputs/x44502D32"));
+        let order = vec![second.workspace.clone(), first.workspace.clone()];
+
+        let filtered = filter_workspaces_for_output(
+            vec![first, second],
+            Some("/org/rsynapse/Workspace/Outputs/x44502D32"),
+            Some(&order),
+        );
+
+        assert_eq!(
+            filtered
+                .iter()
+                .map(|workspace| workspace.workspace.path_key().to_owned())
+                .collect::<Vec<_>>(),
+            order
+                .iter()
+                .map(|workspace| workspace.path_key().to_owned())
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn output_order_places_unlisted_workspaces_last() {
+        let listed = workspace(2, Some("/org/rsynapse/Workspace/Outputs/x44502D32"));
+        let unlisted = workspace(1, Some("/org/rsynapse/Workspace/Outputs/x44502D32"));
+        let order = vec![listed.workspace.clone()];
+
+        let filtered = filter_workspaces_for_output(
+            vec![unlisted, listed],
+            Some("/org/rsynapse/Workspace/Outputs/x44502D32"),
+            Some(&order),
+        );
+
+        assert_eq!(filtered[0].workspace.path_key(), order[0].path_key());
     }
 
     #[test]
@@ -219,6 +322,30 @@ mod tests {
             window_paths(&windows),
             vec![window_path(10), window_path(20), window_path(30)]
         );
+    }
+
+    #[test]
+    fn workspace_identity_survives_reordering() {
+        let first = WorkspaceRow {
+            workspace: workspace(1, Some("/org/rsynapse/Workspace/Outputs/x44502D32")).workspace,
+            edge_placeholder: false,
+        };
+        let second = WorkspaceRow {
+            workspace: workspace(2, Some("/org/rsynapse/Workspace/Outputs/x44502D32")).workspace,
+            edge_placeholder: false,
+        };
+        let first_identity = first.identity();
+        let second_identity = second.identity();
+
+        let mut reordered = vec![second, first];
+        reordered.sort_by(|left, right| {
+            left.workspace
+                .path_key()
+                .cmp(right.workspace.path_key())
+        });
+
+        assert_eq!(reordered[0].identity(), first_identity);
+        assert_eq!(reordered[1].identity(), second_identity);
     }
 
     #[test]

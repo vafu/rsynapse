@@ -38,12 +38,14 @@ impl ViewBinding {
 struct BindListAttr {
     source: Ident,
     row: Option<syn::Path>,
+    key: Option<Expr>,
 }
 
 impl Parse for BindListAttr {
     fn parse(input: ParseStream<'_>) -> Result<Self> {
         let source = input.parse::<Ident>()?;
         let mut row = None;
+        let mut key = None;
 
         while input.peek(Token![,]) {
             input.parse::<Token![,]>()?;
@@ -53,22 +55,23 @@ impl Parse for BindListAttr {
 
             let ident = input.parse::<Ident>()?;
             input.parse::<Token![=]>()?;
-            let value = input.parse::<syn::Path>()?;
             match ident.to_string().as_str() {
                 "backend" => {
+                    let value = input.parse::<syn::Path>()?;
                     return Err(syn::Error::new_spanned(
                         value,
                         "bind_list infers the backend from the widget type; explicit backend selection is not supported yet",
                     ));
                 }
-                "row" => row = Some(value),
+                "row" => row = Some(input.parse::<syn::Path>()?),
+                "key" => key = Some(input.parse::<Expr>()?),
                 _ => {
-                    return Err(syn::Error::new_spanned(ident, "expected row"));
+                    return Err(syn::Error::new_spanned(ident, "expected row or key"));
                 }
             }
         }
 
-        Ok(Self { source, row })
+        Ok(Self { source, row, key })
     }
 }
 
@@ -108,7 +111,15 @@ fn transform_tokens(
             iter.next();
             let binding = view_binding(list_attr.source.clone(), bindings)?;
             let row = list_attr.row.expect("row is validated by bind_list_attr");
-            append_bound_list_widget(&mut output, &mut iter, module_ident, state, binding, row)?;
+            append_bound_list_widget(
+                &mut output,
+                &mut iter,
+                module_ident,
+                state,
+                binding,
+                row,
+                list_attr.key,
+            )?;
             continue;
         }
 
@@ -329,6 +340,7 @@ fn append_bound_list_widget(
     state: &StateAccess,
     binding: ViewBinding,
     row: syn::Path,
+    key: Option<Expr>,
 ) -> Result<()> {
     let mut widget_tokens = Vec::new();
 
@@ -336,7 +348,7 @@ fn append_bound_list_widget(
         match token {
             TokenTree::Group(group) if group.delimiter() == Delimiter::Brace => {
                 normalize_bound_list_widget_prefix(&mut widget_tokens, binding.field())?;
-                let injected = bound_list_setter(module_ident, state, &binding, row)?;
+                let injected = bound_list_setter(module_ident, state, &binding, row, key)?;
                 let body = transform_tokens(
                     group.stream(),
                     module_ident,
@@ -406,6 +418,7 @@ fn bound_list_setter(
     state: &StateAccess,
     binding: &ViewBinding,
     row: syn::Path,
+    key: Option<Expr>,
 ) -> Result<TokenStream> {
     let field = binding.field();
     let variant = binding.variant();
@@ -426,9 +439,21 @@ fn bound_list_setter(
         },
     };
 
+    let setter = match key {
+        Some(key) => quote! {
+            set_component_list_by_key: (
+                ::shell_core::list::ComponentListUpdate::<#row>::new(&#field_access),
+                #key,
+            )
+        },
+        None => quote! {
+            set_component_list: ::shell_core::list::ComponentListUpdate::<#row>::new(&#field_access)
+        },
+    };
+
     Ok(quote! {
         #[track(#changed)]
-        set_component_list: ::shell_core::list::ComponentListUpdate::<#row>::new(&#field_access),
+        #setter,
     })
 }
 

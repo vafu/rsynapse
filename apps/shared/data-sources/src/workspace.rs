@@ -188,6 +188,25 @@ pub fn current_workspace(output_name: Option<String>) -> Observable<Option<Works
     .box_it()
 }
 
+/// Workspace membership for one output, in the compositor's display order.
+pub fn output_workspaces(output_name: String) -> Observable<Vec<WorkspaceObject>> {
+    let path = output_path_for_name(&output_name);
+    dbus::property::<Vec<OwnedObjectPath>>(property(
+        path.as_str(),
+        OUTPUT_INTERFACE,
+        "Workspaces",
+    ))
+    .map(|paths| {
+        paths
+            .unwrap_or_default()
+            .into_iter()
+            .map(WorkspaceObject::at)
+            .collect()
+    })
+    .distinct_until_changed()
+    .box_it()
+}
+
 fn required<T>(descriptor: PropertyDescriptor, default: T) -> Observable<T>
 where
     T: TryFrom<zbus::zvariant::OwnedValue> + Clone + PartialEq + Send + 'static,
