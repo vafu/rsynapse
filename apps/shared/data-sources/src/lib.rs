@@ -18,6 +18,7 @@ pub mod mpris;
 pub mod notifications;
 pub mod power_profile;
 pub mod proj;
+pub mod provider_usage;
 pub mod session;
 pub mod steward;
 pub mod system_stats;
