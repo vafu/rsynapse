@@ -156,6 +156,21 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
   margin-top: 2px;
 }
 
+.workspace-bar-window .provider-usage-list menubutton.provider-usage-button {
+  margin: 0;
+  padding: 0;
+
+  > button {
+    min-width: #{$panel-item-size};
+    min-height: #{$panel-item-size};
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    border: none;
+    box-shadow: none;
+  }
+}
+
 .provider-refresh-button {
   margin-top: 2px;
 }

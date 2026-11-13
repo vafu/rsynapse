@@ -3,11 +3,9 @@ use relm4::prelude::*;
 use shell_core::gtk::{self, prelude::*};
 
 use super::source::{ProviderUsageVm, provider_usage};
+use crate::widgets::bar::bar_indicator::{self, BarIndicatorExt};
+use crate::widgets::level_indicator::{self, LevelRenderStyle, LevelStage, LineStyle};
 use crate::widgets::nerd_icon::NerdIconLabelExt;
-use crate::widgets::{
-    bar::bar_item,
-    level_indicator::{self, LevelRenderStyle, LevelStage, LineStyle},
-};
 
 const STYLE: LevelRenderStyle = LevelRenderStyle::Line(LineStyle::vertical(3.0));
 const STAGES: &[LevelStage] = &[
@@ -63,21 +61,24 @@ impl SimpleComponent for ProviderUsageIndicator {
         gtk::MenuButton {
             #[watch]
             set_visible: model.vm.is_some(),
-            set_css_classes: &bar_item::action_classes(&["provider-usage-button"]),
+            set_css_classes: &["flat", "workspace-icon-menu-button", "provider-usage-button"],
             set_always_show_arrow: false,
             set_has_frame: false,
+            set_halign: gtk::Align::Center,
+            set_valign: gtk::Align::Center,
             #[watch]
             set_tooltip_text: model.vm.as_ref().map(|vm| vm.usage.tooltip()).as_deref(),
 
             #[wrap(Some)]
             set_child = &gtk::Box {
+                set_bar_indicator_size: bar_indicator::SIZE,
                 set_orientation: gtk::Orientation::Horizontal,
                 set_halign: gtk::Align::Center,
                 set_valign: gtk::Align::Center,
-                set_spacing: 3,
+                set_spacing: 0,
 
                 gtk::Label {
-                    set_css_classes: &["nerdicon", bar_item::ICON_CLASS],
+                    set_css_classes: &["nerdicon", "bar-indicator-icon"],
                     #[watch]
                     set_nerd_icon: icon(model.vm.as_ref()),
                 },
@@ -89,6 +90,7 @@ impl SimpleComponent for ProviderUsageIndicator {
                     set_visible: model.vm.as_ref().and_then(|vm| vm.percent).is_some(),
                     set_halign: gtk::Align::Center,
                     set_valign: gtk::Align::Center,
+                    set_vexpand: true,
 
                     add_overlay = &gtk::DrawingArea {
                         set_css_classes: level_indicator::TRACK_CLASSES,

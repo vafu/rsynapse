@@ -158,6 +158,10 @@ impl IconPolicy {
         Self::new(2, 720)
     }
 
+    pub(in crate::widgets::bar) fn provider() -> Self {
+        Self::new(1, 480)
+    }
+
     const fn new(min_picker_inputs: usize, min_picker_score_millis: u16) -> Self {
         Self {
             min_picker_inputs,
