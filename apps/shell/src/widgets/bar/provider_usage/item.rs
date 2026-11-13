@@ -70,12 +70,8 @@ impl SimpleComponent for ProviderUsageIndicator {
             set_tooltip_text: model.vm.as_ref().map(|vm| vm.usage.tooltip()).as_deref(),
 
             #[wrap(Some)]
-            set_child = &gtk::Box {
+            set_child = &gtk::Overlay {
                 set_bar_indicator_size: bar_indicator::SIZE,
-                set_orientation: gtk::Orientation::Horizontal,
-                set_halign: gtk::Align::Center,
-                set_valign: gtk::Align::Center,
-                set_spacing: 0,
 
                 gtk::Label {
                     set_css_classes: &["nerdicon", "bar-indicator-icon"],
@@ -83,14 +79,15 @@ impl SimpleComponent for ProviderUsageIndicator {
                     set_nerd_icon: icon(model.vm.as_ref()),
                 },
 
-                gtk::Overlay {
+                add_overlay = &gtk::Overlay {
                     #[watch]
                     set_css_classes: &root_classes(),
                     #[watch]
                     set_visible: model.vm.as_ref().and_then(|vm| vm.percent).is_some(),
-                    set_halign: gtk::Align::Center,
-                    set_valign: gtk::Align::Center,
+                    set_halign: gtk::Align::End,
+                    set_valign: gtk::Align::Fill,
                     set_vexpand: true,
+                    set_width_request: 4,
 
                     add_overlay = &gtk::DrawingArea {
                         set_css_classes: level_indicator::TRACK_CLASSES,
