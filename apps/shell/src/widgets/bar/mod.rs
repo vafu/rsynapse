@@ -61,7 +61,6 @@ use self::monitors::{primary_output, secondary_bar_changes};
 use self::goals::GoalIndicator;
 use self::network::NetworkIndicators;
 use self::power_profile::{PowerProfileView, power_profile_status};
-use self::provider_usage::{ProviderUsageIndicator, provider_usage_keys};
 use self::secondary::{
     SecondaryBar, available_monitors, bar_window_config, launch_secondary_bar,
     launch_secondary_bars, launch_workspace_bar, log_bar_monitor, monitor_output_name,
@@ -73,6 +72,7 @@ use self::selected_project::{
 };
 use self::source_errors::{SourceErrorRow, source_error_count, source_error_items};
 use self::system_stats::{ArcSide, SysStatsView, sys_stats};
+use self::systray::{TrayItem, systray_items};
 use self::time::{ClockView, clock};
 use self::window_tile::WindowTile;
 use self::workspace_bar::{WorkspaceBar, WorkspaceBarInit};
@@ -198,8 +198,8 @@ pub struct MainBar {
     #[source(sys_stats())]
     system_stats: SysStatsView,
 
-    #[source(provider_usage_keys())]
-    provider_usage: Vec<String>,
+    #[source(systray_items())]
+    tray_items: Vec<systray::TrayItemNode>,
 
     #[source(clock())]
     clock: ClockView,
@@ -479,10 +479,11 @@ impl SimpleAsyncComponent for MainBar {
                         #[local_ref]
                         bluetooth_indicator -> gtk::Box {},
 
-                        #[bind_list(provider_usage, row = ProviderUsageIndicator)]
-                        provider_usage -> gtk::Box {
+                        #[bind_list(tray_items, row = TrayItem)]
+                        tray_items -> gtk::Box {
+                            add_css_class: "tray-widget",
+                            set_halign: gtk::Align::Center,
                             set_orientation: gtk::Orientation::Horizontal,
-                            set_spacing: 2,
                         },
 
                         #[local_ref]

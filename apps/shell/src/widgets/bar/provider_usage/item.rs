@@ -9,19 +9,18 @@ use crate::widgets::{
     level_indicator::{self, LevelRenderStyle, LevelStage, LineStyle},
 };
 
-const BAR_WIDTH: i32 = 8;
-const BAR_HEIGHT: i32 = 18;
+const STYLE: LevelRenderStyle = LevelRenderStyle::Line(LineStyle::vertical(3.0));
 const STAGES: &[LevelStage] = &[
     LevelStage {
         level: 0.0,
         class: "normal",
     },
     LevelStage {
-        level: 70.0,
+        level: 80.0,
         class: "warn",
     },
     LevelStage {
-        level: 85.0,
+        level: 90.0,
         class: "danger",
     },
     LevelStage {
@@ -90,14 +89,11 @@ impl SimpleComponent for ProviderUsageIndicator {
                     set_visible: model.vm.as_ref().and_then(|vm| vm.percent).is_some(),
                     set_halign: gtk::Align::Center,
                     set_valign: gtk::Align::Center,
-                    set_width_request: BAR_WIDTH,
-                    set_height_request: BAR_HEIGHT,
 
                     add_overlay = &gtk::DrawingArea {
                         set_css_classes: level_indicator::TRACK_CLASSES,
                         set_can_target: false,
-                        set_content_width: BAR_WIDTH,
-                        set_content_height: BAR_HEIGHT,
+                        set_vexpand: true,
                         set_draw_func: track_draw(),
                     },
 
@@ -105,8 +101,7 @@ impl SimpleComponent for ProviderUsageIndicator {
                         #[watch]
                         set_css_classes: &level_classes(model.vm.as_ref()),
                         set_can_target: false,
-                        set_content_width: BAR_WIDTH,
-                        set_content_height: BAR_HEIGHT,
+                        set_vexpand: true,
                         #[watch]
                         set_draw_func: level_draw(model.vm.as_ref()),
                     }
@@ -304,7 +299,7 @@ fn timestamp(value: u64) -> String {
 }
 
 fn root_classes() -> Vec<&'static str> {
-    level_indicator::root_classes(["line", "provider-usage-level"])
+    level_indicator::root_classes(["line", "agent-context-level"])
 }
 
 fn level_classes(vm: Option<&ProviderUsageVm>) -> Vec<&'static str> {
@@ -313,17 +308,12 @@ fn level_classes(vm: Option<&ProviderUsageVm>) -> Vec<&'static str> {
 }
 
 fn track_draw() -> impl Fn(&gtk::DrawingArea, &gtk::cairo::Context, i32, i32) + 'static {
-    level_indicator::track_draw_func(LevelRenderStyle::Line(LineStyle::vertical(3.0)))
+    level_indicator::track_draw_func(STYLE)
 }
 
 fn level_draw(
     vm: Option<&ProviderUsageVm>,
 ) -> impl Fn(&gtk::DrawingArea, &gtk::cairo::Context, i32, i32) + 'static {
     let percent = vm.and_then(|vm| vm.percent).unwrap_or_default();
-    level_indicator::level_draw_func(
-        f64::from(percent),
-        0.0,
-        100.0,
-        LevelRenderStyle::Line(LineStyle::vertical(3.0)),
-    )
+    level_indicator::level_draw_func(f64::from(percent), 0.0, 100.0, STYLE)
 }

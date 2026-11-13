@@ -152,20 +152,8 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
   min-width: 340px;
 }
 
-.provider-usage-level {
-  .track {
-    color: color-mix(in srgb, #{$fg} 16%, transparent);
-  }
-
-  .level.normal { color: #{$accent_color}; }
-  .level.warn { color: #{$sys_warn}; }
-  .level.danger,
-  .level.critical { color: #{$sys_danger}; }
-}
-
-.provider-usage-button {
-  padding-left: 2px;
-  padding-right: 3px;
+.provider-usage-list {
+  margin-top: 2px;
 }
 
 .provider-refresh-button {
