@@ -124,7 +124,7 @@ pub fn providers() -> Observable<Vec<ProviderUsage>> {
             let mut provider_paths: Vec<String> = Vec::new();
             let mut properties: std::pin::Pin<
                 Box<dyn futures_util::Stream<Item = zbus::Message> + Send>,
-            > = Box::pin(futures_util::stream::empty());
+            > = Box::pin(futures_util::stream::pending());
             loop {
                 let snapshot = provider_snapshot(&connection).await;
                 let paths = match &snapshot {
@@ -138,7 +138,7 @@ pub fn providers() -> Observable<Vec<ProviderUsage>> {
                     provider_paths = paths;
                     properties = subscribe_provider_properties(&connection, &provider_paths)
                         .await
-                        .unwrap_or_else(|_| Box::pin(futures_util::stream::empty()));
+                        .unwrap_or_else(|_| Box::pin(futures_util::stream::pending()));
                 }
                 if sender.send(snapshot).await.is_err() {
                     return;
@@ -146,7 +146,7 @@ pub fn providers() -> Observable<Vec<ProviderUsage>> {
                 tokio::select! {
                     _ = membership.next() => {}
                     _ = removed.next() => {}
-                    _ = properties.next() => {}
+                    _ = properties.next(), if !provider_paths.is_empty() => {}
                 }
             }
         })
