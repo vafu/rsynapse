@@ -1,3 +1,4 @@
+mod agent_blink;
 mod audio;
 mod bar_indicator;
 mod bar_item;

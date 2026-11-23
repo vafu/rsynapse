@@ -435,7 +435,7 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
   }
 
   &.running image {
-    animation: bzbus-spin 1.2s linear infinite;
+    animation: bzbus-spin 1.2s steps(12, end) infinite;
   }
 
   &.finished {
@@ -444,20 +444,16 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
 }
 
 .bar-indicator.workspace-window-agent {
-  &.thinking .bar-indicator-icon:first-child {
-    animation: agent-thinking-pulse 0.5s ease-in-out infinite;
-  }
-
   &.tool-use .bar-indicator-icon:first-child {
-    animation: agent-tool-scale 0.6s ease-in-out infinite;
+    animation: agent-tool-scale 0.6s steps(3, end) infinite;
   }
 
   &.compacting .bar-indicator-icon:first-child {
-    animation: agent-compact-shrink 1.2s ease-in-out infinite;
+    animation: agent-compact-shrink 1.2s steps(6, end) infinite;
   }
 
   &.attention .bar-indicator-icon:first-child {
-    animation: agent-attention-shake 0.4s ease-in-out infinite;
+    animation: agent-attention-shake 0.4s steps(8, end) infinite;
   }
 }
 
@@ -478,7 +474,7 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
   }
 
   &.running .bar-indicator-icon {
-    animation: bzbus-spin 1.2s linear infinite;
+    animation: bzbus-spin 1.2s steps(12, end) infinite;
   }
 }
 
@@ -510,30 +506,8 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
   }
 }
 
-.bar-indicator.has-working:not(.has-attention) .bar-indicator-icon {
-  animation: agent-thinking-pulse 0.5s ease-in-out infinite;
-}
-
 .bar-indicator.has-attention .bar-indicator-icon {
-  animation: agent-attention-shake 0.4s ease-in-out infinite;
-}
-
-@keyframes workspace-unseen-accent-pulse {
-
-  0%,
-  100% {
-    background-color: color-mix(in srgb, #{$accent_color} 12%, #{$bg_tint});
-    border-color: transparent;
-    border-right-color: color-mix(in srgb, #{$accent_color} 68%, transparent);
-    box-shadow: 0 0 8px 0 #{$shadow};
-  }
-
-  50% {
-    background-color: color-mix(in srgb, #{$accent_color} 26%, #{$bg_tint});
-    border-color: transparent;
-    border-right-color: color-mix(in srgb, #{$accent_color} 92%, #{$fg});
-    box-shadow: 0 0 14px 1px color-mix(in srgb, #{$accent_color} 34%, transparent);
-  }
+  animation: agent-attention-shake 0.4s steps(8, end) infinite;
 }
 
 .bar-badge {
@@ -561,7 +535,7 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
 
   &.build-running {
     color: color-mix(in srgb, #{$accent_color} 86%, #{$fg});
-    animation: bzbus-spin 1.2s linear infinite;
+    animation: bzbus-spin 1.2s steps(12, end) infinite;
   }
 
   &.build-failed {
@@ -659,7 +633,7 @@ $indicator-danger: color-mix(in srgb, #{$sys_danger} 88%, transparent);
   }
 
   &.running .nerdicon {
-    animation: bzbus-spin 1.2s linear infinite;
+    animation: bzbus-spin 1.2s steps(12, end) infinite;
   }
 
   &.failed {

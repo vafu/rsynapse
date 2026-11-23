@@ -23,6 +23,7 @@ use self::{
 
 use super::{
     WorkspaceNode,
+    agent_blink::{AgentBlink, AgentBlinkExt},
     bar_indicator::{self, BarIndicatorExt},
 };
 use crate::widgets::nerd_icon::NerdIconLabelExt;
@@ -35,6 +36,7 @@ pub(super) struct ProjectLabel {
     icon_target: Rc<RefCell<Option<IconTarget>>>,
     editing_icon: Rc<RefCell<Option<IconTarget>>>,
     picker_key: Option<PickerKey>,
+    blink: AgentBlink,
 
     #[source(project_label_vm(workspace.workspace.clone()))]
     pub vm: ProjectLabelVm,
@@ -109,6 +111,11 @@ impl SimpleComponent for ProjectLabel {
 
                             #[watch]
                             set_nerd_icon: project_icon_render(&model.vm),
+                            #[watch]
+                            set_agent_blink: (
+                                model.vm.agent.has_working && !model.vm.agent.has_attention,
+                                model.blink.clone(),
+                            ),
                         },
 
                         #[name = "title_revealer"]
@@ -165,6 +172,7 @@ impl SimpleComponent for ProjectLabel {
             Rc::new(RefCell::new(None)),
             Rc::new(RefCell::new(None)),
             None,
+            AgentBlink::new(),
         );
         let widgets = view_output!();
 

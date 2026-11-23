@@ -12,6 +12,7 @@ use self::{
 };
 use super::{
     WindowNode,
+    agent_blink::{AgentBlink, AgentBlinkExt},
     bar_indicator::{self, BarIndicatorExt},
 };
 use crate::widgets::nerd_icon::{NerdIcon, NerdIconLabelExt};
@@ -21,6 +22,7 @@ use crate::widgets::nerd_icon::{dev, md, seti};
 #[shell_macros::model(module = window_tile_sources)]
 pub(super) struct WindowTile {
     pub window: WindowNode,
+    blink: AgentBlink,
 
     #[source(window_tile_vm(window.clone()))]
     pub vm: Option<ViewModel>,
@@ -67,6 +69,8 @@ impl SimpleComponent for WindowTile {
 
                         #[watch]
                         set_nerd_icon: window_icon(&model.vm),
+                        #[watch]
+                        set_agent_blink: (window_agent_pulsing(&model.vm), model.blink.clone()),
                     },
 
                     gtk::Overlay {
@@ -119,7 +123,7 @@ impl SimpleComponent for WindowTile {
         _sender: ComponentSender<Self>,
     ) -> ComponentParts<Self> {
         tracing::trace!(path = init.path_key(), "window tile init");
-        let model = WindowTile::new(init);
+        let model = WindowTile::new(init, AgentBlink::new());
         let unseen_badge = super::bar_item::unseen_badge();
         let widgets = view_output!();
 
@@ -200,6 +204,19 @@ fn window_tile_classes(vm: &Option<ViewModel>) -> Vec<&'static str> {
 
 fn window_visible(vm: &Option<ViewModel>) -> bool {
     vm.is_some()
+}
+
+/// Agent states that blink the tile icon. Mirrors the old `.thinking` CSS
+/// state; the blink is driven by a low-frequency timer so an idle bar does not
+/// keep a 60Hz animation alive.
+fn window_agent_pulsing(vm: &Option<ViewModel>) -> bool {
+    matches!(
+        vm.as_ref().map(|vm| &vm.kind),
+        Some(Kind::Agent(Agent {
+            state: AgentState::Thinking,
+            ..
+        }))
+    )
 }
 
 fn window_icon(vm: &Option<ViewModel>) -> NerdIcon {
